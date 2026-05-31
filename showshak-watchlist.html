@@ -41,6 +41,7 @@ html, body { overflow: hidden; }
   font-size: clamp(24px, 3vw, 34px);
   letter-spacing: 2px; color: var(--white); line-height: 1;
 }
+.page-title em { color: var(--red); font-style: normal; }
 
 .new-stack-btn {
   display: flex; align-items: center; gap: 7px;
@@ -275,7 +276,7 @@ html, body { overflow: hidden; }
 }
 
 /* ════════════════════════════════════════════════
-   RECOMMENDED CLIPS — TikTok-style grid
+   RECOMMENDED CLIPS — 
    Portrait 9:16 cards, creator + fire count below
 ════════════════════════════════════════════════ */
 .rec-section { padding: 16px 28px 40px; }
@@ -592,7 +593,7 @@ html, body { overflow: hidden; }
       <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
       <span class="nav-item-label">Watchlist</span>
     </a>
-    <a class="nav-item" data-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+    <a class="nav-item active" data-nav="profile" href="showshak-profile.html">
       <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
       <span class="nav-item-label">Profile</span>
     </a>
@@ -610,8 +611,7 @@ html, body { overflow: hidden; }
 
   <div class="page-header">
     <div>
-      <div class="page-eyebrow">show<em>shak</em> · saves</div>
-      <div class="page-title">WATCHLIST</div>
+      <div class="page-title">WATCH<em>LIST</em></div>
     </div>
     <button class="new-stack-btn" onclick="openNewStack()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -675,7 +675,7 @@ html, body { overflow: hidden; }
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
     <span class="mob-nav-label">Watchlist</span>
   </a>
-  <a class="mob-nav-item" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+  <a class="mob-nav-item active" data-mob-nav="profile" href="showshak-profile.html">
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
     <span class="mob-nav-label">Profile</span>
   </a>
