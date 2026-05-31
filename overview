@@ -1,9 +1,9 @@
 ═══════════════════════════════════════════════════════════════
   SHOWSHAK — PROJECT BRIEF
   Paste this at the start of every new conversation along with
-  showshak-tokens.css, showshak-shared.js, showshak-components.css
+  the four shared files listed below.
 ═══════════════════════════════════════════════════════════════
-
+//dhjueyweu
 
 ── WHAT IS SHOWSHAK ────────────────────────────────────────────
 
@@ -44,22 +44,27 @@ Closest references for mental model:
 3. FIRE = THIS IS LIT
    The "like" equivalent is 🔥 Fire. Not a heart. Not a thumbs up.
    Fire means "this show/movie is genuinely great" — specific
-   to the entertainment context. The fire icon and color family
-   (orange → red) intentionally match the ShowShak brand palette.
+   to the entertainment context. The fire icon is an SVG outline
+   flame that FILLS with red (#EA3B32) on tap, with a pulse
+   animation. The color family (orange → red) matches the brand.
 
 4. WATCH IT IS THE CLIMAX
    Every clip builds to one moment: the user deciding to watch.
    "Watch It" (not "Watch Now") — decisive, personal, like a
    friend telling you what to do. It is the most important
    interaction in the entire product. The CTA has a breathing
-   glow animation and flashes when a user fires a clip (fire
-   energy converts to watch action — emotional peak → decision).
+   glow animation (breatheGlow keyframe) and flashes when a user
+   fires a clip (fire energy converts to watch action —
+   emotional peak → decision). This flash is called fire-flash.
 
 5. CONTENT SIGNALS ONLY — NO SOCIAL SIGNALS
-   We show: genre tags, language tag, creator caption (2 lines)
-   We do NOT show: show title on clip, IMDb score, platform badge
-   on clip, follower counts, view counts.
-   The platform reveal lives ONLY in the Watch It sheet.
+   On the feed clip we show: show title, genre tags, language tag,
+   creator handle + follow button, curator caption (2 lines).
+   We do NOT show: IMDb score on clip, follower counts, view counts.
+   Platform reveal lives ONLY in the Watch It sheet.
+   NOTE: The overview previously said "do not show show title" —
+   this has been UPDATED. The show title IS shown on the clip
+   in the current build (bottom content area of each clip card).
 
 6. CURATORS, NOT INFLUENCERS
    People who post clips are curators / tastemakers — people
@@ -69,20 +74,25 @@ Closest references for mental model:
 
 ── VOCABULARY ──────────────────────────────────────────────────
 
-  Fire         = like/heart equivalent
-  Watch It     = the primary CTA (never "Watch Now")
-  Watchlist    = saved shows (was "Wishlist" — now Watchlist)
+  Fire         = like/heart equivalent (SVG flame, not emoji)
+  Watch It     = the primary CTA (NEVER "Watch Now")
+  Watchlist    = saved shows page (was "Wishlist" — now Watchlist)
+  Stack        = a named collection of saved clips inside Watchlist
   Curator      = person who posts clips (not "creator/influencer")
   Clip         = short recommendation video (not "reel/video")
   Feed         = the vertical clip scroll page
   Discover     = the search/browse/mood page
   Fires count  = formatted with fmtFires() e.g. 1.2k not 1200
+  Rail         = the action buttons column (Fire, Save, Share,
+                 Watch It) — "desktop rail" or "mobile rail"
 
 
 ── TECH STACK ──────────────────────────────────────────────────
 
   Pure HTML + CSS + Vanilla JS — zero frameworks, zero build tools
   Google Fonts: Bebas Neue (display/headings) + DM Sans (body)
+  Font import string (use full ital/opsz/wght version):
+    https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap
   No npm, no React, no Tailwind, no bundler
   Runs directly in browser via VS Code Live Server extension
   Target: website prototype → handed off to app developers later
@@ -91,22 +101,28 @@ Closest references for mental model:
 ── DESIGN TOKENS (key values) ──────────────────────────────────
 
   --bg:    #0B0B0F   (main background)
-  --bg2:   #13131A   (card backgrounds)
+  --bg2:   #13131A   (card backgrounds, sheets)
   --bg3:   #1A1A24   (hover states)
   --bg4:   #22222F   (active states)
   --red:   #EA3B32   (brand red — fire, accents, active states)
   --red2:  #FF4D42   (hover red)
   --white: #FFFFFF
   --gray:  #A0A0B8   (secondary text)
-  --gray2: #5A5A72   (muted text, icons)
+  --gray2: #5A5A72   (muted text, inactive icons)
+
+  --border:  rgba(255,255,255,0.07)
+  --border2: rgba(234,59,50,0.28)
 
   --sidebar-collapsed: 64px
   --sidebar-expanded:  220px
   --mobile-nav-h:      64px
-  --clip-w:            400px (desktop) / 100vw (mobile)
+  --clip-w:            400px (desktop) / 100vw (mobile via @media)
 
   --ease-spring: cubic-bezier(.34, 1.56, .64, 1)
   --ease-smooth: cubic-bezier(.4, 0, .2, 1)
+
+  --shadow-card:  0 8px 32px rgba(0,0,0,0.4)
+  --shadow-float: 0 12px 40px rgba(0,0,0,0.5)
 
   Mobile breakpoint: max-width 700px
 
@@ -114,26 +130,27 @@ Closest references for mental model:
 ── FILE STRUCTURE ───────────────────────────────────────────────
 
   showshak/
-  ├── _project-brief.txt          ← this file
+  ├── overview                    ← this file (was _project-brief.txt)
   │
   ├── showshak-tokens.css         ← ALL design variables + CSS reset
   ├── showshak-sidebar.css        ← desktop sidebar (collapsed/hover expand)
   ├── showshak-mobile-nav.css     ← mobile bottom nav bar
   ├── showshak-components.css     ← toast, Watch It sheet, tags, shared layout
-  ├── showshak-shared.js          ← ALL shared JS: toast, sheet, share,
-  │                                  nav highlight, fmtFires, ssPageFadeIn,
-  │                                  SVG mark injection, scroll helpers
+  ├── showshak-shared.js          ← ALL shared JS utilities (see full list below)
   │
-  ├── index.html                  ← onboarding/landing page (NOT yet
-  │                                  refactored to use shared files —
-  │                                  still self-contained, different style)
+  ├── index.html                  ← landing + onboarding page. Self-contained —
+  │                                  does NOT use shared CSS/JS files yet.
+  │                                  Has its own inline tokens/styles.
+  │                                  3-step onboarding: genres → platforms → sign in
+  │                                  After sign in: loading curtain → showshak-feed.html
+  │
   ├── showshak-feed.html          ← DONE ✓ vertical clip feed
   ├── showshak-discover.html      ← DONE ✓ search + mood + platform browse
-  │
-  ├── showshak-watchlist.html     ← NOT YET BUILT
-  └── showshak-profile.html       ← NOT YET BUILT
+  ├── showshak-watchlist.html     ← DONE ✓ stacks + recommended clips
+  └── showshak-profile.html       ← DONE ✓ user + creator mode profile
 
-  Every new page must link in <head>:
+  Every page (except index.html) must link in <head>:
+    <style>body{opacity:0}</style>          ← prevents FOUC before fade-in
     <link rel="stylesheet" href="showshak-tokens.css">
     <link rel="stylesheet" href="showshak-sidebar.css">
     <link rel="stylesheet" href="showshak-mobile-nav.css">
@@ -143,56 +160,322 @@ Closest references for mental model:
     <script src="showshak-shared.js"></script>
 
 
+── NAVIGATION STRUCTURE ────────────────────────────────────────
+
+  Desktop sidebar (showshak-sidebar.css):
+    - Collapsed: 64px wide, icons only
+    - Expanded: 220px wide, on hover
+    - Logo: mark-only when collapsed, "show[shak]" wordmark on hover
+    - Nav items: Feed, Discover, Watchlist, Profile (with data-nav attr)
+    - Active item: red 3px left bar indicator
+    - Bottom: Settings gear (pinned, separated by border-top)
+    - Hidden on mobile (display:none at max-width:700px)
+
+  Mobile bottom nav (showshak-mobile-nav.css):
+    - Fixed bottom, height 64px (--mobile-nav-h)
+    - Border-top: 1.5px solid var(--red)
+    - Items: Feed, Discover, Watchlist, Profile (with data-mob-nav attr)
+    - Active: white color + red underline at bottom
+    - Shown only at max-width:700px (display:flex)
+
+  Active nav highlighting:
+    - Handled automatically by showshak-shared.js (highlightActiveNav)
+    - Uses data-nav="feed|discover|watchlist|profile" on sidebar items
+    - Uses data-mob-nav="feed|discover|watchlist|profile" on mobile items
+    - Matches against window.location.pathname
+
+  Page transitions:
+    - ssNavigate(url) in shared.js: fade out → navigate
+    - ssPageFadeIn() auto-runs on DOMContentLoaded on every page
+    - Click handler in shared.js intercepts links inside .sidebar-nav,
+      .mobile-bottom-nav, .sidebar-logo only
+
+
+── SIDEBAR — KNOWN BUG ─────────────────────────────────────────
+
+  In showshak-feed.html the Profile nav-item has class="nav-item active"
+  which should be class="nav-item" (no active). Feed should be the only
+  active item. Same issue exists in mobile nav. Fix when touching the file.
+
+
 ── SHARED CSS CLASSES TO REUSE ─────────────────────────────────
 
-  Layout:     .ss-layout (main content area with sidebar offset)
-  Sidebar:    .sidebar, .nav-item, .nav-item-icon, .nav-item-label
-  Mobile nav: .mobile-bottom-nav, .mob-nav-item, .mob-nav-icon
-  Tags:       .tag (genre/language pill — red family)
+  Layout:     .ss-layout (position:fixed, inset:0, left:sidebar-collapsed)
+  Sidebar:    .sidebar, .sidebar-nav, .nav-item, .nav-item-icon,
+              .nav-item-label, .nav-item-settings, .sidebar-bottom,
+              .sidebar-logo, .sidebar-mark, .sidebar-wordmark,
+              .sidebar-divider, .nav-badge
+  Mobile nav: .mobile-bottom-nav, .mob-nav-item, .mob-nav-icon,
+              .mob-nav-label
+  Tags:       .tag (genre/language pill — red tinted border)
   Toast:      #ss-toast (auto-created by shared.js, call ssToast())
-  Sheet:      #watch-sheet, #watch-sheet-overlay (Watch It bottom sheet)
-  Animation:  @keyframes ss-fadeUp (entry animation for page elements)
+  Sheet:      #watch-sheet, #watch-sheet-overlay,
+              .sheet-handle, .sheet-header, .sheet-thumb,
+              .sheet-info, .sheet-show-title, .sheet-meta,
+              .sheet-options-label, .sheet-option, .sheet-plat-logo,
+              .sheet-option-info, .sheet-option-name, .sheet-option-sub,
+              .sheet-option-arrow, .sheet-included, .sheet-cancel
+  Platform:   .plat-badge, .plat-dot (clip top-right platform indicator)
+  Animation:  @keyframes ss-fadeUp (use on entry of page elements)
 
 
-── SHARED JS FUNCTIONS TO REUSE ────────────────────────────────
+── SHARED JS FUNCTIONS ─────────────────────────────────────────
 
-  ssToast(msg)              show a toast notification
+  ssToast(msg)              show a top toast notification
+  showToast(msg)            alias for ssToast (legacy)
   ssOpenSheet(show)         open the Watch It bottom sheet
   ssCloseSheet()            close the Watch It bottom sheet
-  ssHandleWatchNow(p, t)    platform selected callback
+  ssHandleWatchNow(p, t)    platform selected → toast + close
+  openSheet(idx)            legacy alias → ssOpenSheet(SHOWS[idx])
+  closeSheet()              legacy alias → ssCloseSheet()
+  handleWatchNow(p,t)       legacy alias → ssHandleWatchNow
   ssShare(show)             Web Share API or clipboard fallback
-  ssPageFadeIn()            smooth page entry (auto-runs on load)
-  ssScrollToTop(elementId)  smooth scroll to top of element
+  shareClip(idx)            legacy alias → ssShare(SHOWS[idx])
+  ssPageFadeIn()            smooth opacity fade-in (auto DOMContentLoaded)
+  ssScrollToTop(elementId)  smooth scroll element to top
+  scrollFeedToTop()         alias → ssScrollToTop('feed')
+  ssNavigate(url)           fade-out transition then navigate
   fmtFires(n)               format number: 1240 → "1.2k"
-  showToast(msg)            alias for ssToast
-  scrollFeedToTop()         alias for ssScrollToTop('feed')
+
+  SVG mark injection:
+    SS_MARK_SVG constant injected into body on every page load.
+    Use <svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg>
+    anywhere in HTML to reference the ShowShak logo.
 
 
-── FEED PAGE KEY BEHAVIOURS ────────────────────────────────────
+── FEED PAGE (showshak-feed.html) ──────────────────────────────
 
-  - Vertical snap scroll, one clip per viewport height
-  - IntersectionObserver fires syncRail() + animateRailIn() per clip
-  - Desktop: action rail (Fire, Save, Share, Watch It pill) sits
-    to the right of the clip column, positioned by positionRail()
-  - Watch It pill: breathing glow animation, fire-flash on fire
-  - Mobile: action rail overlaid on clip right side, Watch It
-    button above bottom nav
-  - Double-tap: fire burst animation at tap position + auto-fire
-  - Single tap: pause indicator
-  - SHOWS data needs: id, title, year, genre[], lang, runtime,
-    season, synopsis, caption, creator{name,letter,bg},
-    litCount, platforms[], platLabel, platColor, platRgb, bg
+  Layout:
+    - .layout: position:fixed, left:sidebar-collapsed, flex center
+    - .clip-column: 400px wide, overflow:visible (NOT hidden)
+    - .feed: position:absolute inset:0, scroll-snap, no scrollbar
+
+  Clip card structure (built by buildFeed() JS):
+    .clip → .clip-bg (gradient BG) → .clip-vignette → .clip-grain
+    .clip-logo-float (mobile only — ShowShak mark top-left)
+    .muted-badge (top-left, tap to dismiss)
+    .plat-badge (top-right, platform dot + name) ← from components.css
+    .clip-tap#tap-{i} (full-area tap zone — single/double tap handler)
+    .fire-burst#burst-{i} (double-tap SVG burst animation)
+    .mobile-action-rail#m-rail-{i} (mobile only)
+    .mobile-watch-btn#m-watch-{i} (mobile only)
+    .clip-bottom (show title, creator row, tags, caption)
+    .clip-progress (2px red bar, bottom edge)
+
+  Desktop action rail:
+    - position:fixed, body-level element (NOT inside .clip-column)
+    - Positioned by positionRail() JS: left = clipColumn.getBoundingClientRect().right + 16px
+    - Re-positioned on window resize
+    - Entrance animation: railSlideIn keyframe, triggered by animateRailIn()
+    - Buttons (bare SVG icons, NO circle backgrounds):
+        #rail-lit    → Fire (outline/filled SVG swap + firePulse animation)
+        #rail-save   → Save (outline/filled SVG swap)
+        .act-btn     → Share (SVG)
+        #rail-watch  → Watch It pill (56px rounded square, breatheGlow)
+    - Hidden on mobile via display:none at max-width:700px
+
+  Mobile action rail (inside each .clip):
+    - position:absolute, right:10px, bottom:calc(mobile-nav-h + 78px)
+    - Buttons: m-lit, m-save, share (same SVG patterns as desktop)
+    - .mobile-watch-btn: full-width button above mobile nav
+      bottom: calc(mobile-nav-h + 14px), right: 60px
+      Has mobileButtonBreathe glow + mobileCtaFireFlash on fire
+
+  Interactions:
+    - Single tap: pause indicator (isPaused toggle + progress bar show)
+    - Double tap (< 300ms): fire burst at tap coords + auto-fire
+    - Fire (toggleLit): outline→filled SVG swap, firePulse animation,
+      flashCTA triggers on desktop pill + mobile watch button
+    - Save (toggleSave): outline→filled SVG swap, ssToast
+    - Keyboard: ArrowDown/j = next clip, ArrowUp/k = previous
+    - Up/Down arrow buttons: .nav-arrows, position:fixed right:20px
+    - syncRail(idx): called on every clip change, updates all
+      rail elements (count, lit/saved state, pill color + label)
+    - Progress bar: 40ms interval, 0.25% per tick (~16s full clip)
+
+  SHOWS data schema:
+    id, title, year, genre[], lang, runtime, season, synopsis,
+    caption (HTML with <em>), creator{name, letter, bg},
+    litCount, platforms[{name,color,label,sub,included}],
+    platLabel, platColor, platRgb, bg (CSS gradient string)
 
 
-── DISCOVER PAGE KEY BEHAVIOURS ────────────────────────────────
+── DISCOVER PAGE (showshak-discover.html) ──────────────────────
 
-  - Search bar with recent search dropdown
-  - Mood pills (8 moods) filter the clip grid
-  - Platform chips filter by streaming service
-  - Featured clips: horizontal scroll row
-  - For You: 2-column grid
-  - Results view replaces default view on search/filter
-  - CLIPS data needs: same as SHOWS + mood[], platAbbr
+  Layout: .layout flex column, .discover-header (sticky), .discover-body (scroll)
+
+  Search bar:
+    - #search-bar: focused state with red glow
+    - #search-input: filters CLIPS array in real time
+    - .recent-dropdown: last 5 searches, stored in recentSearches[]
+    - Search matches: caption, genre, lang, platLabel, creator.name, mood
+
+  Mood pills (8 moods, horizontal scroll):
+    Edge of My Seat, Feel Good, Want to Cry, Date Night,
+    Mind-Bending, Family Night, Late Night, Laugh Out Loud
+    Each has custom CSS vars: --mood-glow, --mood-fill,
+    --mood-shadow, --mood-text-glow
+    Active mood: animated border glow (moodPulse keyframe)
+    Selecting a mood filters CLIPS by clip.mood[] array
+
+  Platform chips (horizontal scroll):
+    Netflix, Prime Video, Disney+, JioHotstar, Apple TV+,
+    SonyLIV, HBO Max, Zee5
+    Active chip: platform color border + glow
+
+  Views:
+    - Default view: mood row + featured clips row + platform chips + for you grid
+    - Results view: replaces default on search or filter
+    - No results: empty state with icon
+
+  Featured clips: horizontal scroll, 160px wide cards, 9:16 aspect ratio
+  For You grid: 2-column grid, smaller cards
+  Card HTML built by clipCardHTML(clip, 'lg'|'sm') function
+
+  CLIPS data schema:
+    id, caption (HTML), genre[], lang, platLabel, platColor,
+    platAbbr, platRgb, creator{name,letter,bg}, fires,
+    bg (CSS gradient), mood[]
+
+
+── WATCHLIST PAGE (showshak-watchlist.html) ────────────────────
+
+  Layout: .layout flex column, .page-header, .page-body (scroll)
+
+  Stacks system:
+    - Stacks are named collections of saved clips
+    - Persisted via sessionStorage key 'ss_stacks_v1'
+    - Empty state: animated orb + CTA to go to Feed
+    - Filled state: .stacks-wrap with .stack-block per stack
+    - Each stack: blurred gradient header + horizontal clip scroll
+    - Stack options (⋮ menu): Rename (coming soon), Delete
+    - Remove clip: hover reveals ✕ button top-left of clip card
+
+  Sheets:
+    - Save-to-stack sheet (#stack-sheet): select which stack(s)
+      to save a clip into, with checkboxes
+    - New stack sheet (#new-stack-sheet): name input + quick
+      pick names (Watch Tonight, Weekend Binge, Date Night,
+      Slow Burns, Hidden Gems, Share With Friends)
+    - Both sheets have overlay + slide-up animation
+
+  Recommended section:
+    - Below stacks: 3-column grid (2-col on narrow mobile)
+    - ALL_CLIPS shuffled randomly
+    - Each card has save button → triggers openStackSheet()
+    - savedInRec Set tracks which rec clips are saved this session
+
+  Key functions:
+    render()             rebuild stacks UI + persist to sessionStorage
+    openStackSheet(clip) open save-to-stack sheet with clip data
+    confirmSave()        save pendingClip into selectedIds stacks
+    createStack()        create new stack, auto-add pendingClip if any
+    recSave(clipId)      save rec clip → open stack sheet
+
+  ALL_CLIPS data schema (simplified, no mood/synopsis):
+    id, creator, creatorLetter, creatorBg, genre[], lang,
+    fires, platColor, platAbbr, bg
+
+  KNOWN ISSUE: Clips saved on Feed/Discover do NOT yet land in
+  Watchlist. This is because there is no shared state between pages
+  (no localStorage/database yet). Fix deferred.
+
+
+── PROFILE PAGE (showshak-profile.html) ────────────────────────
+
+  Two modes toggled by a button (prototype only):
+    - User mode:  shows Fires tab, Stacks tab, Following tab
+    - Creator mode: shows Clips tab, Analytics tab, Following tab
+    Toggle button: .btn-mode-toggle (red pill, top-right of profile actions)
+
+  Profile header:
+    - .profile-cover: gradient cover with animated orb
+    - .profile-avatar: large circle, letter avatar, red glow ring
+    - Creator badge (🔥) on avatar: shown only in creator mode (.is-creator)
+    - .curator-verified-pill: shown only in creator mode
+    - .profile-bio: short bio text
+    - .profile-plat-row: platform subscription chips
+    - Actions: Edit Profile button + Mode Toggle button
+
+  Stats bar:
+    - Shows different stats per mode
+    - User: Shows Watched, Fires Given, Stacks
+    - Creator: Clips Posted, Total Fires, Followers, Watch Its
+
+  Tabs:
+    - User mode:    Fires | Stacks | Following
+    - Creator mode: Clips | Analytics | Following
+    - Active tab: red bottom border
+
+  Tab content:
+    - Fires/Clips: 9:16 portrait grid cards (clips)
+    - Stacks: list of stack preview cards → links to Watchlist
+    - Analytics: overview cards (Fires, Watch It taps, Reach) +
+      bar chart (fires this week) + top performing clips list
+    - Following: list of followed curators with unfollow button
+
+  All data is MOCK (hardcoded) — no real auth yet.
+
+  Key functions:
+    renderHeader()       rebuild profile identity section
+    renderTabs()         rebuild tab buttons
+    switchTab(tab)       switch active panel
+    renderPrimaryTab()   clips grid (creator) or fires grid (user)
+    renderStacksTab()    stack preview cards
+    renderFollowingTab() following list
+    renderAnalyticsTab() analytics cards + chart + top clips
+    toggleMode()         flip isCreator bool + re-render everything
+
+
+── INDEX PAGE (index.html) ─────────────────────────────────────
+
+  Self-contained — does NOT use shared CSS/JS files.
+  Has its own inline tokens (slightly different --border value:
+  rgba(255,255,255,0.08) vs shared 0.07 — minor inconsistency).
+
+  Structure:
+    1. #onboarding-splash: full-viewport logo + stats + CTA
+       Clicking CTA opens the onboarding overlay
+    2. Main website sections below the splash:
+       - Sticky .site-nav
+       - #site-hero: two-column marketing layout
+       - Features section (.features-grid: 3-col)
+       - Platforms row
+       - CTA section
+       - .site-footer
+
+  Onboarding overlay (#ob-overlay):
+    - Slides up from bottom (translateY 100% → 0)
+    - 3 steps: Step 1 Genres → Step 2 Platforms → Step 3 Sign In
+    - Step 1: genre pills grid, min 2 selections to continue
+    - Step 2: platform cards grid (optional)
+    - Step 3: auth buttons (Google, Apple, Email, Continue as Guest)
+    - Progress: 3 nodes with connector lines
+    - Footer: back/next buttons + feedback text
+
+  Success overlay (#success-overlay):
+    After auth → success overlay → closeSuccess() →
+    black curtain with ShowShak logo + progress bar →
+    window.location.href = 'showshak-feed.html' after 2.8s
+
+  Genre list (GENRES array): 20 genres with emoji
+  Platform list (PLATFORMS array): 8 platforms with colors
+
+
+── KNOWN ISSUES / DEFERRED FIXES ───────────────────────────────
+
+  1. Mobile Watch It button alignment — position/layout issue on
+     some mobile viewports. Fix deferred.
+
+  2. Feed/Discover saved clips not landing in Watchlist — no shared
+     state between pages yet (no localStorage/Supabase). Fix deferred.
+
+  3. index.html not refactored to use shared CSS/JS files yet.
+
+  4. Feed page: Profile nav item incorrectly has class="active"
+     on both sidebar and mobile nav. Should only be Feed.
+
+  5. Rename stack — shows toast "coming soon", not yet implemented.
 
 
 ── WHAT MAKES SHOWSHAK DIFFERENT ───────────────────────────────
@@ -208,27 +491,19 @@ Closest references for mental model:
   "Your most trusted film-obsessed friend, with a platform."
 
 
-── INDEX PAGE NOTE ──────────────────────────────────────────────
-
-  index.html is the onboarding/landing page. It is self-contained
-  (does not use the shared CSS/JS files yet). It has a different
-  visual style — more marketing/landing page aesthetic.
-  It links to showshak-feed.html as the entry point after onboarding.
-  Refactoring it to use shared files is a future task.
-
-
 ═══════════════════════════════════════════════════════════════
   HOW TO USE THIS FILE
   ───────────────────
   Start any new AI conversation with:
   "I'm working on ShowShak. Here is the project brief and the
-  three shared files. We are building [page name]."
+  shared files."
 
-  Then paste:
-    1. This file (_project-brief.txt)
+  Then paste/upload:
+    1. This file (overview)
     2. showshak-tokens.css
     3. showshak-shared.js
     4. showshak-components.css
+    + whichever page HTML you are working on
 
   The AI will have full context and can start immediately.
 ═══════════════════════════════════════════════════════════════
