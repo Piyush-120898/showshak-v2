@@ -771,6 +771,29 @@ function saveStacks(arr) {
    STATE
 ════════════════════════════════════════════════ */
 let stacks         = loadStacks();
+// On load: pull any clips saved from Feed into a default stack
+(function importFeedSaved() {
+  try {
+    const feedSaved = JSON.parse(sessionStorage.getItem('ss_feed_saved_v1') || '[]');
+    if (!feedSaved.length) return;
+
+    // Find or create the "Saved from Feed" stack
+    let stack = stacks.find(s => s.name === 'Saved from Feed');
+    if (!stack) {
+      stack = { id: nextId++, name: 'Saved from Feed', clips: [] };
+      stacks.push(stack);
+    }
+
+    // Add any clips not already in the stack
+    feedSaved.forEach(clip => {
+      if (!stack.clips.find(c => c.id === clip.id)) {
+        stack.clips.push(clip);
+      }
+    });
+
+    saveStacks(stacks);
+  } catch {}
+})();
 let nextId         = stacks.length ? Math.max(...stacks.map(s => s.id)) + 1 : 1;
 let pendingClip    = null;   // clip object waiting to be saved
 let selectedIds    = new Set();
