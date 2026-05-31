@@ -1,0 +1,316 @@
+/* ═══════════════════════════════════════════════════════════════
+   SHOWSHAK — SHARED UI COMPONENTS
+   Toast notifications, watch-it bottom sheet,
+   platform badges, genre tags, and other shared elements.
+   ─────────────────────────────────────────────────────────────
+   Depends on: showshak-tokens.css
+═══════════════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════
+   TOAST NOTIFICATION
+════════════════════════════════════════════════ */
+#ss-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-16px);
+  z-index: 400;
+  background: rgba(20, 20, 28, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  backdrop-filter: blur(20px);
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+}
+
+#ss-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ════════════════════════════════════════════════
+   WATCH IT — BOTTOM SHEET
+════════════════════════════════════════════════ */
+#watch-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+#watch-sheet-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+#watch-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%) translateY(100%);
+  z-index: 301;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  padding: 0 0 32px;
+  transition: transform 0.4s var(--ease-smooth);
+  max-height: 70vh;
+  overflow-y: auto;
+  width: var(--clip-w);
+  scrollbar-width: none;
+}
+
+#watch-sheet::-webkit-scrollbar {
+  display: none;
+}
+
+#watch-sheet.open {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Sheet handle */
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 14px auto 20px;
+}
+
+/* Sheet header — thumbnail + show info */
+.sheet-header {
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.sheet-thumb {
+  width: 64px;
+  height: 90px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sheet-thumb span {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 1px;
+  text-align: center;
+  padding: 6px;
+  line-height: 1.2;
+}
+
+.sheet-info {
+  flex: 1;
+}
+
+.sheet-show-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.sheet-meta {
+  font-size: 12px;
+  color: var(--gray);
+  line-height: 1.6;
+}
+
+/* Sheet platform options */
+.sheet-options-label {
+  padding: 16px 20px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.sheet-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sheet-option:hover  { background: var(--bg3); }
+.sheet-option:active { background: var(--bg4); }
+
+.sheet-plat-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 11px;
+  color: #fff;
+}
+
+.sheet-option-info {
+  flex: 1;
+}
+
+.sheet-option-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 2px;
+}
+
+.sheet-option-sub {
+  font-size: 12px;
+  color: var(--gray2);
+}
+
+.sheet-option-arrow {
+  color: var(--gray2);
+  font-size: 18px;
+}
+
+/* "In your plan" badge */
+.sheet-included {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4CAF50;
+  background: rgba(76, 175, 80, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.25);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* Cancel row */
+.sheet-cancel {
+  margin: 8px 20px 0;
+  padding: 14px;
+  text-align: center;
+  color: var(--gray2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: background 0.15s;
+}
+
+.sheet-cancel:hover {
+  background: var(--bg3);
+}
+
+/* Mobile: sheet full width */
+@media (max-width: 700px) {
+  #watch-sheet {
+    width: 100%;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   PLATFORM BADGE (clip top-right indicator)
+════════════════════════════════════════════════ */
+.plat-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 100px;
+  padding: 5px 10px;
+  backdrop-filter: blur(10px);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.plat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════════════
+   GENRE / LANGUAGE TAGS
+════════════════════════════════════════════════ */
+.tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: rgba(234, 59, 50, 0.18);
+  border: 1px solid rgba(234, 59, 50, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+
+/* ════════════════════════════════════════════════
+   SHARED LAYOUT SHELL
+   Pages with sidebar need left offset.
+════════════════════════════════════════════════ */
+.ss-layout {
+  position: fixed;
+  inset: 0;
+  left: var(--sidebar-collapsed);
+  transition: left 0.3s var(--ease-smooth);
+}
+
+@media (max-width: 700px) {
+  .ss-layout {
+    left: 0;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   SHARED ENTRY ANIMATION
+════════════════════════════════════════════════ */
+@keyframes ss-fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* SVG defs — always hidden */
+.svg-defs {
+  display: none;
+}

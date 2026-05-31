@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Discover</title>
+<style>body{opacity:0}</style>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+
+<!-- ── SHARED STYLES ── -->
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+
+<!-- ── PAGE-SPECIFIC STYLES ── -->
+<style>
+/* ════════════════════════════════════════════════
+   DISCOVER PAGE LAYOUT
+════════════════════════════════════════════════ */
+html, body { overflow: hidden; }
+
+.layout {
+  position: fixed; inset: 0;
+  left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column;
+  background: var(--bg); overflow: hidden;
+}
+.layout::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 55% 40% at 50% 0%, rgba(234,59,50,0.05) 0%, transparent 70%);
+}
+
+@media (max-width: 700px) {
+  .layout { left: 0; }
+}
+
+/* ════════════════════════════════════════════════
+   STICKY HEADER
+════════════════════════════════════════════════ */
+.discover-header {
+  flex-shrink: 0;
+  padding: 22px 28px 0;
+  position: relative; z-index: 10;
+}
+.discover-title {
+  font-family: var(--font-display);
+  font-size: 13px; letter-spacing: 4px;
+  color: var(--gray2); text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.discover-title em { color: var(--red); font-style: normal; }
+
+/* ── Search bar ─── */
+.search-wrap { position: relative; }
+.search-bar {
+  width: 100%; height: 54px;
+  background: var(--bg2); border: 1.5px solid var(--border);
+  border-radius: 100px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; cursor: text;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.search-bar.focused {
+  border-color: rgba(234,59,50,0.4);
+  background: rgba(19,19,26,0.95);
+  box-shadow: 0 0 0 3px rgba(234,59,50,0.06), 0 8px 32px rgba(0,0,0,0.3);
+}
+.search-icon { flex-shrink: 0; color: var(--gray2); transition: color 0.2s; display: flex; align-items: center; }
+.search-bar.focused .search-icon { color: var(--red); }
+.search-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-family: var(--font-body); font-size: 15px; font-weight: 500;
+  color: var(--white); caret-color: var(--red); letter-spacing: 0.1px;
+}
+.search-input::placeholder { color: var(--gray2); font-weight: 400; }
+.search-clear {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--bg3); display: none; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--gray); font-size: 11px; font-weight: 700;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.search-clear:hover { background: var(--bg4); color: var(--white); }
+.search-clear.visible { display: flex; }
+
+/* Recent search dropdown */
+.recent-dropdown {
+  position: absolute; top: calc(100% + 10px); left: 0; right: 0;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 6px 0; z-index: 50;
+  box-shadow: var(--shadow-float);
+  opacity: 0; pointer-events: none; transform: translateY(-8px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.recent-dropdown.open { opacity: 1; pointer-events: all; transform: translateY(0); }
+.recent-heading {
+  font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: 2.5px; text-transform: uppercase; padding: 8px 18px 6px;
+}
+.recent-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 18px; cursor: pointer; transition: background 0.12s;
+}
+.recent-row:hover { background: var(--bg3); }
+.recent-row-text { flex: 1; font-size: 14px; font-weight: 500; color: var(--white); }
+.recent-row-del {
+  font-size: 14px; color: var(--gray2); padding: 2px 4px;
+  border-radius: 4px; cursor: pointer; transition: color 0.12s;
+  -webkit-tap-highlight-color: transparent; line-height: 1;
+}
+.recent-row-del:hover { color: var(--white); }
+
+/* ════════════════════════════════════════════════
+   SCROLLABLE BODY
+════════════════════════════════════════════════ */
+.discover-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 24px 28px 40px;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.discover-body::-webkit-scrollbar { width: 3px; }
+.discover-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+
+/* ════════════════════════════════════════════════
+   SECTION HEADERS
+════════════════════════════════════════════════ */
+.sec-head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 16px; margin-top: 32px;
+}
+.sec-head:first-child { margin-top: 0; }
+.sec-title {
+  font-family: var(--font-display);
+  font-size: 20px; letter-spacing: 1.5px; color: var(--white); line-height: 1;
+}
+.sec-title em { color: var(--red); font-style: normal; }
+.sec-sub { font-size: 11px; font-weight: 500; color: var(--gray2); letter-spacing: 0.3px; }
+
+/* ════════════════════════════════════════════════
+   MOOD PILLS
+════════════════════════════════════════════════ */
+.mood-row {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  margin: 0 -28px; padding-left: 28px; padding-right: 28px;
+}
+.mood-row::-webkit-scrollbar { display: none; }
+
+.mood-pill {
+  display: inline-flex; align-items: center;
+  padding: 9px 20px; border-radius: 100px;
+  white-space: nowrap; cursor: pointer; flex-shrink: 0;
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.2px; background: transparent;
+  position: relative; -webkit-tap-highlight-color: transparent;
+  transition: transform 0.18s var(--ease-spring);
+  border: 1.5px solid transparent;
+}
+.mood-pill::before {
+  content: ''; position: absolute; inset: -1px; border-radius: 100px; padding: 1.5px;
+  background: var(--mood-glow);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: destination-out;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0.55; transition: opacity 0.2s;
+}
+.mood-pill::after {
+  content: ''; position: absolute; inset: 0; border-radius: 100px;
+  background: var(--mood-fill); opacity: 0; transition: opacity 0.2s; z-index: -1;
+}
+.mood-pill:hover { transform: scale(1.04); }
+.mood-pill:hover::before { opacity: 0.9; }
+.mood-pill:hover::after  { opacity: 1; }
+.mood-pill:active { transform: scale(0.95); }
+.mood-pill.active { transform: scale(1.06); }
+.mood-pill.active::before { opacity: 1; }
+.mood-pill.active::after  { opacity: 1; }
+.mood-pill.active .mood-text { text-shadow: 0 0 16px var(--mood-text-glow); }
+
+.mood-text { position: relative; z-index: 1; color: rgba(255,255,255,0.88); transition: text-shadow 0.2s; }
+
+@keyframes moodPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+  50%      { box-shadow: 0 0 20px 4px var(--mood-shadow); }
+}
+.mood-pill.active { animation: moodPulse 2.4s ease-in-out infinite; }
+
+/* Mood color vars */
+.mood-edge      { --mood-glow: linear-gradient(135deg,#c0392b,#ff6b6b); --mood-fill: rgba(192,57,43,0.12); --mood-shadow: rgba(192,57,43,0.35); --mood-text-glow: rgba(255,107,107,0.8); }
+.mood-feelgood  { --mood-glow: linear-gradient(135deg,#1e7e34,#55d66b); --mood-fill: rgba(39,174,96,0.1);  --mood-shadow: rgba(39,174,96,0.3);   --mood-text-glow: rgba(85,214,107,0.8); }
+.mood-cry       { --mood-glow: linear-gradient(135deg,#1a2a6c,#6a9fd8); --mood-fill: rgba(74,111,165,0.1); --mood-shadow: rgba(74,111,165,0.3);  --mood-text-glow: rgba(106,159,216,0.8); }
+.mood-date      { --mood-glow: linear-gradient(135deg,#7b1550,#f72585); --mood-fill: rgba(247,37,133,0.08);--mood-shadow: rgba(247,37,133,0.28); --mood-text-glow: rgba(247,37,133,0.9); }
+.mood-mind      { --mood-glow: linear-gradient(135deg,#3d1a6e,#b566f5); --mood-fill: rgba(123,47,224,0.1); --mood-shadow: rgba(123,47,224,0.3);  --mood-text-glow: rgba(181,102,245,0.9); }
+.mood-family    { --mood-glow: linear-gradient(135deg,#8B6914,#f5c842); --mood-fill: rgba(243,156,18,0.1); --mood-shadow: rgba(243,156,18,0.3);  --mood-text-glow: rgba(245,200,66,0.9); }
+.mood-night     { --mood-glow: linear-gradient(135deg,#1a1a2e,#5a7fa8); --mood-fill: rgba(52,73,94,0.15);  --mood-shadow: rgba(90,127,168,0.25); --mood-text-glow: rgba(90,127,168,0.8); }
+.mood-laugh     { --mood-glow: linear-gradient(135deg,#8B4513,#f39c12); --mood-fill: rgba(230,126,34,0.1); --mood-shadow: rgba(230,126,34,0.3);  --mood-text-glow: rgba(243,156,18,0.9); }
+
+/* ════════════════════════════════════════════════
+   FEATURED CLIPS ROW (horizontal scroll)
+════════════════════════════════════════════════ */
+.clips-row {
+  display: flex; gap: 12px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  margin: 0 -28px; padding-left: 28px; padding-right: 28px;
+}
+.clips-row::-webkit-scrollbar { display: none; }
+
+.clip-card {
+  flex-shrink: 0; width: 160px; cursor: pointer; position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s var(--ease-spring);
+}
+.clip-card:hover  { transform: translateY(-6px) scale(1.02); }
+.clip-card:active { transform: scale(0.96); }
+
+.clip-thumb {
+  width: 100%; aspect-ratio: 9/16; border-radius: 16px; overflow: hidden;
+  position: relative; border: 1px solid var(--border);
+}
+.clip-thumb-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center; transition: transform 0.4s ease;
+}
+.clip-card:hover .clip-thumb-bg { transform: scale(1.06); }
+.clip-thumb-vignette {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.3) 35%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.2) 100%);
+}
+.clip-thumb-plat {
+  position: absolute; top: 8px; right: 8px;
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 800; color: #fff;
+  backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.15);
+}
+.clip-thumb-play {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(0,0,0,0.45); border: 1.5px solid rgba(255,255,255,0.3);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.2s; backdrop-filter: blur(4px);
+}
+.clip-card:hover .clip-thumb-play { opacity: 1; }
+.clip-thumb-creator {
+  position: absolute; bottom: 8px; left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.clip-thumb-avatar {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.clip-thumb-handle {
+  font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.85);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+.clip-caption { padding: 8px 2px 0; }
+.clip-caption-text {
+  font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.75); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.clip-caption-text em { color: var(--white); font-style: normal; font-weight: 700; }
+.clip-fire-row  { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
+.clip-fire-count{ font-size: 11px; font-weight: 600; color: var(--gray2); letter-spacing: 0.2px; }
+
+/* ════════════════════════════════════════════════
+   PLATFORM CHIPS
+════════════════════════════════════════════════ */
+.platform-row {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  margin: 0 -28px; padding-left: 28px; padding-right: 28px;
+}
+.platform-row::-webkit-scrollbar { display: none; }
+
+.plat-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 100px; flex-shrink: 0;
+  background: var(--bg2); border: 1.5px solid var(--border);
+  cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+}
+.plat-chip:hover { border-color: rgba(255,255,255,0.18); background: var(--bg3); transform: scale(1.03); }
+.plat-chip:active { transform: scale(0.95); }
+.plat-chip.active {
+  border-color: var(--plat-color, var(--red));
+  background: rgba(var(--plat-rgb, 234,59,50), 0.08);
+  box-shadow: 0 0 16px rgba(var(--plat-rgb, 234,59,50), 0.18);
+}
+.plat-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: box-shadow 0.2s; }
+.plat-chip.active .plat-chip-dot { box-shadow: 0 0 8px 2px rgba(var(--plat-rgb, 234,59,50), 0.6); }
+.plat-chip-name { font-size: 12px; font-weight: 600; color: var(--white); white-space: nowrap; }
+
+/* ════════════════════════════════════════════════
+   FOR YOU — 2-column grid
+════════════════════════════════════════════════ */
+.foryou-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+
+.fy-clip-card {
+  cursor: pointer; position: relative; -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s var(--ease-spring);
+}
+.fy-clip-card:hover  { transform: translateY(-5px); }
+.fy-clip-card:active { transform: scale(0.96); }
+
+.fy-thumb {
+  width: 100%; aspect-ratio: 9/16; border-radius: 14px; overflow: hidden;
+  position: relative; border: 1px solid var(--border);
+}
+.fy-thumb-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center; transition: transform 0.4s ease;
+}
+.fy-clip-card:hover .fy-thumb-bg { transform: scale(1.05); }
+.fy-thumb-vignette {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.25) 100%);
+}
+.fy-thumb-plat {
+  position: absolute; top: 7px; right: 7px;
+  width: 20px; height: 20px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 800; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+}
+.fy-thumb-creator {
+  position: absolute; bottom: 8px; left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.fy-thumb-avatar {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.fy-thumb-handle {
+  font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+.fy-clip-caption { padding: 7px 2px 0; }
+.fy-clip-text {
+  font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fy-clip-text em { color: var(--white); font-style: normal; font-weight: 700; }
+.fy-fire-row   { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.fy-fire-count { font-size: 10px; font-weight: 600; color: var(--gray2); }
+
+/* ════════════════════════════════════════════════
+   SEARCH RESULTS VIEW
+════════════════════════════════════════════════ */
+.results-view  { display: none; }
+.results-view.visible { display: block; }
+.default-view  { display: block; }
+.default-view.hidden  { display: none; }
+
+.results-heading {
+  font-family: var(--font-display); font-size: 18px;
+  letter-spacing: 1px; color: var(--white); margin-bottom: 18px;
+}
+.results-heading em { color: var(--red); font-style: normal; }
+
+.result-clip {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: opacity 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.result-clip:last-child { border-bottom: none; }
+.result-clip:hover  { opacity: 0.8; }
+.result-clip:active { opacity: 0.6; }
+
+.result-clip-thumb {
+  width: 52px; height: 73px; border-radius: 10px; flex-shrink: 0;
+  position: relative; overflow: hidden; border: 1px solid var(--border);
+}
+.result-clip-thumb-bg {
+  position: absolute; inset: 0; background-size: cover; background-position: center;
+}
+.result-clip-thumb-plat {
+  position: absolute; bottom: 4px; right: 4px;
+  width: 16px; height: 16px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6px; font-weight: 800; color: #fff;
+}
+.result-clip-info    { flex: 1; min-width: 0; }
+.result-clip-creator { font-size: 11px; font-weight: 600; color: var(--gray); margin-bottom: 3px; }
+.result-clip-caption { font-size: 14px; font-weight: 600; color: var(--white); line-height: 1.35; margin-bottom: 5px; }
+.result-clip-tags    { display: flex; gap: 4px; }
+.result-clip-tag {
+  font-size: 9px; font-weight: 500; padding: 2px 7px; border-radius: 100px;
+  background: rgba(234,59,50,0.12); border: 1px solid rgba(234,59,50,0.25);
+  color: rgba(255,255,255,0.75);
+}
+.result-clip-fire {
+  display: flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 600; color: var(--gray2); margin-top: 5px;
+}
+
+.no-results { text-align: center; padding: 60px 24px; display: none; }
+.no-results.visible { display: block; }
+.no-results-icon  { font-size: 36px; margin-bottom: 14px; }
+.no-results-title {
+  font-family: var(--font-display); font-size: 26px;
+  letter-spacing: 1px; color: var(--white); margin-bottom: 8px;
+}
+.no-results-title em { color: var(--red); font-style: normal; }
+.no-results-sub { font-size: 13px; color: var(--gray); line-height: 1.6; }
+
+/* ════════════════════════════════════════════════
+   ENTRY ANIMATIONS
+════════════════════════════════════════════════ */
+.sec-head     { animation: ss-fadeUp 0.4s ease 0.05s both; }
+.mood-row     { animation: ss-fadeUp 0.4s ease 0.10s both; }
+.clips-row    { animation: ss-fadeUp 0.4s ease 0.15s both; }
+.platform-row { animation: ss-fadeUp 0.4s ease 0.20s both; }
+.foryou-grid  { animation: ss-fadeUp 0.4s ease 0.28s both; }
+
+/* ════════════════════════════════════════════════
+   RESPONSIVE MOBILE
+════════════════════════════════════════════════ */
+@media (max-width: 700px) {
+  .discover-header { padding: 18px 16px 0; }
+  .discover-body   { padding: 20px 16px; padding-bottom: calc(var(--mobile-nav-h) + 24px); }
+  .mood-row     { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .clips-row    { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .platform-row { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .foryou-grid  { gap: 10px; }
+  .clip-card    { width: 140px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     LEFT SIDEBAR
+════════════════════════════════════════════ -->
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark">
+      <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+    </div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item" data-nav="feed" href="showshak-feed.html">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+      <span class="nav-item-label">Feed</span>
+    </a>
+    <a class="nav-item active" data-nav="discover" href="showshak-discover.html">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <span class="nav-item-label">Discover</span>
+    </a>
+    <a class="nav-item" data-nav="watchlist" href="#" onclick="event.preventDefault(); ssToast('🔖 Watchlist coming soon')">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+      <span class="nav-item-label">Watchlist</span>
+    </a>
+    <a class="nav-item" data-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+      <span class="nav-item-label">Profile</span>
+    </a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item-settings" onclick="ssToast('⚙ Settings coming soon')">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      <span class="nav-item-label">Settings</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════
+     MAIN LAYOUT
+════════════════════════════════════════════ -->
+<div class="layout" id="layout">
+  <div class="discover-header">
+    <div class="discover-title">show<em>shak</em> · discover</div>
+    <div class="search-wrap">
+      <div class="search-bar" id="search-bar" onclick="focusInput()">
+        <div class="search-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <input class="search-input" id="search-input" type="text"
+          placeholder="What are you feeling tonight?"
+          autocomplete="off" autocorrect="off" spellcheck="false"/>
+        <div class="search-clear" id="search-clear" onclick="clearSearch(event)">✕</div>
+      </div>
+      <div class="recent-dropdown" id="recent-dropdown">
+        <div class="recent-heading">Recent</div>
+        <div id="recent-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="discover-body" id="discover-body">
+    <!-- DEFAULT VIEW -->
+    <div class="default-view" id="default-view">
+      <div class="sec-head">
+        <div class="sec-title">By <em>Mood</em></div>
+        <div class="sec-sub">· what are you feeling?</div>
+      </div>
+      <div class="mood-row" id="mood-row"></div>
+
+      <div class="sec-head">
+        <div class="sec-title"><em>Featured</em> Clips</div>
+        <div class="sec-sub">· curator picks today</div>
+      </div>
+      <div class="clips-row" id="featured-row"></div>
+
+      <div class="sec-head">
+        <div class="sec-title">By <em>Platform</em></div>
+        <div class="sec-sub">· filter what you have</div>
+      </div>
+      <div class="platform-row" id="platform-row"></div>
+
+      <div class="sec-head">
+        <div class="sec-title">For <em>You</em></div>
+        <div class="sec-sub">· based on your fires</div>
+      </div>
+      <div class="foryou-grid" id="foryou-grid"></div>
+    </div>
+
+    <!-- SEARCH RESULTS VIEW -->
+    <div class="results-view" id="results-view">
+      <div class="results-heading" id="results-heading">Results for <em>""</em></div>
+      <div id="results-list"></div>
+      <div class="no-results" id="no-results">
+        <div class="no-results-icon">🔍</div>
+        <div class="no-results-title">NO <em>CLIPS</em></div>
+        <p class="no-results-sub">No curator has covered this yet.<br>Try a mood, genre, or platform instead.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MOBILE BOTTOM NAV
+════════════════════════════════════════════ -->
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item" data-mob-nav="feed" href="showshak-feed.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+    <span class="mob-nav-label">Feed</span>
+  </a>
+  <a class="mob-nav-item active" data-mob-nav="discover" href="showshak-discover.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+    <span class="mob-nav-label">Discover</span>
+  </a>
+  <a class="mob-nav-item" data-mob-nav="watchlist" href="#" onclick="event.preventDefault(); ssToast('🔖 Watchlist coming soon')">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+    <span class="mob-nav-label">Watchlist</span>
+  </a>
+  <a class="mob-nav-item" data-mob-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+    <span class="mob-nav-label">Profile</span>
+  </a>
+</nav>
+
+<!-- ════════════════════════════════════════════
+     SHARED JS
+════════════════════════════════════════════ -->
+<script src="showshak-shared.js"></script>
+
+<!-- ════════════════════════════════════════════
+     PAGE-SPECIFIC JS — Discover logic only
+════════════════════════════════════════════ -->
+<script>
+const CLIPS = [
+  { id:1, caption:'This is how you <em>open</em> a series. Zero warning. Zero mercy.', genre:['Crime','Thriller'], lang:'Hindi', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' }, fires:1240, bg:'linear-gradient(160deg, #1a0505 0%, #2d0808 30%, #0d0d0d 70%, #000 100%)', mood:['Edge of My Seat','Late Night'] },
+  { id:2, caption:'The kitchen scene in episode 7 will <em>destroy</em> you.', genre:['Drama','Comedy'], lang:'English', platLabel:'Disney+', platColor:'#0E3BD4', platAbbr:'D+', platRgb:'14,59,212', creator:{ name:'streamjunkie_sk', letter:'S', bg:'#FF6B35' }, fires:876, bg:'linear-gradient(160deg, #050510 0%, #0a0a20 30%, #080808 70%, #000 100%)', mood:['Want to Cry','Edge of My Seat'] },
+  { id:3, caption:'No one escapes. Literally <em>no one.</em>', genre:['Action','Crime'], lang:'Hindi', platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P', platRgb:'0,168,224', creator:{ name:'binge_with_priya', letter:'P', bg:'#9B59B6' }, fires:2100, bg:'linear-gradient(160deg, #0a0510 0%, #150820 30%, #0a0505 70%, #000 100%)', mood:['Edge of My Seat','Late Night'] },
+  { id:4, caption:'Started as nostalgia. Became <em>obsession.</em>', genre:['Sci-Fi','Horror'], lang:'English', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'netflixnerd_rv', letter:'R', bg:'#3498DB' }, fires:3400, bg:'linear-gradient(160deg, #020510 0%, #050a1a 30%, #050205 70%, #000 100%)', mood:['Mind-Bending','Edge of My Seat'] },
+  { id:5, caption:'Will make you quit your job and move to a village. <em>Not joking.</em>', genre:['Comedy','Drama'], lang:'Hindi', platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P', platRgb:'0,168,224', creator:{ name:'desi_binge', letter:'D', bg:'#27AE60' }, fires:5200, bg:'linear-gradient(160deg, #021005 0%, #041a08 30%, #020802 70%, #000 100%)', mood:['Feel Good','Family Night'] },
+  { id:6, caption:'Episode 6. Front Man reveal. You will <em>not</em> be okay.', genre:['Thriller','Drama'], lang:'Korean', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'kdrama_world', letter:'K', bg:'#E74C3C' }, fires:7800, bg:'linear-gradient(160deg, #100008 0%, #1a0010 30%, #080005 70%, #000 100%)', mood:['Edge of My Seat','Want to Cry'] },
+  { id:7, caption:'Highest rated Indian show ever. One curator. One verdict. <em>Watch it.</em>', genre:['Crime','Drama'], lang:'Hindi', platLabel:'SonyLIV', platColor:'#002868', platAbbr:'S', platRgb:'0,40,104', creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' }, fires:4300, bg:'linear-gradient(160deg, #080500 0%, #140c00 30%, #050300 70%, #000 100%)', mood:['Mind-Bending','Late Night'] },
+  { id:8, caption:'Episode 3 broke the internet. Broke <em>me</em>. Watch immediately.', genre:['Drama','Sci-Fi'], lang:'English', platLabel:'JioHotstar', platColor:'#FF6A00', platAbbr:'JH', platRgb:'255,106,0', creator:{ name:'hbo_stan_official', letter:'H', bg:'#5C2D91' }, fires:6100, bg:'linear-gradient(160deg, #030805 0%, #050e08 30%, #020503 70%, #000 100%)', mood:['Want to Cry','Edge of My Seat'] },
+];
+
+const MOODS = [
+  { label:'Edge of My Seat', cls:'mood-edge'     },
+  { label:'Feel Good',       cls:'mood-feelgood' },
+  { label:'Want to Cry',     cls:'mood-cry'      },
+  { label:'Date Night',      cls:'mood-date'     },
+  { label:'Mind-Bending',    cls:'mood-mind'     },
+  { label:'Family Night',    cls:'mood-family'   },
+  { label:'Late Night',      cls:'mood-night'    },
+  { label:'Laugh Out Loud',  cls:'mood-laugh'    },
+];
+
+const PLATFORMS = [
+  { name:'Netflix',     color:'#E50914', abbr:'N',   rgb:'229,9,20'   },
+  { name:'Prime Video', color:'#00A8E0', abbr:'P',   rgb:'0,168,224'  },
+  { name:'Disney+',     color:'#0E3BD4', abbr:'D+',  rgb:'14,59,212'  },
+  { name:'JioHotstar',  color:'#FF6A00', abbr:'JH',  rgb:'255,106,0'  },
+  { name:'Apple TV+',   color:'#111111', abbr:'▶',   rgb:'80,80,80'   },
+  { name:'SonyLIV',     color:'#002868', abbr:'S',   rgb:'0,40,104'   },
+  { name:'HBO Max',     color:'#5C2D91', abbr:'HBO', rgb:'92,45,145'  },
+  { name:'Zee5',        color:'#6B1DF5', abbr:'Z5',  rgb:'107,29,245' },
+];
+
+let recentSearches = ['thriller clips','feel good','kdrama'];
+let activeMood = null, activePlatform = null;
+
+/* Fire SVG for inline use */
+const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const PLAY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+
+function clipCardHTML(clip, size = 'lg') {
+  const lg = size === 'lg';
+  const cls = lg ? 'clip-card' : 'fy-clip-card';
+  const radius = lg ? '16px' : '14px';
+  const platSize = lg ? '22px' : '20px';
+  const avSize  = lg ? '20px' : '18px';
+  const avFont  = lg ? '8px'  : '7px';
+  const handleFont = lg ? '10px' : '9px';
+  const capFont = lg ? '12px' : '11px';
+  const fireFont= lg ? '11px' : '10px';
+  const playEl  = lg ? `<div class="clip-thumb-play">${PLAY_SVG}</div>` : '';
+  const vigClass = lg ? 'clip-thumb-vignette' : 'fy-thumb-vignette';
+  const capClass = lg ? 'clip-caption' : 'fy-clip-caption';
+  const textClass= lg ? 'clip-caption-text' : 'fy-clip-text';
+  const fireRowClass = lg ? 'clip-fire-row' : 'fy-fire-row';
+  const fireCountClass= lg ? 'clip-fire-count' : 'fy-fire-count';
+
+  return `
+    <div class="${cls}" onclick="ssToast('▶ Playing clip by @${clip.creator.name}')">
+      <div style="width:100%;aspect-ratio:9/16;border-radius:${radius};overflow:hidden;position:relative;border:1px solid var(--border)">
+        <div style="position:absolute;inset:0;background:${clip.bg};background-size:cover;background-position:center;transition:transform 0.4s ease"></div>
+        <div class="${vigClass}"></div>
+        <div style="position:absolute;top:${lg?8:7}px;right:${lg?8:7}px;width:${platSize};height:${platSize};border-radius:${lg?6:5}px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;background:${clip.platColor};border:1px solid rgba(255,255,255,0.15)">${clip.platAbbr}</div>
+        ${playEl}
+        <div style="position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:5px">
+          <div style="width:${avSize};height:${avSize};border-radius:50%;border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-size:${avFont};font-weight:700;color:#fff;flex-shrink:0;background:${clip.creator.bg}">${clip.creator.letter}</div>
+          <span style="font-size:${handleFont};font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,0.8)">@${clip.creator.name}</span>
+        </div>
+      </div>
+      <div class="${capClass}">
+        <div class="${textClass}">${clip.caption}</div>
+        <div class="${fireRowClass}">
+          ${FIRE_SVG}
+          <span class="${fireCountClass}">${fmtFires(clip.fires)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildMoods() {
+  const row = document.getElementById('mood-row');
+  MOODS.forEach((m, i) => {
+    const pill = document.createElement('div');
+    pill.className = `mood-pill ${m.cls}`;
+    pill.innerHTML = `<span class="mood-text">${m.label}</span>`;
+    pill.addEventListener('click', () => toggleMood(i, pill, m));
+    row.appendChild(pill);
+  });
+}
+
+function toggleMood(i, el, mood) {
+  if (activeMood === i) {
+    activeMood = null;
+    document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
+    showDefaultView();
+  } else {
+    activeMood = i;
+    document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    showResultsView(CLIPS.filter(c => c.mood.includes(mood.label)), mood.label + ' clips');
+  }
+}
+
+function buildFeatured() {
+  const row = document.getElementById('featured-row');
+  [...CLIPS].sort(() => Math.random() - 0.5).slice(0, 6).forEach(clip => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = clipCardHTML(clip, 'lg');
+    row.appendChild(wrap.firstElementChild);
+  });
+}
+
+function buildPlatforms() {
+  const row = document.getElementById('platform-row');
+  PLATFORMS.forEach((p, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'plat-chip';
+    chip.style.setProperty('--plat-color', p.color);
+    chip.style.setProperty('--plat-rgb', p.rgb);
+    chip.innerHTML = `
+      <div class="plat-chip-dot" style="background:${p.color}"></div>
+      <span class="plat-chip-name">${p.name}</span>
+    `;
+    chip.addEventListener('click', () => togglePlatform(i, chip, p));
+    row.appendChild(chip);
+  });
+}
+
+function togglePlatform(i, el, plat) {
+  if (activePlatform === i) {
+    activePlatform = null;
+    document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
+    showDefaultView();
+  } else {
+    activePlatform = i;
+    document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    const filtered = CLIPS.filter(c => c.platLabel === plat.name);
+    if (filtered.length) showResultsView(filtered, plat.name);
+    else ssToast(`${plat.name} clips coming soon`);
+  }
+}
+
+function buildForYou() {
+  const grid = document.getElementById('foryou-grid');
+  [...CLIPS].sort(() => Math.random() - 0.5).forEach(clip => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = clipCardHTML(clip, 'sm');
+    grid.appendChild(wrap.firstElementChild);
+  });
+}
+
+function buildRecent() {
+  const list = document.getElementById('recent-list');
+  list.innerHTML = '';
+  recentSearches.forEach((term, i) => {
+    const row = document.createElement('div');
+    row.className = 'recent-row';
+    row.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5A5A72" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span class="recent-row-text">${term}</span>
+      <span class="recent-row-del" onclick="removeRecent(event,${i})">✕</span>
+    `;
+    row.addEventListener('click', (e) => {
+      if (e.target.classList.contains('recent-row-del')) return;
+      document.getElementById('search-input').value = term;
+      handleSearch(term); closeRecent();
+    });
+    list.appendChild(row);
+  });
+}
+
+function removeRecent(e, i) {
+  e.stopPropagation();
+  recentSearches.splice(i, 1);
+  buildRecent();
+}
+
+function openRecent() {
+  buildRecent();
+  if (recentSearches.length) document.getElementById('recent-dropdown').classList.add('open');
+}
+function closeRecent() { document.getElementById('recent-dropdown').classList.remove('open'); }
+function focusInput()  { document.getElementById('search-input').focus(); }
+
+function handleSearch(query) {
+  const q = query.trim().toLowerCase();
+  const clearBtn = document.getElementById('search-clear');
+  const bar = document.getElementById('search-bar');
+  if (q.length > 0) {
+    bar.classList.add('focused');
+    clearBtn.classList.add('visible');
+    closeRecent();
+    if (q.length >= 2 && !recentSearches.map(r => r.toLowerCase()).includes(q)) {
+      recentSearches.unshift(query.trim());
+      if (recentSearches.length > 5) recentSearches.pop();
+    }
+    const filtered = CLIPS.filter(c =>
+      c.caption.replace(/<[^>]+>/g,'').toLowerCase().includes(q) ||
+      c.genre.some(g => g.toLowerCase().includes(q)) ||
+      c.lang.toLowerCase().includes(q) ||
+      c.platLabel.toLowerCase().includes(q) ||
+      c.creator.name.toLowerCase().includes(q) ||
+      c.mood.some(m => m.toLowerCase().includes(q))
+    );
+    showResultsView(filtered, query);
+  } else {
+    clearBtn.classList.remove('visible');
+    showDefaultView();
+    openRecent();
+  }
+}
+
+function showResultsView(clips, label) {
+  document.getElementById('default-view').classList.add('hidden');
+  document.getElementById('results-view').classList.add('visible');
+  document.getElementById('results-heading').innerHTML = `<em>${clips.length}</em> clip${clips.length !== 1 ? 's' : ''} for "${label}"`;
+  const list  = document.getElementById('results-list');
+  const noRes = document.getElementById('no-results');
+  if (!clips.length) { list.innerHTML = ''; noRes.classList.add('visible'); return; }
+  noRes.classList.remove('visible');
+  list.innerHTML = clips.map(clip => `
+    <div class="result-clip" onclick="ssToast('▶ Playing clip by @${clip.creator.name}')">
+      <div class="result-clip-thumb">
+        <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
+        <div class="result-clip-thumb-plat" style="background:${clip.platColor}">${clip.platAbbr}</div>
+      </div>
+      <div class="result-clip-info">
+        <div class="result-clip-creator">@${clip.creator.name}</div>
+        <div class="result-clip-caption">${clip.caption}</div>
+        <div class="result-clip-tags">
+          ${clip.genre.map(g=>`<span class="result-clip-tag">${g}</span>`).join('')}
+          <span class="result-clip-tag">${clip.lang}</span>
+        </div>
+        <div class="result-clip-fire">${FIRE_SVG} ${fmtFires(clip.fires)} fires</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showDefaultView() {
+  document.getElementById('default-view').classList.remove('hidden');
+  document.getElementById('results-view').classList.remove('visible');
+  document.getElementById('no-results').classList.remove('visible');
+  activeMood = null; activePlatform = null;
+  document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
+}
+
+function clearSearch(e) {
+  e.stopPropagation();
+  const input = document.getElementById('search-input');
+  input.value = '';
+  input.focus();
+  document.getElementById('search-clear').classList.remove('visible');
+  showDefaultView();
+  openRecent();
+}
+
+const input = document.getElementById('search-input');
+input.addEventListener('input', e => handleSearch(e.target.value));
+input.addEventListener('focus', () => {
+  document.getElementById('search-bar').classList.add('focused');
+  if (!input.value.trim()) openRecent();
+});
+input.addEventListener('blur', () => {
+  setTimeout(() => { document.getElementById('search-bar').classList.remove('focused'); closeRecent(); }, 160);
+});
+input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e); input.blur(); } });
+
+// INIT
+buildMoods();
+buildFeatured();
+buildPlatforms();
+buildForYou();
+</script>
+</body>
+</html>

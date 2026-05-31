@@ -1,0 +1,73 @@
+/* ═══════════════════════════════════════════════════════════════
+   SHOWSHAK — DESIGN TOKENS
+   Single source of truth for all design variables.
+   Import this first in every page.
+   ─────────────────────────────────────────────────────────────
+   Usage: <link rel="stylesheet" href="../shared/showshak-tokens.css">
+═══════════════════════════════════════════════════════════════ */
+
+/* ─── RESET ───────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── DESIGN TOKENS ───────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg:   #0B0B0F;
+  --bg2:  #13131A;
+  --bg3:  #1A1A24;
+  --bg4:  #22222F;
+
+  /* Brand */
+  --red:  #EA3B32;
+  --red2: #FF4D42;
+
+  /* Text */
+  --white: #FFFFFF;
+  --gray:  #A0A0B8;
+  --gray2: #5A5A72;
+
+  /* Borders */
+  --border:  rgba(255, 255, 255, 0.07);
+  --border2: rgba(234, 59, 50, 0.28);
+
+  /* Typography */
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+
+  /* Layout */
+  --sidebar-collapsed: 64px;
+  --sidebar-expanded:  220px;
+  --mobile-nav-h:      64px;
+
+  /* Clip / feed */
+  --clip-w: 400px;
+
+  /* Easing */
+  --ease-spring:  cubic-bezier(.34, 1.56, .64, 1);
+  --ease-smooth:  cubic-bezier(.4, 0, .2, 1);
+
+  /* Shadows */
+  --shadow-card:  0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ─── BASE HTML/BODY ──────────────────────────── */
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  color: var(--white);
+}
+
+/* ─── FONT IMPORT REMINDER ────────────────────
+   Each page must include this in <head>:
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+─────────────────────────────────────────────── */

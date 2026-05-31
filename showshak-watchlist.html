@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Watchlist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; }
+
+/* ── Layout shell ── */
+.layout {
+  position: fixed; inset: 0;
+  left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column;
+  background: var(--bg); overflow: hidden;
+  transition: left 0.3s var(--ease-smooth);
+}
+@media (max-width:700px) { .layout { left: 0; } }
+
+/* ── Page header ── */
+.page-header {
+  flex-shrink: 0;
+  padding: 22px 28px 16px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.page-eyebrow {
+  font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 3px;
+}
+.page-eyebrow em { color: var(--red); font-style: normal; }
+.page-title {
+  font-family: var(--font-display);
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: 2px; color: var(--white); line-height: 1;
+}
+
+.new-stack-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border-radius: 100px;
+  background: rgba(234,59,50,0.1); border: 1.5px solid var(--border2);
+  color: var(--red); font-family: var(--font-body);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+.new-stack-btn:hover { background: rgba(234,59,50,0.18); }
+.new-stack-btn:active { transform: scale(0.95); }
+@media (max-width:700px) {
+  .page-header { padding: 18px 20px 14px; }
+  .new-stack-btn span { display: none; }
+  .new-stack-btn { padding: 9px 12px; }
+}
+
+/* ── Scrollable body ── */
+.page-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.page-body::-webkit-scrollbar { width: 3px; }
+.page-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+@media (max-width:700px) {
+  .page-body { padding-bottom: calc(var(--mobile-nav-h) + 16px); }
+}
+
+/* ════════════════════════════════════════════════
+   EMPTY STATE
+════════════════════════════════════════════════ */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 60px 32px 0; text-align: center;
+}
+.empty-orb {
+  position: relative; width: 96px; height: 96px; margin-bottom: 30px;
+}
+.empty-orb-glow {
+  position: absolute; inset: -20px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(234,59,50,0.16) 0%, transparent 70%);
+  animation: orbBreath 3.2s ease-in-out infinite;
+}
+@keyframes orbBreath {
+  0%,100% { opacity: 0.4; transform: scale(0.88); }
+  50%      { opacity: 1;   transform: scale(1.12); }
+}
+.empty-orb-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1px solid var(--border2);
+  animation: orbSpin 18s linear infinite;
+}
+.empty-orb-ring::before {
+  content: ''; position: absolute; top: -3px; left: 50%;
+  transform: translateX(-50%);
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--red); box-shadow: 0 0 10px 3px rgba(234,59,50,0.6);
+}
+@keyframes orbSpin { to { transform: rotate(360deg); } }
+.empty-orb-inner {
+  position: absolute; inset: 14px;
+  background: var(--bg2); border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.empty-headline {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 6vw, 44px);
+  letter-spacing: 2px; color: var(--white); line-height: 1.05; margin-bottom: 14px;
+}
+.empty-headline em { color: var(--red); font-style: normal; }
+.empty-sub {
+  font-size: 14px; color: var(--gray); line-height: 1.75;
+  max-width: 300px; margin-bottom: 30px;
+}
+.empty-cta {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 13px 28px; border-radius: 100px;
+  background: var(--red); color: #fff; border: none;
+  font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.4px;
+  transition: background 0.15s, transform 0.15s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.empty-cta:hover {
+  background: var(--red2); transform: translateY(-2px);
+  box-shadow: 0 12px 36px rgba(234,59,50,0.38);
+}
+.empty-cta:active { transform: scale(0.97); }
+.empty-hint {
+  margin-top: 18px; font-size: 11px; color: var(--gray2);
+  font-weight: 500; letter-spacing: 0.3px; line-height: 1.8;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.empty-hint-row { display: flex; align-items: center; gap: 7px; }
+.empty-hint-dot {
+  width: 3px; height: 3px; border-radius: 50%; background: var(--gray2);
+}
+
+/* ════════════════════════════════════════════════
+   STACKS — filled state
+════════════════════════════════════════════════ */
+.stacks-wrap { padding-top: 6px; }
+
+/* individual stack block */
+.stack-block {
+  margin-bottom: 2px;
+  animation: ss-fadeUp 0.36s ease both;
+}
+
+/* Header — blurred gradient banner */
+.stack-header {
+  position: relative; height: 56px; overflow: hidden;
+}
+.stack-header-blur {
+  position: absolute; inset: 0;
+  background-size: 200% 200%; background-position: center;
+  filter: blur(24px) brightness(0.28) saturate(1.8);
+  transform: scale(1.15);
+  transition: filter 0.3s;
+}
+.stack-header:hover .stack-header-blur {
+  filter: blur(18px) brightness(0.38) saturate(1.8);
+}
+.stack-header-content {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 100%;
+}
+.stack-header-left { display: flex; align-items: center; gap: 12px; }
+.stack-accent { width: 3px; height: 26px; border-radius: 2px; background: var(--red); flex-shrink: 0; box-shadow: 0 0 8px rgba(234,59,50,0.6); }
+.stack-name { font-family: var(--font-display); font-size: 20px; letter-spacing: 1.5px; color: var(--white); line-height: 1; }
+.stack-count { font-size: 10px; color: var(--gray2); font-weight: 600; letter-spacing: 0.4px; margin-top: 2px; }
+.stack-opts-btn {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--gray2);
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+}
+.stack-opts-btn:hover { color: var(--white); background: rgba(255,255,255,0.1); }
+
+/* Horizontal clip scroll inside each stack */
+.stack-scroll {
+  display: flex; gap: 10px;
+  overflow-x: auto; padding: 12px 28px 16px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.stack-scroll::-webkit-scrollbar { display: none; }
+
+/* ── Portrait clip card — same DNA as feed ── */
+.wl-clip {
+  flex-shrink: 0; width: 108px; cursor: pointer; position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s var(--ease-spring);
+}
+.wl-clip:hover { transform: translateY(-5px) scale(1.02); }
+.wl-clip:active { transform: scale(0.94); }
+
+.wl-clip-thumb {
+  width: 100%; aspect-ratio: 9/16;
+  border-radius: 13px; overflow: hidden; position: relative;
+  border: 1px solid var(--border);
+}
+.wl-clip-bg {
+  position: absolute; inset: 0; background-size: cover; background-position: center;
+  transition: transform 0.4s ease;
+}
+.wl-clip:hover .wl-clip-bg { transform: scale(1.06); }
+.wl-clip-vig {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.2) 100%);
+}
+.wl-clip-plat {
+  position: absolute; top: 7px; right: 7px;
+  width: 19px; height: 19px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6px; font-weight: 800; color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.wl-clip-remove {
+  position: absolute; top: 7px; left: 7px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--gray2); font-size: 8px; font-weight: 700;
+  opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.wl-clip:hover .wl-clip-remove { opacity: 1; }
+.wl-clip-remove:hover { background: rgba(234,59,50,0.9); color: #fff; border-color: transparent; }
+
+.wl-clip-meta { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 7px; }
+.wl-clip-creator { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1px; }
+.wl-clip-tag { font-size: 8px; color: rgba(255,255,255,0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Add more card */
+.wl-add-card {
+  flex-shrink: 0; width: 108px; aspect-ratio: 9/16;
+  border-radius: 13px; border: 1.5px dashed rgba(234,59,50,0.22);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wl-add-card:hover { background: rgba(234,59,50,0.05); border-color: rgba(234,59,50,0.4); }
+.wl-add-icon {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1.5px solid rgba(234,59,50,0.35);
+  display: flex; align-items: center; justify-content: center; color: var(--red); font-size: 16px;
+}
+.wl-add-label { font-size: 9px; font-weight: 600; color: var(--gray2); text-align: center; line-height: 1.5; }
+
+/* Stack block divider */
+.stack-sep { height: 1px; background: var(--border); margin: 0 28px; }
+
+/* ════════════════════════════════════════════════
+   SECTION SEPARATOR
+════════════════════════════════════════════════ */
+.rec-sep {
+  display: flex; align-items: center; gap: 14px;
+  padding: 28px 28px 0;
+}
+.rec-sep-line { flex: 1; height: 1px; background: var(--border); }
+.rec-sep-label {
+  font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: 3px; text-transform: uppercase; white-space: nowrap;
+}
+@media (max-width:700px) {
+  .rec-sep { padding: 24px 20px 0; }
+}
+
+/* ════════════════════════════════════════════════
+   RECOMMENDED CLIPS — TikTok-style grid
+   Portrait 9:16 cards, creator + fire count below
+════════════════════════════════════════════════ */
+.rec-section { padding: 16px 28px 40px; }
+@media (max-width:700px) { .rec-section { padding: 16px 20px 40px; } }
+
+/* 3-column grid on desktop, 2-column on narrow mobile */
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 500px) {
+  .rec-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+}
+
+.rec-clip-card {
+  cursor: pointer; position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.2s var(--ease-spring);
+}
+.rec-clip-card:hover  { transform: translateY(-5px); }
+.rec-clip-card:active { transform: scale(0.96); }
+
+/* 9:16 portrait thumb */
+.rec-clip-thumb {
+  width: 100%; aspect-ratio: 9/16;
+  border-radius: 13px; overflow: hidden; position: relative;
+  border: 1px solid var(--border);
+}
+.rec-clip-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  transition: transform 0.4s ease;
+}
+.rec-clip-card:hover .rec-clip-bg { transform: scale(1.05); }
+.rec-clip-vig {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.22) 100%);
+}
+.rec-clip-plat {
+  position: absolute; top: 8px; right: 8px;
+  width: 20px; height: 20px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6px; font-weight: 800; color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+/* Play icon — appears on hover */
+.rec-clip-play {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(0,0,0,0.5); border: 1.5px solid rgba(255,255,255,0.3);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.2s; backdrop-filter: blur(4px);
+}
+.rec-clip-card:hover .rec-clip-play { opacity: 1; }
+
+/* Creator inside the thumb — bottom left */
+.rec-clip-creator-row {
+  position: absolute; bottom: 8px; left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.rec-clip-avatar {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.rec-clip-handle {
+  font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.85);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+}
+
+/* Below the thumb — fire count + save button */
+.rec-clip-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 2px 0;
+}
+.rec-fire-row {
+  display: flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; color: var(--gray2);
+}
+.rec-save-btn {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(234,59,50,0.1); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-save-btn:hover { background: rgba(234,59,50,0.25); transform: scale(1.12); }
+.rec-save-btn:active { transform: scale(0.9); }
+/* Saved state */
+.rec-save-btn.saved { background: var(--red); border-color: var(--red); }
+
+/* ════════════════════════════════════════════════
+   SAVE-TO-STACK SHEET
+════════════════════════════════════════════════ */
+#stack-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+#stack-overlay.open { opacity: 1; pointer-events: all; }
+
+#stack-sheet {
+  position: fixed; left: 50%; bottom: 0;
+  transform: translateX(-50%) translateY(102%);
+  z-index: 301; background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  padding: 0 0 36px;
+  transition: transform 0.42s var(--ease-smooth);
+  width: min(480px, 100vw);
+  max-height: 76vh; overflow-y: auto; scrollbar-width: none;
+}
+#stack-sheet::-webkit-scrollbar { display: none; }
+#stack-sheet.open { transform: translateX(-50%) translateY(0); }
+
+.sh-handle {
+  width: 36px; height: 4px; background: rgba(255,255,255,0.1);
+  border-radius: 2px; margin: 14px auto 18px;
+}
+.sh-title {
+  font-family: var(--font-display); font-size: 20px; letter-spacing: 1.5px; color: var(--white);
+  padding: 0 20px 14px; border-bottom: 1px solid var(--border);
+}
+.sh-title em { color: var(--red); font-style: normal; }
+
+/* Create new stack row */
+.sh-new-row {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 20px; cursor: pointer; transition: background 0.15s;
+  border-bottom: 1px solid var(--border);
+  -webkit-tap-highlight-color: transparent;
+}
+.sh-new-row:hover { background: var(--bg3); }
+.sh-new-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  border: 1.5px dashed var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--red); font-size: 22px; flex-shrink: 0;
+}
+.sh-new-text .t1 { font-size: 15px; font-weight: 600; color: var(--white); }
+.sh-new-text .t2 { font-size: 12px; color: var(--gray2); margin-top: 2px; }
+
+/* Existing stack rows in sheet */
+.sh-stack-row {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 20px; cursor: pointer; transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sh-stack-row:hover { background: var(--bg3); }
+.sh-stack-thumb {
+  width: 44px; height: 60px; border-radius: 10px; flex-shrink: 0;
+  position: relative; overflow: hidden; border: 1px solid var(--border);
+}
+.sh-stack-thumb-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.sh-stack-thumb-vig { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%); }
+.sh-stack-info { flex: 1; min-width: 0; }
+.sh-stack-info .t1 { font-size: 15px; font-weight: 600; color: var(--white); }
+.sh-stack-info .t2 { font-size: 12px; color: var(--gray2); margin-top: 2px; }
+.sh-check {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: all 0.22s var(--ease-spring);
+}
+.sh-check.on { background: var(--red); border-color: var(--red); }
+
+.sh-actions { padding: 14px 20px 0; display: flex; flex-direction: column; gap: 10px; }
+.sh-done {
+  width: 100%; padding: 14px; border-radius: 14px;
+  background: var(--red); color: #fff; border: none;
+  font-family: var(--font-body); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s; letter-spacing: 0.3px;
+}
+.sh-done:hover { background: var(--red2); }
+.sh-cancel {
+  text-align: center; color: var(--gray2); font-size: 14px;
+  cursor: pointer; padding: 4px; transition: color 0.15s;
+}
+.sh-cancel:hover { color: var(--white); }
+
+/* ════════════════════════════════════════════════
+   CREATE NEW STACK SHEET
+════════════════════════════════════════════════ */
+#new-stack-overlay {
+  position: fixed; inset: 0; z-index: 302;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+#new-stack-overlay.open { opacity: 1; pointer-events: all; }
+
+#new-stack-sheet {
+  position: fixed; left: 50%; bottom: 0;
+  transform: translateX(-50%) translateY(102%);
+  z-index: 303; background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  padding: 0 24px 44px;
+  transition: transform 0.42s var(--ease-smooth);
+  width: min(480px, 100vw);
+}
+#new-stack-sheet.open { transform: translateX(-50%) translateY(0); }
+
+.ns-title {
+  font-family: var(--font-display); font-size: 20px; letter-spacing: 1.5px; color: var(--white);
+  padding: 20px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+}
+.ns-title em { color: var(--red); font-style: normal; }
+
+.ns-label {
+  font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px;
+}
+
+/* Quick name pills */
+.ns-picks { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.ns-pick {
+  padding: 8px 15px; border-radius: 100px;
+  border: 1.5px solid var(--border); background: var(--bg3);
+  font-size: 13px; font-weight: 500; color: var(--gray);
+  cursor: pointer; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.ns-pick:hover { border-color: var(--border2); color: var(--white); }
+.ns-pick.on { border-color: var(--red); color: var(--white); background: rgba(234,59,50,0.1); }
+
+/* Text input */
+.ns-input-wrap { position: relative; margin-bottom: 22px; }
+.ns-input {
+  width: 100%; height: 52px;
+  background: var(--bg3); border: 1.5px solid var(--border);
+  border-radius: 14px; padding: 0 52px 0 16px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 500;
+  color: var(--white); outline: none; caret-color: var(--red);
+  transition: border-color 0.2s;
+}
+.ns-input:focus { border-color: rgba(234,59,50,0.45); }
+.ns-input::placeholder { color: var(--gray2); }
+.ns-char {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--gray2); pointer-events: none; font-weight: 600;
+}
+.ns-create {
+  width: 100%; padding: 14px; border-radius: 14px;
+  background: var(--red); color: #fff; border: none;
+  font-family: var(--font-body); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s; letter-spacing: 0.3px;
+}
+.ns-create:hover:not(:disabled) { background: var(--red2); }
+.ns-create:disabled { background: var(--bg4); color: var(--gray2); cursor: not-allowed; }
+.ns-cancel-lnk {
+  text-align: center; margin-top: 12px; color: var(--gray2);
+  font-size: 14px; cursor: pointer; padding: 4px; transition: color 0.15s;
+}
+.ns-cancel-lnk:hover { color: var(--white); }
+
+/* ════════════════════════════════════════════════
+   STACK OPTIONS MENU
+════════════════════════════════════════════════ */
+#opts-menu {
+  position: fixed; z-index: 400; display: none;
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px; min-width: 172px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+  overflow: hidden;
+  animation: menuPop 0.18s var(--ease-spring) both;
+}
+#opts-menu.show { display: block; }
+@keyframes menuPop {
+  from { opacity: 0; transform: scale(0.86) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.opts-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; cursor: pointer;
+  font-size: 14px; font-weight: 500; color: var(--white);
+  transition: background 0.12s;
+}
+.opts-item:hover { background: var(--bg3); }
+.opts-item.del { color: #FF5A5A; }
+
+/* ── Stack header responsive ── */
+@media (max-width:700px) {
+  .stack-header-content { padding: 0 20px; }
+  .stack-scroll { padding: 12px 20px 16px; }
+  .stack-sep { margin: 0 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark">
+      <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+    </div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item" data-nav="feed" href="showshak-feed.html">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+      <span class="nav-item-label">Feed</span>
+    </a>
+    <a class="nav-item" data-nav="discover" href="showshak-discover.html">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <span class="nav-item-label">Discover</span>
+    </a>
+    <a class="nav-item active" data-nav="watchlist" href="showshak-watchlist.html">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+      <span class="nav-item-label">Watchlist</span>
+    </a>
+    <a class="nav-item" data-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+      <span class="nav-item-label">Profile</span>
+    </a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item-settings" onclick="ssToast('⚙ Settings coming soon')">
+      <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      <span class="nav-item-label">Settings</span>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN LAYOUT -->
+<div class="layout">
+
+  <div class="page-header">
+    <div>
+      <div class="page-eyebrow">show<em>shak</em> · saves</div>
+      <div class="page-title">WATCHLIST</div>
+    </div>
+    <button class="new-stack-btn" onclick="openNewStack()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>New Stack</span>
+    </button>
+  </div>
+
+  <div class="page-body" id="page-body">
+
+    <!-- EMPTY STATE -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-orb">
+        <div class="empty-orb-glow"></div>
+        <div class="empty-orb-ring"></div>
+        <div class="empty-orb-inner">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EA3B32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </div>
+      </div>
+      <div class="empty-headline">NOTHING<br>SAVED <em>YET</em></div>
+      <p class="empty-sub">Go to the Feed, fire a clip you love, hit Save — then drop it into a Stack. Tonight, weekend, date night — you decide.</p>
+      <button class="empty-cta" onclick="openNewStack()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create Your First Stack
+      </button>
+      <div class="empty-hint">
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Fire on Feed to save clips</div>
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Organise into named Stacks</div>
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Watch It whenever you're ready</div>
+      </div>
+    </div>
+
+    <!-- STACKS — built by JS, hidden until populated -->
+    <div id="stacks-wrap" class="stacks-wrap" style="display:none"></div>
+
+    <!-- SEPARATOR -->
+    <div class="rec-sep">
+      <div class="rec-sep-line"></div>
+      <div class="rec-sep-label">You Might Save These</div>
+      <div class="rec-sep-line"></div>
+    </div>
+
+    <!-- RECOMMENDED CLIPS GRID -->
+    <div class="rec-section">
+      <div class="rec-grid" id="rec-grid"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item" href="showshak-feed.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+    <span class="mob-nav-label">Feed</span>
+  </a>
+  <a class="mob-nav-item" href="showshak-discover.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+    <span class="mob-nav-label">Discover</span>
+  </a>
+  <a class="mob-nav-item active" href="showshak-watchlist.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+    <span class="mob-nav-label">Watchlist</span>
+  </a>
+  <a class="mob-nav-item" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+    <span class="mob-nav-label">Profile</span>
+  </a>
+</nav>
+
+<!-- SAVE-TO-STACK SHEET -->
+<div id="stack-overlay" onclick="closeStackSheet()"></div>
+<div id="stack-sheet">
+  <div class="sh-handle"></div>
+  <div class="sh-title">SAVE TO <em>STACK</em></div>
+  <div class="sh-new-row" id="sh-new-row" onclick="closeStackSheet(); openNewStack(true)">
+    <div class="sh-new-icon">+</div>
+    <div class="sh-new-text">
+      <div class="t1">Create New Stack</div>
+      <div class="t2">Start a fresh one for this clip</div>
+    </div>
+  </div>
+  <div id="sh-stack-list"></div>
+  <div class="sh-actions">
+    <button class="sh-done" onclick="confirmSave()">Save to Stack</button>
+    <div class="sh-cancel" onclick="closeStackSheet()">Cancel</div>
+  </div>
+</div>
+
+<!-- CREATE NEW STACK SHEET -->
+<div id="new-stack-overlay" onclick="closeNewStack()"></div>
+<div id="new-stack-sheet">
+  <div class="sh-handle"></div>
+  <div class="ns-title">NAME YOUR <em>STACK</em></div>
+  <div class="ns-label">Quick Picks</div>
+  <div class="ns-picks" id="ns-picks"></div>
+  <div class="ns-label">Or type your own</div>
+  <div class="ns-input-wrap">
+    <input class="ns-input" id="ns-input" type="text"
+      placeholder="e.g. Late Night Thrills..." maxlength="30"
+      oninput="onNsInput()"/>
+    <span class="ns-char" id="ns-char">0/30</span>
+  </div>
+  <button class="ns-create" id="ns-create" onclick="createStack()" disabled>Create Stack</button>
+  <div class="ns-cancel-lnk" onclick="closeNewStack()">Cancel</div>
+</div>
+
+<!-- STACK OPTIONS MENU -->
+<div id="opts-menu">
+  <div class="opts-item" onclick="renameActiveStack()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    Rename
+  </div>
+  <div class="opts-item del" onclick="deleteActiveStack()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+    Delete Stack
+  </div>
+</div>
+
+<!-- SHARED JS -->
+<script src="showshak-shared.js"></script>
+
+<script>
+/* ════════════════════════════════════════════════
+   CLIP DATA — same as Feed / Discover
+════════════════════════════════════════════════ */
+const ALL_CLIPS = [
+  { id:1, creator:'cinephile_arj',    creatorLetter:'A', creatorBg:'#E8373E', genre:['Crime','Thriller'], lang:'Hindi',   fires:1240, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#1a0505 0%,#2d0808 35%,#0d0d0d 100%)' },
+  { id:2, creator:'streamjunkie_sk',  creatorLetter:'S', creatorBg:'#FF6B35', genre:['Drama','Comedy'],   lang:'English', fires:876,  platColor:'#0E3BD4', platAbbr:'D+', bg:'linear-gradient(160deg,#050510 0%,#0a0a20 35%,#080808 100%)' },
+  { id:3, creator:'binge_with_priya', creatorLetter:'P', creatorBg:'#9B59B6', genre:['Action','Crime'],   lang:'Hindi',   fires:2100, platColor:'#00A8E0', platAbbr:'P',  bg:'linear-gradient(160deg,#0a0510 0%,#150820 35%,#0a0505 100%)' },
+  { id:4, creator:'netflixnerd_rv',   creatorLetter:'R', creatorBg:'#3498DB', genre:['Sci-Fi','Horror'],  lang:'English', fires:3400, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#020510 0%,#050a1a 35%,#050205 100%)' },
+  { id:5, creator:'desi_binge',       creatorLetter:'D', creatorBg:'#27AE60', genre:['Comedy','Drama'],   lang:'Hindi',   fires:5200, platColor:'#00A8E0', platAbbr:'P',  bg:'linear-gradient(160deg,#021005 0%,#041a08 35%,#020802 100%)' },
+  { id:6, creator:'kdrama_world',     creatorLetter:'K', creatorBg:'#E74C3C', genre:['Thriller','Drama'], lang:'Korean',  fires:7800, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#100008 0%,#1a0010 35%,#080005 100%)' },
+  { id:7, creator:'cinephile_arj',    creatorLetter:'A', creatorBg:'#E8373E', genre:['Crime','Drama'],    lang:'Hindi',   fires:4300, platColor:'#002868', platAbbr:'S',  bg:'linear-gradient(160deg,#080500 0%,#140c00 35%,#050300 100%)' },
+  { id:8, creator:'hbo_stan_official',creatorLetter:'H', creatorBg:'#5C2D91', genre:['Drama','Sci-Fi'],   lang:'English', fires:6100, platColor:'#FF6A00', platAbbr:'JH', bg:'linear-gradient(160deg,#030805 0%,#050e08 35%,#020503 100%)' },
+];
+
+const QUICK_NAMES = ['Watch Tonight','Weekend Binge','Date Night','Slow Burns','Hidden Gems','Share With Friends'];
+
+/* ════════════════════════════════════════════════
+   SESSION STORAGE — persists across page nav
+   within the same browser session
+════════════════════════════════════════════════ */
+const SS_KEY = 'ss_stacks_v1';
+
+function loadStacks() {
+  try {
+    const raw = sessionStorage.getItem(SS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveStacks(arr) {
+  try { sessionStorage.setItem(SS_KEY, JSON.stringify(arr)); } catch {}
+}
+
+/* ════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════ */
+let stacks         = loadStacks();
+let nextId         = stacks.length ? Math.max(...stacks.map(s => s.id)) + 1 : 1;
+let pendingClip    = null;   // clip object waiting to be saved
+let selectedIds    = new Set();
+let activeStackId  = null;
+let fromSaveSheet  = false;  // whether new-stack was opened from save sheet
+let savedInRec     = new Set(); // track which rec clips are saved in this session
+
+/* ════════════════════════════════════════════════
+   RENDER — main page state
+════════════════════════════════════════════════ */
+function render() {
+  const emptyEl  = document.getElementById('empty-state');
+  const stacksEl = document.getElementById('stacks-wrap');
+
+  if (!stacks.length) {
+    emptyEl.style.display  = 'flex';
+    stacksEl.style.display = 'none';
+    return;
+  }
+
+  emptyEl.style.display  = 'none';
+  stacksEl.style.display = 'block';
+
+  stacksEl.innerHTML = stacks.map((stack, si) => {
+    const coverBg = stack.clips.length
+      ? stack.clips[0].bg
+      : 'linear-gradient(160deg,#0B0B0F,#13131A)';
+
+    const clipsHtml = stack.clips.map(c => `
+      <div class="wl-clip" onclick="ssToast('▶ Opening clip — go to Feed')">
+        <div class="wl-clip-thumb">
+          <div class="wl-clip-bg" style="background:${c.bg}"></div>
+          <div class="wl-clip-vig"></div>
+          <div class="wl-clip-plat" style="background:${c.platColor}">${c.platAbbr}</div>
+          <div class="wl-clip-remove" onclick="removeClip(event,${stack.id},${c.id})">✕</div>
+          <div class="wl-clip-meta">
+            <div class="wl-clip-creator">@${c.creator}</div>
+            <div class="wl-clip-tag">${c.genre[0]} · ${c.lang}</div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="stack-block" id="sb-${stack.id}" style="animation-delay:${si * 0.055}s">
+        <div class="stack-header">
+          <div class="stack-header-blur" style="background:${coverBg}"></div>
+          <div class="stack-header-content">
+            <div class="stack-header-left">
+              <div class="stack-accent"></div>
+              <div>
+                <div class="stack-name">${stack.name.toUpperCase()}</div>
+                <div class="stack-count">${stack.clips.length} clip${stack.clips.length !== 1 ? 's' : ''}</div>
+              </div>
+            </div>
+            <button class="stack-opts-btn" onclick="openOpts(event,${stack.id})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="stack-scroll">
+          ${clipsHtml}
+          <div class="wl-add-card" onclick="ssToast('Go to Feed · hit Save on any clip')">
+            <div class="wl-add-icon">+</div>
+            <div class="wl-add-label">Save from<br>Feed</div>
+          </div>
+        </div>
+        ${si < stacks.length - 1 ? '<div class="stack-sep"></div>' : ''}
+      </div>
+    `;
+  }).join('');
+
+  saveStacks(stacks);
+}
+
+/* ════════════════════════════════════════════════
+   RECOMMENDED CLIPS GRID
+════════════════════════════════════════════════ */
+const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const PLAY_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+const BKMK_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const BKMK_FILL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+
+function buildRec() {
+  const grid   = document.getElementById('rec-grid');
+  const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
+
+  grid.innerHTML = shuffled.map(c => `
+    <div class="rec-clip-card" onclick="ssToast('▶ Opening clip — go to Feed')">
+      <div class="rec-clip-thumb">
+        <div class="rec-clip-bg" style="background:${c.bg}"></div>
+        <div class="rec-clip-vig"></div>
+        <div class="rec-clip-plat" style="background:${c.platColor}">${c.platAbbr}</div>
+        <div class="rec-clip-play">${PLAY_SVG}</div>
+        <div class="rec-clip-creator-row">
+          <div class="rec-clip-avatar" style="background:${c.creatorBg}">${c.creatorLetter}</div>
+          <span class="rec-clip-handle">@${c.creator}</span>
+        </div>
+      </div>
+      <div class="rec-clip-foot">
+        <div class="rec-fire-row">${FIRE_SVG} ${fmtFires(c.fires)}</div>
+        <div class="rec-save-btn ${savedInRec.has(c.id) ? 'saved' : ''}"
+          id="rec-save-${c.id}"
+          onclick="event.stopPropagation(); recSave(${c.id})">
+          ${savedInRec.has(c.id) ? BKMK_FILL : BKMK_SVG}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function recSave(clipId) {
+  const clip = ALL_CLIPS.find(c => c.id === clipId);
+  if (!clip) return;
+  savedInRec.add(clipId);
+  // update the button immediately
+  const btn = document.getElementById(`rec-save-${clipId}`);
+  if (btn) { btn.classList.add('saved'); btn.innerHTML = BKMK_FILL; }
+  openStackSheet(clip);
+}
+
+/* ════════════════════════════════════════════════
+   SAVE-TO-STACK SHEET
+════════════════════════════════════════════════ */
+function openStackSheet(clip) {
+  pendingClip = clip;
+  selectedIds = new Set();
+
+  const listEl = document.getElementById('sh-stack-list');
+
+  if (!stacks.length) {
+    listEl.innerHTML = `
+      <div style="padding:18px 20px 8px; font-size:13px; color:var(--gray2); line-height:1.7">
+        No stacks yet. Create one first — it only takes a second.
+      </div>`;
+  } else {
+    listEl.innerHTML = stacks.map(s => {
+      const thumbStyle = s.clips.length
+        ? `background:${s.clips[0].bg}`
+        : `background:var(--bg3)`;
+      return `
+        <div class="sh-stack-row" onclick="toggleSel(${s.id}, this)">
+          <div class="sh-stack-thumb">
+            <div class="sh-stack-thumb-bg" style="${thumbStyle}"></div>
+            <div class="sh-stack-thumb-vig"></div>
+          </div>
+          <div class="sh-stack-info">
+            <div class="t1">${s.name}</div>
+            <div class="t2">${s.clips.length} clip${s.clips.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="sh-check" id="chk-${s.id}">
+            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('stack-overlay').classList.add('open');
+  document.getElementById('stack-sheet').classList.add('open');
+}
+
+function toggleSel(id, el) {
+  const chk = document.getElementById(`chk-${id}`);
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    chk.classList.remove('on');
+    chk.querySelector('svg').style.display = 'none';
+  } else {
+    selectedIds.add(id);
+    chk.classList.add('on');
+    chk.querySelector('svg').style.display = 'block';
+  }
+}
+
+function closeStackSheet() {
+  document.getElementById('stack-sheet').classList.remove('open');
+  document.getElementById('stack-overlay').classList.remove('open');
+}
+
+function confirmSave() {
+  if (!pendingClip)    { ssToast('No clip selected'); return; }
+  if (!selectedIds.size) { ssToast('Pick a stack first'); return; }
+
+  selectedIds.forEach(sid => {
+    const s = stacks.find(s => s.id === sid);
+    if (s && !s.clips.find(c => c.id === pendingClip.id)) {
+      s.clips.push(pendingClip);
+    }
+  });
+
+  const count = selectedIds.size;
+  closeStackSheet();
+  pendingClip = null;
+  selectedIds = new Set();
+  render();
+  ssToast(`🔖 Saved to ${count} stack${count > 1 ? 's' : ''}`);
+}
+
+/* ════════════════════════════════════════════════
+   CREATE NEW STACK SHEET
+════════════════════════════════════════════════ */
+function buildQuickPicks() {
+  document.getElementById('ns-picks').innerHTML = QUICK_NAMES.map(n => `
+    <div class="ns-pick" onclick="pickName(this,'${n}')">${n}</div>
+  `).join('');
+}
+
+function pickName(el, name) {
+  document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('ns-input').value = name;
+  onNsInput();
+}
+
+function onNsInput() {
+  const val = document.getElementById('ns-input').value;
+  document.getElementById('ns-char').textContent = `${val.length}/30`;
+  document.getElementById('ns-create').disabled = !val.trim().length;
+  if (!QUICK_NAMES.includes(val)) {
+    document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
+  }
+}
+
+function openNewStack(fromSheet = false) {
+  fromSaveSheet = fromSheet;
+  document.getElementById('ns-input').value = '';
+  document.getElementById('ns-char').textContent = '0/30';
+  document.getElementById('ns-create').disabled = true;
+  document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
+  document.getElementById('new-stack-overlay').classList.add('open');
+  document.getElementById('new-stack-sheet').classList.add('open');
+  setTimeout(() => document.getElementById('ns-input').focus(), 440);
+}
+
+function closeNewStack() {
+  document.getElementById('new-stack-sheet').classList.remove('open');
+  document.getElementById('new-stack-overlay').classList.remove('open');
+}
+
+function createStack() {
+  const name = document.getElementById('ns-input').value.trim();
+  if (!name) return;
+
+  const newStack = { id: nextId++, name, clips: [] };
+
+  // If a clip is pending (came from the save flow), auto-save into this stack
+  if (pendingClip) {
+    newStack.clips.push(pendingClip);
+    pendingClip = null;
+  }
+
+  stacks.push(newStack);
+  closeNewStack();
+  render();
+  ssToast(`✓ Stack "${name}" created`);
+}
+
+/* ════════════════════════════════════════════════
+   STACK OPTIONS MENU
+════════════════════════════════════════════════ */
+function openOpts(e, stackId) {
+  e.stopPropagation();
+  activeStackId = stackId;
+  const menu = document.getElementById('opts-menu');
+  menu.classList.add('show');
+  const rect = e.currentTarget.getBoundingClientRect();
+  menu.style.top   = (rect.bottom + 6) + 'px';
+  menu.style.right  = (window.innerWidth - rect.right) + 'px';
+  menu.style.left   = 'auto';
+}
+
+document.addEventListener('click', e => {
+  const menu = document.getElementById('opts-menu');
+  if (menu.classList.contains('show') && !menu.contains(e.target)) {
+    menu.classList.remove('show');
+    activeStackId = null;
+  }
+});
+
+function renameActiveStack() {
+  document.getElementById('opts-menu').classList.remove('show');
+  ssToast('Rename coming in next build');
+  activeStackId = null;
+}
+
+function deleteActiveStack() {
+  document.getElementById('opts-menu').classList.remove('show');
+  if (activeStackId === null) return;
+  stacks = stacks.filter(s => s.id !== activeStackId);
+  activeStackId = null;
+  render();
+  ssToast('Stack deleted');
+}
+
+/* ════════════════════════════════════════════════
+   REMOVE CLIP FROM STACK
+════════════════════════════════════════════════ */
+function removeClip(e, stackId, clipId) {
+  e.stopPropagation();
+  const s = stacks.find(s => s.id === stackId);
+  if (!s) return;
+  s.clips = s.clips.filter(c => c.id !== clipId);
+  render();
+  ssToast('Removed from stack');
+}
+
+/* ════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════ */
+buildQuickPicks();
+buildRec();
+render();
+</script>
+</body>
+</html>

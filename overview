@@ -1,0 +1,234 @@
+═══════════════════════════════════════════════════════════════
+  SHOWSHAK — PROJECT BRIEF
+  Paste this at the start of every new conversation along with
+  showshak-tokens.css, showshak-shared.js, showshak-components.css
+═══════════════════════════════════════════════════════════════
+
+
+── WHAT IS SHOWSHAK ────────────────────────────────────────────
+
+ShowShak is a cross-platform streaming discovery app.
+It is NOT a streaming service. It is NOT a social media app.
+It is the discovery layer that sits between the user and all
+streaming platforms (Netflix, Prime, Disney+, JioHotstar, etc.)
+
+The core loop:
+  Curator posts a short clip recommending a show/movie
+  → User watches, feels something, trusts the curator
+  → User taps "Watch It" → goes to the streaming platform
+
+The product lives in a category that doesn't exist yet:
+  "Trust-based, creator-curated, action-oriented discovery."
+
+Closest references for mental model:
+  - Letterboxd (film culture + human taste) but with action
+  - TikTok/Reels (short vertical clips) but with intent
+  - None of the above — ShowShak is its own thing
+
+
+── PRODUCT PHILOSOPHY ──────────────────────────────────────────
+
+1. CREATOR FIRST, SHOW SECOND
+   The curator builds the connection. The clip is their pitch.
+   We do NOT show the show title upfront on the clip — the user
+   should connect with the curator before knowing the title.
+   If they already saw it, we lose them. If they trust the
+   curator first, they'll watch anything recommended.
+
+2. FAMILIAR BUT SHOWSHAK
+   We take patterns users already know (vertical scroll, fire/
+   like, save, share) and give them streaming-native meaning.
+   Nothing should feel like "oh it's another TikTok" or
+   "oh it's another Netflix." Familiar interactions, ShowShak soul.
+
+3. FIRE = THIS IS LIT
+   The "like" equivalent is 🔥 Fire. Not a heart. Not a thumbs up.
+   Fire means "this show/movie is genuinely great" — specific
+   to the entertainment context. The fire icon and color family
+   (orange → red) intentionally match the ShowShak brand palette.
+
+4. WATCH IT IS THE CLIMAX
+   Every clip builds to one moment: the user deciding to watch.
+   "Watch It" (not "Watch Now") — decisive, personal, like a
+   friend telling you what to do. It is the most important
+   interaction in the entire product. The CTA has a breathing
+   glow animation and flashes when a user fires a clip (fire
+   energy converts to watch action — emotional peak → decision).
+
+5. CONTENT SIGNALS ONLY — NO SOCIAL SIGNALS
+   We show: genre tags, language tag, creator caption (2 lines)
+   We do NOT show: show title on clip, IMDb score, platform badge
+   on clip, follower counts, view counts.
+   The platform reveal lives ONLY in the Watch It sheet.
+
+6. CURATORS, NOT INFLUENCERS
+   People who post clips are curators / tastemakers — people
+   whose taste you trust. The product should always treat them
+   as taste authorities, not content creators chasing views.
+
+
+── VOCABULARY ──────────────────────────────────────────────────
+
+  Fire         = like/heart equivalent
+  Watch It     = the primary CTA (never "Watch Now")
+  Watchlist    = saved shows (was "Wishlist" — now Watchlist)
+  Curator      = person who posts clips (not "creator/influencer")
+  Clip         = short recommendation video (not "reel/video")
+  Feed         = the vertical clip scroll page
+  Discover     = the search/browse/mood page
+  Fires count  = formatted with fmtFires() e.g. 1.2k not 1200
+
+
+── TECH STACK ──────────────────────────────────────────────────
+
+  Pure HTML + CSS + Vanilla JS — zero frameworks, zero build tools
+  Google Fonts: Bebas Neue (display/headings) + DM Sans (body)
+  No npm, no React, no Tailwind, no bundler
+  Runs directly in browser via VS Code Live Server extension
+  Target: website prototype → handed off to app developers later
+
+
+── DESIGN TOKENS (key values) ──────────────────────────────────
+
+  --bg:    #0B0B0F   (main background)
+  --bg2:   #13131A   (card backgrounds)
+  --bg3:   #1A1A24   (hover states)
+  --bg4:   #22222F   (active states)
+  --red:   #EA3B32   (brand red — fire, accents, active states)
+  --red2:  #FF4D42   (hover red)
+  --white: #FFFFFF
+  --gray:  #A0A0B8   (secondary text)
+  --gray2: #5A5A72   (muted text, icons)
+
+  --sidebar-collapsed: 64px
+  --sidebar-expanded:  220px
+  --mobile-nav-h:      64px
+  --clip-w:            400px (desktop) / 100vw (mobile)
+
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1)
+  --ease-smooth: cubic-bezier(.4, 0, .2, 1)
+
+  Mobile breakpoint: max-width 700px
+
+
+── FILE STRUCTURE ───────────────────────────────────────────────
+
+  showshak/
+  ├── _project-brief.txt          ← this file
+  │
+  ├── showshak-tokens.css         ← ALL design variables + CSS reset
+  ├── showshak-sidebar.css        ← desktop sidebar (collapsed/hover expand)
+  ├── showshak-mobile-nav.css     ← mobile bottom nav bar
+  ├── showshak-components.css     ← toast, Watch It sheet, tags, shared layout
+  ├── showshak-shared.js          ← ALL shared JS: toast, sheet, share,
+  │                                  nav highlight, fmtFires, ssPageFadeIn,
+  │                                  SVG mark injection, scroll helpers
+  │
+  ├── index.html                  ← onboarding/landing page (NOT yet
+  │                                  refactored to use shared files —
+  │                                  still self-contained, different style)
+  ├── showshak-feed.html          ← DONE ✓ vertical clip feed
+  ├── showshak-discover.html      ← DONE ✓ search + mood + platform browse
+  │
+  ├── showshak-watchlist.html     ← NOT YET BUILT
+  └── showshak-profile.html       ← NOT YET BUILT
+
+  Every new page must link in <head>:
+    <link rel="stylesheet" href="showshak-tokens.css">
+    <link rel="stylesheet" href="showshak-sidebar.css">
+    <link rel="stylesheet" href="showshak-mobile-nav.css">
+    <link rel="stylesheet" href="showshak-components.css">
+
+  And before </body>:
+    <script src="showshak-shared.js"></script>
+
+
+── SHARED CSS CLASSES TO REUSE ─────────────────────────────────
+
+  Layout:     .ss-layout (main content area with sidebar offset)
+  Sidebar:    .sidebar, .nav-item, .nav-item-icon, .nav-item-label
+  Mobile nav: .mobile-bottom-nav, .mob-nav-item, .mob-nav-icon
+  Tags:       .tag (genre/language pill — red family)
+  Toast:      #ss-toast (auto-created by shared.js, call ssToast())
+  Sheet:      #watch-sheet, #watch-sheet-overlay (Watch It bottom sheet)
+  Animation:  @keyframes ss-fadeUp (entry animation for page elements)
+
+
+── SHARED JS FUNCTIONS TO REUSE ────────────────────────────────
+
+  ssToast(msg)              show a toast notification
+  ssOpenSheet(show)         open the Watch It bottom sheet
+  ssCloseSheet()            close the Watch It bottom sheet
+  ssHandleWatchNow(p, t)    platform selected callback
+  ssShare(show)             Web Share API or clipboard fallback
+  ssPageFadeIn()            smooth page entry (auto-runs on load)
+  ssScrollToTop(elementId)  smooth scroll to top of element
+  fmtFires(n)               format number: 1240 → "1.2k"
+  showToast(msg)            alias for ssToast
+  scrollFeedToTop()         alias for ssScrollToTop('feed')
+
+
+── FEED PAGE KEY BEHAVIOURS ────────────────────────────────────
+
+  - Vertical snap scroll, one clip per viewport height
+  - IntersectionObserver fires syncRail() + animateRailIn() per clip
+  - Desktop: action rail (Fire, Save, Share, Watch It pill) sits
+    to the right of the clip column, positioned by positionRail()
+  - Watch It pill: breathing glow animation, fire-flash on fire
+  - Mobile: action rail overlaid on clip right side, Watch It
+    button above bottom nav
+  - Double-tap: fire burst animation at tap position + auto-fire
+  - Single tap: pause indicator
+  - SHOWS data needs: id, title, year, genre[], lang, runtime,
+    season, synopsis, caption, creator{name,letter,bg},
+    litCount, platforms[], platLabel, platColor, platRgb, bg
+
+
+── DISCOVER PAGE KEY BEHAVIOURS ────────────────────────────────
+
+  - Search bar with recent search dropdown
+  - Mood pills (8 moods) filter the clip grid
+  - Platform chips filter by streaming service
+  - Featured clips: horizontal scroll row
+  - For You: 2-column grid
+  - Results view replaces default view on search/filter
+  - CLIPS data needs: same as SHOWS + mood[], platAbbr
+
+
+── WHAT MAKES SHOWSHAK DIFFERENT ───────────────────────────────
+
+  NOT Instagram/TikTok: clips are not the destination, they are
+  a window. The show IS the destination. Curators are not
+  influencers — they are taste authorities.
+
+  NOT Netflix: we don't own the content. We send users TO the
+  platform. We are the bridge, not the destination.
+
+  THE GAP WE FILL: human taste + cross-platform + action.
+  "Your most trusted film-obsessed friend, with a platform."
+
+
+── INDEX PAGE NOTE ──────────────────────────────────────────────
+
+  index.html is the onboarding/landing page. It is self-contained
+  (does not use the shared CSS/JS files yet). It has a different
+  visual style — more marketing/landing page aesthetic.
+  It links to showshak-feed.html as the entry point after onboarding.
+  Refactoring it to use shared files is a future task.
+
+
+═══════════════════════════════════════════════════════════════
+  HOW TO USE THIS FILE
+  ───────────────────
+  Start any new AI conversation with:
+  "I'm working on ShowShak. Here is the project brief and the
+  three shared files. We are building [page name]."
+
+  Then paste:
+    1. This file (_project-brief.txt)
+    2. showshak-tokens.css
+    3. showshak-shared.js
+    4. showshak-components.css
+
+  The AI will have full context and can start immediately.
+═══════════════════════════════════════════════════════════════

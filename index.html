@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShowShak — Swipe. Discover. Watch.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+/* ─── RESET & TOKENS ─────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #0B0B0F;
+  --bg2:     #13131A;
+  --bg3:     #1A1A24;
+  --bg4:     #22222F;
+  --red:     #EA3B32;
+  --red2:    #FF4D42;
+  --white:   #FFFFFF;
+  --gray:    #A0A0B8;
+  --gray2:   #5A5A72;
+  --border:  rgba(255,255,255,0.08);
+  --border2: rgba(234,59,50,0.28);
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+}
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ════════════════════════════════════════════
+   ONBOARDING SPLASH SECTION
+   — first thing on the page, full viewport height
+════════════════════════════════════════════ */
+#onboarding-splash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+#onboarding-splash::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -55%);
+  width: 800px; height: 800px;
+  background: radial-gradient(ellipse, rgba(234,59,50,0.12) 0%, transparent 68%);
+  pointer-events: none;
+}
+
+.splash-inner {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 60px 24px 60px;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* logo ring */
+.splash-logo-ring-wrap {
+  position: relative;
+  width: 210px; height: 210px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 44px; flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .splash-logo-ring-wrap { width: 160px; height: 160px; margin-bottom: 32px; }
+}
+.splash-orbit {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  animation: spin 16s linear infinite;
+}
+.splash-orbit::before {
+  content: '';
+  position: absolute; top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 10px var(--red);
+}
+.splash-orbit-2 {
+  position: absolute; inset: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(234,59,50,0.1);
+  animation: spin 10s linear infinite reverse;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.splash-logo-box {
+  width: 138px; height: 138px;
+  background: #000; border-radius: 30px; overflow: hidden;
+  box-shadow: 0 0 60px rgba(234,59,50,0.3), 0 0 100px rgba(234,59,50,0.1);
+}
+@media (max-width: 480px) { .splash-logo-box { width: 104px; height: 104px; border-radius: 22px; } }
+
+/* wordmark */
+.splash-wordmark {
+  font-family: var(--font-display);
+  font-size: clamp(62px, 15vw, 102px);
+  letter-spacing: 3px; line-height: 1; color: var(--white);
+  margin-bottom: 6px;
+}
+.splash-wordmark em { color: var(--red); font-style: normal; }
+.splash-tagline {
+  font-size: clamp(10px, 2.5vw, 12px);
+  letter-spacing: 6px; text-transform: uppercase;
+  color: var(--gray2); margin-bottom: 48px;
+}
+
+/* stat strip */
+.splash-stats {
+  display: flex; gap: 32px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 24px 32px;
+  width: 100%; justify-content: center;
+  margin-bottom: 40px; flex-wrap: wrap;
+}
+@media (max-width: 400px) { .splash-stats { gap: 20px; padding: 18px 16px; } }
+.s-stat-val {
+  font-family: var(--font-display);
+  font-size: 28px; letter-spacing: 1px; color: var(--white); line-height: 1;
+}
+.s-stat-val em { color: var(--red); font-style: normal; }
+.s-stat-lbl { font-size: 11px; color: var(--gray2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+/* CTA button */
+.btn-splash-cta {
+  width: 100%; max-width: 380px;
+  padding: 18px 32px; border-radius: 100px;
+  background: var(--red); color: #fff; border: none;
+  font-family: var(--font-body); font-size: 17px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.btn-splash-cta:hover { background: var(--red2); transform: translateY(-2px); box-shadow: 0 14px 44px rgba(234,59,50,0.45); }
+.btn-splash-cta:active { transform: scale(0.97); }
+.splash-hint { font-size: 12px; color: var(--gray2); margin-top: 14px; }
+
+/* platform dots row */
+.splash-plat-row {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: center;
+  margin-top: 40px; padding-top: 32px;
+  border-top: 1px solid var(--border); width: 100%;
+}
+.s-plat-dot {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--gray);
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 100px; padding: 5px 12px;
+}
+.s-plat-dot span { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+
+/* ════════════════════════════════════════════
+   MAIN WEBSITE — nav + sections
+   (sits directly below the splash)
+════════════════════════════════════════════ */
+
+/* NAV */
+.site-nav {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(11,11,15,0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 66px; padding: 0 32px;
+  max-width: 1200px; margin: 0 auto;
+}
+@media (max-width: 600px) { .nav-inner { padding: 0 20px; } }
+.nav-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.nav-logo-mark { width: 38px; height: 38px; background: #000; border-radius: 10px; overflow: hidden; }
+.nav-wordmark { font-family: var(--font-display); font-size: 24px; letter-spacing: 1px; color: var(--white); line-height: 1; }
+.nav-wordmark em { color: var(--red); font-style: normal; }
+.nav-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(234,59,50,0.1); border: 1px solid var(--border2);
+  border-radius: 100px; padding: 7px 16px;
+  font-size: 12px; font-weight: 600; color: var(--red2);
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.nav-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red2); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.7)} }
+
+/* HERO */
+#site-hero {
+  padding: 90px 32px 80px;
+  max-width: 1200px; margin: 0 auto;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 60px; align-items: center;
+}
+@media (max-width: 900px) { #site-hero { grid-template-columns: 1fr; gap: 48px; padding: 60px 20px; text-align: center; } }
+@media (max-width: 600px) { #site-hero { padding: 48px 20px; } }
+
+.hero-title { font-family: var(--font-display); font-size: clamp(52px, 7vw, 90px); line-height: 0.95; letter-spacing: 2px; color: var(--white); margin-bottom: 6px; }
+.hero-title em { color: var(--red); font-style: normal; }
+.hero-tagline { font-family: var(--font-display); font-size: clamp(14px, 2vw, 22px); color: var(--gray2); letter-spacing: 5px; text-transform: uppercase; margin-bottom: 24px; }
+.hero-desc { font-size: 16px; color: var(--gray); line-height: 1.75; margin-bottom: 36px; max-width: 500px; }
+@media (max-width: 900px) { .hero-desc { max-width: 100%; } }
+
+.hero-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+@media (max-width: 900px) { .hero-actions { justify-content: center; } }
+.btn-primary {
+  background: var(--red); color: #fff; border: none;
+  padding: 15px 30px; border-radius: 100px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.btn-primary:hover { background: var(--red2); transform: translateY(-2px); box-shadow: 0 10px 32px rgba(234,59,50,0.4); }
+.btn-ghost {
+  background: transparent; color: var(--gray);
+  border: 1.5px solid var(--border); padding: 14px 26px;
+  border-radius: 100px; font-family: var(--font-body);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--gray2); color: var(--white); }
+
+.hero-stats { display: flex; gap: 32px; padding-top: 32px; border-top: 1px solid var(--border); flex-wrap: wrap; margin-top: 36px; }
+@media (max-width: 900px) { .hero-stats { justify-content: center; } }
+.stat-v { font-family: var(--font-display); font-size: 28px; letter-spacing: 1px; color: var(--white); line-height: 1; }
+.stat-v em { color: var(--red); font-style: normal; }
+.stat-l { font-size: 11px; color: var(--gray2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+.hero-visual { display: flex; align-items: center; justify-content: center; position: relative; }
+@media (max-width: 900px) { .hero-visual { order: -1; } }
+.hero-logo-ring { position: relative; width: 300px; height: 300px; display: flex; align-items: center; justify-content: center; }
+@media (max-width: 500px) { .hero-logo-ring { width: 220px; height: 220px; } }
+.h-orbit { position: absolute; inset: 0; border-radius: 50%; border: 1px solid var(--border2); animation: spin 18s linear infinite; }
+.h-orbit::before { content:''; position:absolute; top:-3px; left:50%; transform:translateX(-50%); width:6px; height:6px; border-radius:50%; background:var(--red); }
+.h-orbit-2 { position: absolute; inset: 22px; border-radius: 50%; border: 1px solid rgba(234,59,50,0.1); animation: spin 11s linear infinite reverse; }
+.h-glow { position:absolute; inset:40px; border-radius:50%; background:radial-gradient(ellipse, rgba(234,59,50,0.15) 0%, transparent 70%); }
+.hero-logo-box { width: 180px; height: 180px; background: #000; border-radius: 32px; overflow: hidden; box-shadow: 0 0 60px rgba(234,59,50,0.3), 0 0 120px rgba(234,59,50,0.1); }
+@media (max-width: 500px) { .hero-logo-box { width: 130px; height: 130px; border-radius: 24px; } }
+.hero-plat-pills { position: absolute; inset: -10px; }
+.hero-ppill { position: absolute; background: var(--bg3); border: 1px solid var(--border); border-radius: 100px; padding: 6px 12px; font-size: 11px; font-weight: 600; color: var(--white); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.hero-ppill-dot { width: 7px; height: 7px; border-radius: 50%; }
+.hero-ppill:nth-child(1) { top: 12%; left: -24px; }
+.hero-ppill:nth-child(2) { top: 32%; right: -28px; }
+.hero-ppill:nth-child(3) { bottom: 28%; left: -32px; }
+.hero-ppill:nth-child(4) { bottom: 12%; right: -24px; }
+@media (max-width: 600px) { .hero-ppill { display: none; } }
+
+/* SECTIONS */
+.site-section { padding: 100px 0; }
+@media (max-width: 768px) { .site-section { padding: 64px 0; } }
+.section-wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+@media (max-width: 600px) { .section-wrap { padding: 0 20px; } }
+.section-eyebrow { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: var(--red); font-weight: 700; margin-bottom: 12px; }
+.section-title { font-family: var(--font-display); font-size: clamp(32px, 4vw, 54px); letter-spacing: 1.5px; color: var(--white); margin-bottom: 14px; line-height: 1.05; }
+.section-title em { color: var(--red); font-style: normal; }
+.section-desc { font-size: 16px; color: var(--gray); line-height: 1.75; max-width: 560px; }
+
+/* FEATURES */
+.features-bg { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.features-header { text-align: center; margin-bottom: 56px; }
+.features-header .section-desc { margin: 0 auto; }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 900px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+.feat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 30px 26px; transition: border-color 0.2s, transform 0.2s; }
+.feat-card:hover { border-color: var(--border2); transform: translateY(-4px); }
+.feat-icon { width: 50px; height: 50px; border-radius: 12px; background: rgba(234,59,50,0.1); display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 18px; }
+.feat-title { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.5px; color: var(--white); margin-bottom: 10px; }
+.feat-desc { font-size: 14px; color: var(--gray); line-height: 1.7; }
+
+/* PLATFORMS ROW */
+.plats-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 44px; }
+.plat-badge { display: flex; align-items: center; gap: 9px; background: var(--bg3); border: 1px solid var(--border); border-radius: 100px; padding: 9px 16px; font-size: 13px; font-weight: 600; color: var(--white); transition: border-color 0.15s; }
+.plat-badge:hover { border-color: var(--border2); }
+.plat-badge-logo { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; }
+
+/* CTA SECTION */
+.cta-section { text-align: center; padding: 120px 32px; position: relative; overflow: hidden; }
+.cta-section::before { content:''; position: absolute; bottom: -40%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(ellipse, rgba(234,59,50,0.1) 0%, transparent 65%); pointer-events: none; }
+.cta-title { font-family: var(--font-display); font-size: clamp(38px, 6vw, 76px); letter-spacing: 2px; color: var(--white); line-height: 1; margin-bottom: 18px; }
+.cta-title em { color: var(--red); font-style: normal; }
+.cta-sub { font-size: 17px; color: var(--gray); margin-bottom: 40px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+.btn-cta { display: inline-flex; align-items: center; gap: 10px; background: var(--red); color: #fff; border: none; padding: 18px 42px; border-radius: 100px; font-family: var(--font-body); font-size: 17px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+.btn-cta:hover { background: var(--red2); transform: translateY(-2px); box-shadow: 0 14px 44px rgba(234,59,50,0.45); }
+
+/* FOOTER */
+.site-footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 36px 32px; }
+@media (max-width: 600px) { .site-footer { padding: 28px 20px; } }
+.footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; max-width: 1200px; margin: 0 auto; }
+.footer-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.footer-logo-mark { width: 28px; height: 28px; background: #000; border-radius: 8px; overflow: hidden; }
+.footer-wm { font-family: var(--font-display); font-size: 18px; letter-spacing: 1px; color: var(--white); }
+.footer-wm em { color: var(--red); font-style: normal; }
+.footer-tag { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--gray2); }
+.footer-copy { font-size: 12px; color: var(--gray2); text-align: right; }
+@media (max-width: 600px) { .footer-inner { flex-direction: column; text-align: center; } .footer-copy { text-align: center; } }
+
+/* ════════════════════════════════════════════
+   ONBOARDING OVERLAY
+   — slides in over everything when Get Started is clicked
+   — 3 steps: genres / platforms / sign in
+════════════════════════════════════════════ */
+#ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* hidden by default */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: opacity 0.5s cubic-bezier(.4,0,.2,1),
+              transform 0.5s cubic-bezier(.4,0,.2,1);
+}
+#ob-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateY(0);
+}
+
+/* ambient glow inside overlay */
+#ob-overlay::before {
+  content: '';
+  position: absolute;
+  top: -20%; left: 50%;
+  transform: translateX(-50%);
+  width: 700px; height: 700px;
+  background: radial-gradient(ellipse, rgba(234,59,50,0.1) 0%, transparent 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── top bar inside overlay ── */
+.ob-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22px 36px 0;
+  flex-shrink: 0; position: relative; z-index: 1;
+}
+@media (max-width: 600px) { .ob-topbar { padding: 18px 20px 0; } }
+
+.ob-logo-wrap { display: flex; align-items: center; gap: 10px; }
+.ob-logo-mark { width: 34px; height: 34px; background: #000; border-radius: 9px; overflow: hidden; flex-shrink: 0; }
+.ob-wordmark { font-family: var(--font-display); font-size: 22px; letter-spacing: 1px; color: var(--white); line-height: 1; }
+.ob-wordmark em { color: var(--red); font-style: normal; }
+
+.ob-close-btn {
+  background: transparent;
+  border: 1.5px solid var(--border);
+  color: var(--gray); border-radius: 100px;
+  padding: 7px 16px; font-family: var(--font-body);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ob-close-btn:hover { border-color: var(--gray2); color: var(--white); }
+
+/* ── progress bar ── */
+.ob-progress {
+  padding: 24px 36px 0;
+  flex-shrink: 0; position: relative; z-index: 1;
+}
+@media (max-width: 600px) { .ob-progress { padding: 20px 20px 0; } }
+
+.ob-steps-row {
+  display: flex; align-items: center;
+}
+.ob-step-node {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; font-weight: 600; color: var(--gray2);
+  white-space: nowrap; transition: color 0.3s;
+}
+.ob-step-node.active { color: var(--white); }
+.ob-step-node.done   { color: var(--red); }
+.ob-step-num {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1.5px solid var(--border); background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--gray2);
+  flex-shrink: 0; transition: all 0.3s;
+}
+.ob-step-node.active .ob-step-num {
+  background: var(--red); border-color: var(--red); color: #fff;
+  box-shadow: 0 0 20px rgba(234,59,50,0.5);
+}
+.ob-step-node.done .ob-step-num {
+  background: rgba(234,59,50,0.15); border-color: var(--border2); color: var(--red);
+}
+.ob-connector {
+  flex: 1; height: 2px; background: var(--border);
+  margin: 0 12px; border-radius: 2px; overflow: hidden;
+}
+.ob-connector-fill {
+  height: 100%; background: var(--red);
+  width: 0%; transition: width 0.55s ease; border-radius: 2px;
+}
+.ob-step-label { }
+@media (max-width: 420px) { .ob-step-label { display: none; } .ob-connector { margin: 0 8px; } }
+
+/* ── step panels ── */
+.ob-panels {
+  flex: 1; overflow: hidden; position: relative; z-index: 1;
+}
+
+/* each panel */
+.ob-panel {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transform: translateX(32px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 36px 36px 0;
+}
+.ob-panel::-webkit-scrollbar { display: none; }
+@media (max-width: 600px) { .ob-panel { padding: 28px 20px 0; } }
+
+.ob-panel.active {
+  opacity: 1; pointer-events: all; transform: translateX(0);
+}
+.ob-panel.exit {
+  opacity: 0; pointer-events: none; transform: translateX(-32px);
+}
+
+.ob-panel-inner { max-width: 860px; margin: 0 auto; width: 100%; }
+
+.ob-step-eyebrow {
+  font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--red); font-weight: 700; margin-bottom: 10px;
+}
+.ob-heading {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 48px);
+  letter-spacing: 1.5px; color: var(--white); line-height: 1.05;
+  margin-bottom: 8px;
+}
+.ob-heading em { color: var(--red); font-style: normal; }
+.ob-sub { font-size: 15px; color: var(--gray); margin-bottom: 32px; line-height: 1.65; }
+
+/* ── genre pills ── */
+.genre-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+.genre-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 100px;
+  border: 1.5px solid var(--border); background: var(--bg2);
+  color: var(--gray); font-family: var(--font-body);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.genre-pill:hover { border-color: var(--border2); color: var(--white); background: var(--bg3); }
+.genre-pill.on { background: var(--red); border-color: var(--red); color: #fff; box-shadow: 0 4px 18px rgba(234,59,50,0.3); }
+.genre-pill:active { transform: scale(0.94); }
+
+/* ── platform grid ── */
+.ob-plat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+@media (max-width: 820px) { .ob-plat-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px)  { .ob-plat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+
+.ob-plat-card {
+  border: 1.5px solid var(--border); border-radius: 18px;
+  background: var(--bg2); padding: 22px 12px 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer; position: relative;
+  transition: all 0.15s; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.ob-plat-card:hover { border-color: var(--border2); background: var(--bg3); }
+.ob-plat-card.on { border-color: var(--red); background: rgba(234,59,50,0.07); box-shadow: 0 0 24px rgba(234,59,50,0.12); }
+.ob-plat-card:active { transform: scale(0.95); }
+.ob-plat-logo { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; font-family: var(--font-body); flex-shrink: 0; }
+.ob-plat-name { font-size: 12px; font-weight: 600; color: var(--white); text-align: center; line-height: 1.3; }
+.ob-plat-check {
+  position: absolute; top: 9px; right: 9px;
+  width: 22px; height: 22px; border-radius: 50%; background: var(--red);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: scale(0.3);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(.34,1.56,.64,1);
+}
+.ob-plat-card.on .ob-plat-check { opacity: 1; transform: scale(1); }
+
+/* ── sign in ── */
+.signin-center {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 70%;
+}
+.signin-box { max-width: 460px; width: 100%; text-align: center; }
+.signin-logo-mark { width: 76px; height: 76px; background: #000; border-radius: 20px; overflow: hidden; margin: 0 auto 22px; box-shadow: 0 0 32px rgba(234,59,50,0.2); }
+.signin-title { font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); letter-spacing: 1.5px; color: var(--white); margin-bottom: 10px; line-height: 1.1; }
+.signin-title em { color: var(--red); font-style: normal; }
+.signin-sub { font-size: 14px; color: var(--gray); margin-bottom: 32px; line-height: 1.7; }
+
+.auth-stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+.auth-btn {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: 100%; padding: 15px 20px; border-radius: 16px;
+  border: 1.5px solid var(--border); background: var(--bg2);
+  color: var(--white); font-family: var(--font-body);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.auth-btn:hover { background: var(--bg3); border-color: rgba(255,255,255,0.15); }
+.auth-btn:active { transform: scale(0.98); }
+.auth-btn.plain { background: transparent; color: var(--gray); border-color: var(--border); font-size: 14px; font-weight: 500; }
+.or-row { display: flex; align-items: center; gap: 12px; color: var(--gray2); font-size: 12px; margin: 4px 0; }
+.or-line { flex: 1; height: 1px; background: var(--border); }
+.signin-legal { font-size: 11.5px; color: var(--gray2); line-height: 1.7; margin-top: 18px; }
+.signin-legal strong { color: var(--gray); }
+
+/* ── footer action bar ── */
+.ob-foot {
+  flex-shrink: 0; position: relative; z-index: 1;
+  padding: 16px 36px 32px;
+}
+@media (max-width: 600px) { .ob-foot { padding: 14px 20px 24px; } }
+
+.ob-foot-inner { max-width: 860px; margin: 0 auto; }
+.ob-feedback { font-size: 13px; color: var(--gray2); min-height: 18px; margin-bottom: 12px; text-align: center; transition: all 0.2s; }
+.ob-feedback em { color: var(--red); font-style: normal; font-weight: 700; }
+.ob-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+.btn-ob-back {
+  display: flex; align-items: center; gap: 8px;
+  background: transparent; border: 1.5px solid var(--border);
+  color: var(--gray); padding: 12px 22px; border-radius: 100px;
+  font-family: var(--font-body); font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.btn-ob-back:hover { border-color: var(--gray2); color: var(--white); }
+
+.btn-ob-next {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--red); border: none; color: #fff;
+  padding: 13px 28px; border-radius: 100px;
+  font-family: var(--font-body); font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; margin-left: auto;
+}
+.btn-ob-next:hover { background: var(--red2); transform: translateY(-1px); box-shadow: 0 10px 32px rgba(234,59,50,0.4); }
+.btn-ob-next:disabled { background: var(--bg4); color: var(--gray2); cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-ob-next:active:not(:disabled) { transform: scale(0.97); }
+
+/* ════════════════════════════════════════════
+   SUCCESS OVERLAY
+════════════════════════════════════════════ */
+#success-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  opacity: 0; pointer-events: none;
+  transform: scale(0.96);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+#success-overlay::before {
+  content: '';
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-55%);
+  width: 700px; height: 700px;
+  background: radial-gradient(ellipse, rgba(234,59,50,0.12) 0%, transparent 68%);
+  pointer-events: none;
+}
+#success-overlay.open { opacity: 1; pointer-events: all; transform: scale(1); }
+
+.success-inner {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 40px 24px; max-width: 520px; margin: 0 auto;
+}
+.success-icon {
+  width: 90px; height: 90px; border-radius: 50%;
+  background: rgba(234,59,50,0.12); border: 2px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; font-size: 40px;
+  margin-bottom: 28px;
+  animation: popIn 0.55s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes popIn { from{transform:scale(0.3);opacity:0} to{transform:scale(1);opacity:1} }
+.success-title { font-family: var(--font-display); font-size: clamp(42px, 8vw, 70px); letter-spacing: 2px; color: var(--white); margin-bottom: 14px; line-height: 1; }
+.success-title em { color: var(--red); font-style: normal; }
+.success-sub { font-size: 16px; color: var(--gray); line-height: 1.75; margin-bottom: 40px; }
+.btn-explore {
+  background: var(--red); color: #fff; border: none;
+  padding: 17px 40px; border-radius: 100px;
+  font-family: var(--font-body); font-size: 16px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; transition: all 0.15s;
+}
+.btn-explore:hover { background: var(--red2); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(234,59,50,0.4); }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+  SHARED SVG LOGO SYMBOL
+══════════════════════════════════════════════ -->
+<svg style="display:none">
+  <symbol id="ss-mark" viewBox="0 0 1254 1254">
+    <rect width="1254" height="1254" fill="#000"/>
+    <path fill="#EA3B32" d="M402,551C559,551 715,551 872,551C876,551 880,552 883,554C908,568 931,585 952,605C964,618 975,631 986,647L442,647C438,647 433,646 430,644C391,627 357,605 328,573C322,567 317,559 310,551Z"/>
+    <path fill="#EA3B32" d="M525,1089C492,1085 462,1075 432,1065C403,1055 375,1043 349,1029C345,1027 343,1027 340,1030C327,1043 314,1057 301,1070C300,1071 298,1073 296,1073C279,1073 261,1073 244,1073C243,1073 242,1072 241,1072L241,994C243,994 245,994 247,994C325,994 403,994 482,994C484,994 487,995 489,996C521,1016 557,1027 595,1030C630,1033 665,1030 700,1019C715,1013 730,1006 744,996C745,995 748,994 750,994C812,994 874,994 936,994C937,994 937,994 939,994C934,999 929,1003 924,1007C891,1034 854,1055 813,1070C793,1077 772,1082 752,1088C747,1089 742,1089 738,1089C668,1089 598,1089 528,1089Z"/>
+    <path fill="#EA3B32" d="M864,158C868,162 871,161 874,157C885,146 897,134 908,123C909,122 911,121 912,121C931,121 950,121 970,121L970,204C968,204 967,204 965,204C898,204 831,204 765,204C762,204 760,203 758,201C703,162 643,155 579,171C558,177 540,187 523,201C521,203 519,204 517,204C455,204 395,204 335,204C333,204 333,204 332,204C334,201 335,200 337,198C367,167 404,144 445,128C466,120 488,114 510,108C516,106 522,106 528,106C588,106 649,106 710,107C722,107 734,111 746,114C787,124 826,139 864,158Z"/>
+    <path fill="#111" d="M661,471C695,482 729,493 763,505C789,514 814,524 844,537L310,537C297,532 263,447 285,440C372,440 562,440 601,450Z"/>
+    <path fill="#111" d="M845,660L988,660C996,665 1023,749 1015,758L748,758C720,751 476,660 476,660Z"/>
+    <path fill="#EA3B32" d="M388,426C302,426 258,363 268,329C313,329 470,329 475,333C480,362 517,404 544,423Z"/>
+    <path fill="#EA3B32" d="M805,868L1025,773C1027,805 1015,868 812,867Z"/>
+    <path fill="#111" d="M799,980L764,980C771,970 803,895 816,883C864,883 1004,882 1008,889C996,921 957,976 946,980Z"/>
+    <path fill="#111" d="M466,315L272,315C268,309 290,259 313,224C325,218 497,218 493,234C472,282 473,308 466,315Z"/>
+    <path fill="#111" d="M238,912L238,888C244,882 318,882 363,882C375,888 424,945 457,975C462,980 387,980 239,974Z"/>
+    <path fill="#111" d="M924,218C938,218 970,225 970,305C960,315 861,315 850,309C820,261 780,221 780,218Z"/>
+    <path fill="#EA3B32" d="M281,772C305,772 311,775 361,868L237,868C237,836 235,772 235,772Z"/>
+    <path fill="#EA3B32" d="M917,329L970,329L970,426L904,423C877,361 862,329 862,329Z"/>
+  </symbol>
+</svg>
+
+
+<!-- ══════════════════════════════════════════════
+  ① ONBOARDING SPLASH — FIRST THING ON THE PAGE
+══════════════════════════════════════════════ -->
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="#">
+      <div class="nav-logo-mark">
+        <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+      </div>
+      <span class="nav-wordmark">show<em>shak</em></span>
+    </a>
+    <div class="nav-pill">
+      <span class="nav-pill-dot"></span>
+      In Development
+    </div>
+  </div>
+</nav>
+
+<section id="onboarding-splash">
+  <div class="splash-inner">
+
+    <div class="splash-logo-ring-wrap">
+      <div class="splash-orbit"></div>
+      <div class="splash-orbit-2"></div>
+      <div class="splash-logo-box">
+        <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+      </div>
+    </div>
+
+    <div class="splash-wordmark">SHOW<em>SHAK</em></div>
+    <div class="splash-tagline">Swipe &nbsp;·&nbsp; Discover &nbsp;·&nbsp; Watch</div>
+
+    <div class="splash-stats">
+      <div>
+        <div class="s-stat-val"><em>14</em> min</div>
+        <div class="s-stat-lbl">Avg. Decision</div>
+      </div>
+      <div>
+        <div class="s-stat-val"><em>19</em>%</div>
+        <div class="s-stat-lbl">Abandon Sessions</div>
+      </div>
+      <div>
+        <div class="s-stat-val"><em>11</em>+</div>
+        <div class="s-stat-lbl">Platforms</div>
+      </div>
+    </div>
+
+    <button class="btn-splash-cta" onclick="openOnboarding()">
+      Get Started
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+    <div class="splash-hint">Takes less than 90 seconds · Free forever</div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+  ② MAIN WEBSITE — nav sticks on scroll past splash
+══════════════════════════════════════════════ -->
+
+<!-- HERO -->
+<div style="background:var(--bg)">
+  <div id="site-hero">
+    <div>
+      <p class="hero-desc">The neutral, cross-platform discovery layer above every streaming service. One swipe to go from not knowing what to watch, to watching it.</p>
+      <div class="hero-actions">
+        <a class="btn-ghost" href="#features">Learn More</a>
+      </div>
+      
+  
+  </div>
+</div>
+
+<!-- FEATURES -->
+<div id="features" class="site-section features-bg">
+  <div class="section-wrap">
+    <div class="features-header">
+      <div class="section-eyebrow">Why ShowShak</div>
+      <h2 class="section-title">Everything in <em>One Place</em></h2>
+      <p class="section-desc">Stop scrolling through thumbnails. Start feeling your next watch.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feat-card"><div class="feat-icon">⚡</div><div class="feat-title">INSTANT DISCOVERY</div><p class="feat-desc">30–90 second hook clips that make you feel something. Find your next show in under a minute instead of 14.</p></div>
+      <div class="feat-card"><div class="feat-icon">🎯</div><div class="feat-title">WATCH NOW</div><p class="feat-desc">One tap and you land inside the streaming platform where that content lives. Deep links to Netflix, Prime, Disney+ and more.</p></div>
+      <div class="feat-card"><div class="feat-icon">🔀</div><div class="feat-title">ALL PLATFORMS</div><p class="feat-desc">Truly neutral. The one cross-platform discovery layer that Netflix, Disney+ and Prime Video structurally cannot build.</p></div>
+      <div class="feat-card"><div class="feat-icon">📂</div><div class="feat-title">WISHLIST</div><p class="feat-desc">Save clips to named folders synced across all your devices. Watch Tonight, Bingeworthy, Weekend Films — your way.</p></div>
+      <div class="feat-card"><div class="feat-icon">🔍</div><div class="feat-title">MOOD SEARCH</div><p class="feat-desc">Search by "Edge of my seat", "Want to cry", "Feel good" — content clusters built around how you actually feel.</p></div>
+      <div class="feat-card"><div class="feat-icon">🎬</div><div class="feat-title">CREATOR ECONOMY</div><p class="feat-desc">The world's first monetisation path for show and movie clip creators. Earn from every Watch Now tap you drive.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- PLATFORMS -->
+<div class="site-section" style="background:var(--bg)">
+  <div class="section-wrap" style="text-align:center">
+    <div class="section-eyebrow">Platform Coverage</div>
+    <h2 class="section-title">Every Platform. <em>One Feed.</em></h2>
+    <p class="section-desc" style="margin:0 auto;">Your favourite shows live across 11+ platforms. ShowShak brings them all into one discovery experience.</p>
+    <div class="plats-row">
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#E50914;color:#fff">N</div>Netflix</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#00A8E0;color:#fff">P</div>Prime Video</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#0E3BD4;color:#fff">D+</div>Disney+</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#FF6A00;color:#fff">JH</div>JioHotstar</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#111;color:#fff">▶</div>Apple TV+</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#eee;color:#002868;font-size:8px">SONY</div>SonyLIV</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#5C2D91;color:#fff;font-size:8px">HBO</div>HBO Max</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#1A1A1A;color:#fff">🦚</div>Peacock</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#6B1DF5;color:#fff;font-size:8px">Z5</div>Zee5</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#0B0B0B;color:#fff;font-size:8px">MUBI</div>Mubi</div>
+      <div class="plat-badge"><div class="plat-badge-logo" style="background:#064480;color:#fff;font-size:8px">P+</div>Paramount+</div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<div style="background:var(--bg2);border-top:1px solid var(--border)">
+  <div class="cta-section">
+    <div class="cta-title">STOP DECIDING.<br><em>START WATCHING.</em></div>
+    <p class="cta-sub">14 minutes per session wasted deciding what to watch. That ends now.</p>
+    <button class="btn-cta" onclick="openOnboarding()">
+      Set Up My Feed
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="footer-logo" href="#">
+      <div class="footer-logo-mark">
+        <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+      </div>
+      <span class="footer-wm">show<em>shak</em></span>
+    </a>
+    <div class="footer-tag">Swipe · Discover · Watch</div>
+    <div class="footer-copy">© 2026 ShowShak. All rights reserved.</div>
+  </div>
+</footer>
+
+
+<!-- ══════════════════════════════════════════════
+  ONBOARDING OVERLAY — 3 steps slide in on top
+══════════════════════════════════════════════ -->
+<div id="ob-overlay">
+
+  <!-- Top bar -->
+  <div class="ob-topbar">
+    <div class="ob-logo-wrap">
+      <div class="ob-logo-mark">
+        <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+      </div>
+      <span class="ob-wordmark">show<em>shak</em></span>
+    </div>
+    <button class="ob-close-btn" onclick="closeOnboarding()">✕ &nbsp;Close</button>
+  </div>
+
+  <!-- Step progress -->
+  <div class="ob-progress">
+    <div class="ob-steps-row">
+      <div class="ob-step-node active" id="ob-node-1">
+        <div class="ob-step-num" id="ob-num-1">1</div>
+        <span class="ob-step-label">Genres</span>
+      </div>
+      <div class="ob-connector"><div class="ob-connector-fill" id="ob-conn-1"></div></div>
+      <div class="ob-step-node" id="ob-node-2">
+        <div class="ob-step-num" id="ob-num-2">2</div>
+        <span class="ob-step-label">Platforms</span>
+      </div>
+      <div class="ob-connector"><div class="ob-connector-fill" id="ob-conn-2"></div></div>
+      <div class="ob-step-node" id="ob-node-3">
+        <div class="ob-step-num" id="ob-num-3">3</div>
+        <span class="ob-step-label">Sign In</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panels container -->
+  <div class="ob-panels">
+
+    <!-- STEP 1 — GENRES -->
+    <div class="ob-panel active" id="ob-panel-1">
+      <div class="ob-panel-inner">
+        <div class="ob-step-eyebrow">Step 1 of 3</div>
+        <div class="ob-heading">What do you love <em>watching?</em></div>
+        <div class="ob-sub">Pick at least 2 genres — we'll use these to build your personal feed from day one.</div>
+        <div class="genre-wrap" id="genre-grid"></div>
+      </div>
+    </div>
+
+    <!-- STEP 2 — PLATFORMS -->
+    <div class="ob-panel" id="ob-panel-2">
+      <div class="ob-panel-inner">
+        <div class="ob-step-eyebrow">Step 2 of 3</div>
+        <div class="ob-heading">Which platforms <em>are you on?</em></div>
+        <div class="ob-sub">Select the streaming services you subscribe to — their content gets priority in your feed. You can skip this.</div>
+        <div class="ob-plat-grid" id="plat-grid-ob"></div>
+      </div>
+    </div>
+
+    <!-- STEP 3 — SIGN IN -->
+    <div class="ob-panel" id="ob-panel-3">
+      <div class="ob-panel-inner">
+        <div class="signin-center">
+          <div class="signin-box">
+            <div class="signin-logo-mark">
+              <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+            </div>
+            <div class="signin-title">ALMOST <em>THERE.</em></div>
+            <p class="signin-sub">Your genre picks and platform preferences are saved to your account — across every device, forever.</p>
+
+            <div class="auth-stack" id="auth-stack">
+              <button class="auth-btn" onclick="handleAuth(this,'Google')">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+              </button>
+              <button class="auth-btn" onclick="handleAuth(this,'Apple')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                Continue with Apple
+              </button>
+              <div class="or-row"><div class="or-line"></div><span>or</span><div class="or-line"></div></div>
+              <button class="auth-btn plain" onclick="handleAuth(this,'Email')">Continue with Email</button>
+            </div>
+
+            <p class="signin-legal">By continuing you agree to our Terms &amp; Privacy Policy.<br><strong>We never share your data. Ever.</strong></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /ob-panels -->
+
+  <!-- Footer action bar -->
+  <div class="ob-foot">
+    <div class="ob-foot-inner">
+      <div class="ob-feedback" id="ob-feedback">Select at least <em>2</em> genres to continue</div>
+      <div class="ob-foot-row">
+        <button class="btn-ob-back" id="ob-back-btn" onclick="obBack()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back
+        </button>
+        <button class="btn-ob-next" id="ob-next-btn" disabled onclick="obNext()">
+          Continue to Platforms
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /ob-overlay -->
+
+
+<!-- ══════════════════════════════════════════════
+  SUCCESS OVERLAY
+══════════════════════════════════════════════ -->
+<div id="success-overlay">
+  <div class="success-inner">
+    <div class="success-icon">🎬</div>
+    <div class="success-title">YOU'RE <em>IN!</em></div>
+    <p class="success-sub">Your personalised ShowShak feed is being built.<br>We'll notify you the moment the app launches.</p>
+    <button class="btn-explore" onclick="closeSuccess()">
+      Explore ShowShak
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
+
+
+<script>
+/* ── DATA ─────────────────────────────────────── */
+const GENRES = [
+  ['😰','Thriller'],['😂','Comedy'],['🎭','Drama'],['👻','Horror'],
+  ['💥','Action'],['❤️','Romance'],['🚀','Sci-Fi'],['⛩️','Anime'],
+  ['🌸','K-Drama'],['🎬','Bollywood'],['🔍','Crime'],['🔮','Fantasy'],
+  ['📺','Reality TV'],['🦸','Superhero'],['🕵️','True Crime'],
+  ['🎥','Documentary'],['⚽','Sports'],['📜','History'],
+];
+const PLATFORMS = [
+  {n:'Netflix',     bg:'#E50914', t:'#fff',    a:'N'},
+  {n:'Prime Video', bg:'#00A8E0', t:'#fff',    a:'P'},
+  {n:'Disney+',     bg:'#0E3BD4', t:'#fff',    a:'D+'},
+  {n:'JioHotstar',  bg:'#FF6A00', t:'#fff',    a:'JH'},
+  {n:'Apple TV+',   bg:'#111111', t:'#fff',    a:'▶'},
+  {n:'SonyLIV',     bg:'#EEEEEE', t:'#002868', a:'S'},
+  {n:'HBO Max',     bg:'#5C2D91', t:'#fff',    a:'HBO'},
+  {n:'Peacock',     bg:'#1A1A1A', t:'#fff',    a:'🦚'},
+  {n:'Zee5',        bg:'#6B1DF5', t:'#fff',    a:'Z5'},
+  {n:'Mubi',        bg:'#0B0B0B', t:'#fff',    a:'M'},
+  {n:'Paramount+',  bg:'#064480', t:'#fff',    a:'P+'},
+];
+
+const selG = new Set();
+const selP = new Set();
+let curStep = 1;
+
+/* ── OVERLAY OPEN / CLOSE ─────────────────────── */
+function openOnboarding() {
+  document.getElementById('ob-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  // always land on step 1
+  showStep(1);
+}
+function closeOnboarding() {
+  document.getElementById('ob-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+/* ── STEP NAVIGATION ─────────────────────────── */
+function showStep(n) {
+  curStep = n;
+
+  // panels
+  [1,2,3].forEach(i => {
+    const p = document.getElementById(`ob-panel-${i}`);
+    p.classList.remove('active','exit');
+    if (i === n) {
+      p.classList.add('active');
+      p.scrollTop = 0;
+    }
+  });
+
+  // progress nodes
+  [1,2,3].forEach(i => {
+    const node = document.getElementById(`ob-node-${i}`);
+    const num  = document.getElementById(`ob-num-${i}`);
+    node.classList.remove('active','done');
+    if (i === n) {
+      node.classList.add('active');
+      num.textContent = i;
+    } else if (i < n) {
+      node.classList.add('done');
+      num.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 6,11 13,5"/></svg>`;
+    } else {
+      num.textContent = i;
+    }
+  });
+
+  // connectors
+  document.getElementById('ob-conn-1').style.width = n > 1 ? '100%' : '0%';
+  document.getElementById('ob-conn-2').style.width = n > 2 ? '100%' : '0%';
+
+  // back button visibility
+  document.getElementById('ob-back-btn').style.visibility = n === 1 ? 'hidden' : 'visible';
+
+  // next button label + state
+  const nx = document.getElementById('ob-next-btn');
+  const fb = document.getElementById('ob-feedback');
+  if (n === 1) {
+    nx.innerHTML = `Continue to Platforms <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+    nx.disabled = selG.size < 2;
+    updateGenreFB();
+  } else if (n === 2) {
+    nx.innerHTML = `Continue to Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+    nx.disabled = false;
+    const np = selP.size;
+    fb.innerHTML = np ? `<em>${np}</em> platform${np>1?'s':''} selected` : 'Optional — select the platforms you subscribe to';
+  } else if (n === 3) {
+    // hide footer on sign in step — auth buttons handle everything
+    nx.style.display = 'none';
+    fb.innerHTML = '&nbsp;';
+  }
+  if (n !== 3) nx.style.display = '';
+}
+
+function obNext() {
+  if (curStep < 3) showStep(curStep + 1);
+}
+function obBack() {
+  if (curStep > 1) showStep(curStep - 1);
+}
+
+/* ── GENRE PILLS ─────────────────────────────── */
+function buildGenres() {
+  const wrap = document.getElementById('genre-grid');
+  GENRES.forEach(([e, l], i) => {
+    const btn = document.createElement('button');
+    btn.className = 'genre-pill';
+    btn.innerHTML = `<span>${e}</span>${l}`;
+    btn.addEventListener('click', () => {
+      selG.has(i) ? selG.delete(i) : selG.add(i);
+      btn.classList.toggle('on', selG.has(i));
+      updateGenreFB();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function updateGenreFB() {
+  const n  = selG.size;
+  const fb = document.getElementById('ob-feedback');
+  const nx = document.getElementById('ob-next-btn');
+  if (n === 0)      fb.innerHTML = `Select at least <em>2</em> genres to continue`;
+  else if (n === 1) fb.innerHTML = `Select <em>1 more</em> genre to continue`;
+  else              fb.innerHTML = `<em>${n}</em> genre${n>1?'s':''} selected ✓`;
+  if (curStep === 1) nx.disabled = n < 2;
+}
+
+/* ── PLATFORM GRID ───────────────────────────── */
+function buildPlatforms() {
+  const g = document.getElementById('plat-grid-ob');
+  PLATFORMS.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className = 'ob-plat-card';
+    card.innerHTML = `
+      <div class="ob-plat-check">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>
+      </div>
+      <div class="ob-plat-logo" style="background:${p.bg};color:${p.t}">${p.a}</div>
+      <div class="ob-plat-name">${p.n}</div>`;
+    card.addEventListener('click', () => {
+      selP.has(i) ? selP.delete(i) : selP.add(i);
+      card.classList.toggle('on', selP.has(i));
+      if (curStep === 2) {
+        const n = selP.size;
+        document.getElementById('ob-feedback').innerHTML =
+          n ? `<em>${n}</em> platform${n>1?'s':''} selected` : 'Optional — select the platforms you subscribe to';
+      }
+    });
+    g.appendChild(card);
+  });
+}
+
+/* ── AUTH ────────────────────────────────────── */
+function handleAuth(el, method) {
+  document.querySelectorAll('#auth-stack .auth-btn').forEach(b => {
+    b.disabled = true; b.style.opacity = '0.4';
+  });
+  el.disabled = false; el.style.opacity = '1';
+  el.innerHTML = `✓ &nbsp;Signed in with ${method}`;
+  el.style.background = 'rgba(234,59,50,0.12)';
+  el.style.borderColor = 'var(--red)';
+  el.style.color = 'var(--red)';
+  setTimeout(() => {
+    closeOnboarding();
+    document.getElementById('success-overlay').classList.add('open');
+  }, 900);
+}
+
+/* ── SUCCESS ─────────────────────────────────── */
+// REDIRECT TO FEED
+function closeSuccess() {
+  // Step 1 — Slam the curtain immediately, before touching anything else
+  const curtain = document.createElement('div');
+  curtain.id = 'transition-curtain';
+  curtain.style.cssText = `
+    position:fixed;inset:0;z-index:9999;
+    background:#0B0B0F;
+    opacity:0;
+    pointer-events:all;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:0px;
+    transition:opacity 0.35s ease;
+  `;
+
+  // Logo markup inside the curtain
+  curtain.innerHTML = `
+    <div id="splash-logo-wrap" style="
+      display:flex;flex-direction:column;align-items:center;gap:18px;
+      opacity:0;transform:scale(0.88);
+      transition:opacity 0.45s ease, transform 0.45s cubic-bezier(.34,1.56,.64,1);
+    ">
+      <div style="
+        width:90px;height:90px;
+        background:#000;border-radius:22px;overflow:hidden;
+        box-shadow:0 0 60px rgba(234,59,50,0.35),0 0 120px rgba(234,59,50,0.12);
+        border:1px solid rgba(234,59,50,0.25);
+      ">
+        <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+          <use href="#ss-mark"/>
+        </svg>
+      </div>
+      <div style="
+        font-family:'Bebas Neue',sans-serif;
+        font-size:38px;letter-spacing:4px;
+        color:#fff;line-height:1;
+      ">SHOW<span style="color:#EA3B32">SHAK</span></div>
+      <div style="
+        font-size:11px;letter-spacing:5px;text-transform:uppercase;
+        color:#5A5A72;margin-top:-6px;
+      ">Swipe · Discover · Watch</div>
+
+      <!-- Progress bar -->
+      <div style="
+        width:120px;height:2px;
+        background:rgba(255,255,255,0.08);
+        border-radius:2px;overflow:hidden;
+        margin-top:8px;
+      ">
+        <div id="splash-progress" style="
+          height:100%;width:0%;
+          background:#EA3B32;border-radius:2px;
+          transition:width 2.6s cubic-bezier(.4,0,.2,1);
+        "></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(curtain);
+
+  // Step 2 — Fade curtain in immediately (zero delay)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      curtain.style.opacity = '1';
+
+      // Step 3 — After curtain is fully opaque, pop the logo in
+      setTimeout(() => {
+        const logoWrap = document.getElementById('splash-logo-wrap');
+        logoWrap.style.opacity = '1';
+        logoWrap.style.transform = 'scale(1)';
+
+        // Kick off the progress bar
+        requestAnimationFrame(() => {
+          document.getElementById('splash-progress').style.width = '100%';
+        });
+
+        // Step 4 — After 3 seconds, fade curtain out and navigate
+        // Step 4 — After 3 seconds, navigate directly (curtain stays black)
+        setTimeout(() => {
+          window.location.href = 'feed.html';
+        }, 2800);
+        
+      }, 380);
+    });
+  });
+}
+
+/* ── INIT ────────────────────────────────────── */
+buildGenres();
+buildPlatforms();
+</script>
+</body>
+</html>

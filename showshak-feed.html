@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Your Feed</title>
+
+<style>body{opacity:0}</style>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+
+<!-- ── SHARED STYLES ── -->
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+
+<!-- ── PAGE-SPECIFIC STYLES ── -->
+<style>
+/* ════════════════════════════════════════════════
+   FEED PAGE LAYOUT
+════════════════════════════════════════════════ */
+html, body { overflow: hidden; }
+
+.layout {
+  position: fixed; inset: 0;
+  left: var(--sidebar-collapsed);
+  display: flex; align-items: stretch; justify-content: center;
+  background: #000;
+  transition: left 0.3s var(--ease-smooth);
+}
+.layout::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(234,59,50,0.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+@media (max-width: 700px) {
+  .layout { left: 0; }
+}
+
+/* ════════════════════════════════════════════════
+   CLIP COLUMN + FEED
+════════════════════════════════════════════════ */
+.clip-column {
+  position: relative;
+  width: var(--clip-w);
+  flex-shrink: 0;
+  height: 100vh;
+  overflow: visible;
+}
+
+.feed {
+  position: absolute; inset: 0;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.feed::-webkit-scrollbar { display: none; }
+
+/* ════════════════════════════════════════════════
+   CLIP CARD
+════════════════════════════════════════════════ */
+.clip {
+  position: relative;
+  width: 100%; height: 100vh;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  overflow: hidden; flex-shrink: 0;
+}
+
+.clip-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  transform: scale(1.04);
+  transition: transform 0.7s var(--ease-smooth);
+}
+.clip.active .clip-bg { transform: scale(1); }
+
+.clip-vignette {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 28%, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.2) 100%);
+  pointer-events: none;
+}
+
+.clip-grain {
+  position: absolute; inset: 0; opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Full-clip tap zone */
+.clip-tap {
+  position: absolute; inset: 0; z-index: 5; cursor: pointer;
+}
+
+/* Pause icon that appears on single tap */
+.clip-pause-icon {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%) scale(0);
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); border: 2px solid rgba(255,255,255,0.25);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  transition: transform 0.18s var(--ease-spring), opacity 0.25s;
+  opacity: 0;
+}
+.clip-pause-icon.show {
+  transform: translate(-50%,-50%) scale(1);
+  opacity: 1;
+}
+
+/* ── Double-tap fire burst ─── */
+.fire-burst {
+  position: absolute; z-index: 30; pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0; width: 90px; height: 90px;
+  display: flex; align-items: center; justify-content: center;
+}
+.fire-burst svg { width: 100%; height: 100%; }
+
+@keyframes burstIn {
+  0%   { transform: translate(-50%,-50%) scale(0);   opacity: 0; }
+  30%  { transform: translate(-50%,-50%) scale(1.3); opacity: 1; }
+  60%  { transform: translate(-50%,-50%) scale(0.95);opacity: 1; }
+  80%  { transform: translate(-50%,-50%) scale(1.1); opacity: 0.9; }
+  100% { transform: translate(-50%,-50%) scale(1.4); opacity: 0; }
+}
+.fire-burst.pop {
+  animation: burstIn 0.7s cubic-bezier(.36,.07,.19,.97) forwards;
+}
+
+/* ── Mobile floating logo ─── */
+.clip-logo-float {
+  position: absolute; top: 14px; left: 14px; z-index: 20;
+  display: none; align-items: center; gap: 7px;
+  pointer-events: none;
+}
+.clip-logo-mark {
+  width: 30px; height: 30px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid rgba(234,59,50,0.3);
+  backdrop-filter: blur(8px);
+}
+.clip-logo-mark svg { width: 100%; height: 100%; display: block; }
+
+/* ── Muted badge ─── */
+.muted-badge {
+  position: absolute; top: 54px; left: 14px; z-index: 20;
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+  border-radius: 100px; padding: 4px 10px;
+  font-size: 11px; color: var(--gray);
+  backdrop-filter: blur(8px); cursor: pointer; transition: opacity 0.3s;
+}
+
+/* ════════════════════════════════════════════════
+   CLIP BOTTOM CONTENT
+════════════════════════════════════════════════ */
+.clip-bottom {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+  padding: 0 14px 14px;
+}
+
+.creator-row {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+}
+.creator-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  overflow: hidden; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase;
+}
+.creator-name { font-size: 11px; font-weight: 600; color: var(--white); }
+.creator-follow {
+  font-size: 10px; color: var(--red); font-weight: 700; cursor: pointer;
+  padding: 2px 7px; border: 1px solid var(--red); border-radius: 100px;
+  transition: background 0.15s;
+}
+.creator-follow:hover { background: rgba(234,59,50,0.15); }
+
+.show-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 4.5vw, 30px);
+  letter-spacing: 1px; color: var(--white); line-height: 1.05;
+  margin-bottom: 5px; text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+}
+
+.tag-row {
+  display: flex; align-items: center; gap: 5px;
+  flex-wrap: nowrap; overflow: hidden; margin-bottom: 5px;
+}
+
+.caption {
+  font-size: 12px; color: rgba(255,255,255,0.7); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.caption em { color: var(--white); font-style: normal; font-weight: 600; }
+
+/* ── Progress bar ─── */
+.clip-progress {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: rgba(255,255,255,0.08); z-index: 20;
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.clip-progress.visible { opacity: 1; }
+.clip-progress-fill {
+  height: 100%; background: var(--red);
+  border-radius: 2px; transition: width 0.1s linear;
+}
+
+/* ════════════════════════════════════════════════
+   DESKTOP ACTION RAIL
+════════════════════════════════════════════════ */
+.action-rail-outer {
+  position: fixed; top: 50%; left: 0;
+  transform: translateY(-50%);
+  z-index: 150;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: all;
+}
+
+.act-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.act-icon {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s var(--ease-spring), opacity 0.15s;
+}
+.act-btn:hover .act-icon { opacity: 0.75; }
+.act-btn:active .act-icon { transform: scale(0.85); }
+.act-label {
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.8);
+  letter-spacing: 0.2px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+
+/* Fire toggle states */
+.fire-outline { display: block; }
+.fire-filled  { display: none;  }
+.act-btn.lit .fire-outline { display: none; }
+.act-btn.lit .fire-filled  { display: block; }
+.act-btn.lit .act-label    { color: var(--red); }
+
+@keyframes firePulse {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.45); }
+  55%  { transform: scale(0.9); }
+  75%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.act-btn.pulse .act-icon { animation: firePulse 0.42s cubic-bezier(.36,.07,.19,.97) forwards; }
+
+/* Save toggle states */
+.save-outline { display: block; }
+.save-filled  { display: none;  }
+.act-btn.saved .save-outline { display: none; }
+.act-btn.saved .save-filled  { display: block; }
+.act-btn.saved .act-label    { color: rgba(234,59,50,0.9); }
+
+/* Rail entrance animation */
+@keyframes railSlideIn {
+  0%   { opacity: 0; transform: translateY(-50%) translateX(28px) scale(0.88); }
+  55%  { opacity: 1; transform: translateY(-50%) translateX(-5px) scale(1.03); }
+  78%  {             transform: translateY(-50%) translateX(3px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
+}
+.action-rail-outer.entering {
+  animation: railSlideIn 0.44s var(--ease-spring) forwards;
+}
+
+/* ── Watch It pill (desktop) ─── */
+.rail-watch-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  cursor: pointer; pointer-events: all; margin-top: 12px;
+}
+.rail-watch-pill {
+  width: 56px; height: 56px; border-radius: 18px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  position: relative; overflow: hidden;
+  transition: transform 0.18s var(--ease-spring), box-shadow 0.3s ease;
+  --pill-rgb: 229, 9, 20;
+  animation: breatheGlow 2.8s ease-in-out infinite;
+}
+
+@keyframes breatheGlow {
+  0%,100% {
+    box-shadow: 0 0 0px 0px rgba(var(--pill-rgb),0), 0 4px 20px rgba(0,0,0,0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 18px 6px rgba(var(--pill-rgb),0.45),
+      0 0 38px 12px rgba(var(--pill-rgb),0.18),
+      0 4px 20px rgba(0,0,0,0.4);
+  }
+}
+
+@keyframes ctaFireFlash {
+  0%   { filter: brightness(1) saturate(1); }
+  25%  { filter: brightness(1.5) saturate(1.4) drop-shadow(0 0 12px rgba(255,255,255,0.4)); }
+  55%  { filter: brightness(1.3) saturate(1.2); }
+  100% { filter: brightness(1) saturate(1); }
+}
+.rail-watch-pill.fire-flash {
+  animation:
+    ctaFireFlash 0.5s cubic-bezier(.36,.07,.19,.97) forwards,
+    breatheGlow 2.8s ease-in-out 0.5s infinite;
+}
+
+.rail-watch-pill:hover {
+  transform: scale(1.1); animation: none;
+  box-shadow: 0 0 24px 8px rgba(var(--pill-rgb),0.55), 0 6px 24px rgba(0,0,0,0.5);
+}
+.rail-watch-pill:active { transform: scale(0.93); }
+.rail-watch-pill-play { display: flex; align-items: center; justify-content: center; }
+.rail-watch-pill-plat {
+  font-size: 8px; font-weight: 800; color: rgba(255,255,255,0.75);
+  letter-spacing: 0.5px; text-transform: uppercase; line-height: 1;
+  max-width: 48px; text-align: center; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.rail-watch-label {
+  font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.9);
+  letter-spacing: 1px; text-align: center;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8); text-transform: uppercase;
+}
+
+/* ════════════════════════════════════════════════
+   MOBILE ACTION RAIL
+════════════════════════════════════════════════ */
+.mobile-action-rail {
+  display: none;
+  position: absolute; right: 10px; bottom: 110px; z-index: 30;
+  flex-direction: column; align-items: center; gap: 18px;
+}
+
+.m-act-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.m-act-icon {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s var(--ease-spring);
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.9));
+}
+.m-act-btn:active .m-act-icon { transform: scale(0.82); }
+.m-act-label {
+  font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.85);
+  text-shadow: 0 1px 6px rgba(0,0,0,1); letter-spacing: 0.3px;
+}
+
+.m-fire-outline { display: block; }
+.m-fire-filled  { display: none;  }
+.m-act-btn.lit .m-fire-outline { display: none; }
+.m-act-btn.lit .m-fire-filled  { display: block; }
+.m-act-btn.lit .m-act-label    { color: var(--red); }
+.m-act-btn.pulse .m-act-icon   { animation: firePulse 0.42s cubic-bezier(.36,.07,.19,.97) forwards; }
+
+.m-save-outline { display: block; }
+.m-save-filled  { display: none;  }
+.m-act-btn.saved .m-save-outline { display: none; }
+.m-act-btn.saved .m-save-filled  { display: block; }
+.m-act-btn.saved .m-act-label    { color: rgba(234,59,50,0.9); }
+
+/* ── Mobile Watch It button ─── */
+.mobile-watch-btn {
+  display: none;
+  position: absolute; bottom: 14px; left: 14px; right: 60px; z-index: 30;
+  align-items: center; justify-content: center;
+  height: 52px; border-radius: 16px;
+  font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  color: #fff; border: none; cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s, filter 0.15s;
+  letter-spacing: 0.3px;
+  -webkit-tap-highlight-color: transparent;
+  --btn-rgb: 229, 9, 20;
+  animation: mobileButtonBreathe 2.8s ease-in-out infinite;
+  box-shadow: 0 6px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+@keyframes mobileButtonBreathe {
+  0%,100% {
+    box-shadow:
+      0 0 0px 0px rgba(var(--btn-rgb),0),
+      0 6px 28px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 20px 6px rgba(var(--btn-rgb),0.4),
+      0 0 44px 14px rgba(var(--btn-rgb),0.15),
+      0 6px 28px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+}
+
+@keyframes mobileCtaFireFlash {
+  0%   { filter: brightness(1) saturate(1); }
+  25%  { filter: brightness(1.6) saturate(1.4) drop-shadow(0 0 14px rgba(255,255,255,0.35)); }
+  55%  { filter: brightness(1.3) saturate(1.2); }
+  100% { filter: brightness(1) saturate(1); }
+}
+.mobile-watch-btn.fire-flash {
+  animation:
+    mobileCtaFireFlash 0.5s cubic-bezier(.36,.07,.19,.97) forwards,
+    mobileButtonBreathe 2.8s ease-in-out 0.5s infinite;
+}
+.mobile-watch-btn:active { transform: scale(0.97); opacity: 0.9; }
+
+.mobile-watch-btn-inner {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 0 14px; gap: 10px; pointer-events: none;
+}
+.mobile-watch-plat-logo {
+  width: 24px; height: 24px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 800; color: #fff;
+  background: rgba(255,255,255,0.2); flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.mobile-watch-text {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1.15; flex: 1;
+}
+.mobile-watch-text-main { font-size: 14px; font-weight: 800; letter-spacing: 0.4px; text-align: center; }
+.mobile-watch-text-sub  { font-size: 10px; font-weight: 500; opacity: 0.8; letter-spacing: 0.3px; text-align: center; }
+.mobile-watch-arrow {
+  opacity: 0.7; flex-shrink: 0; width: 24px;
+  display: flex; align-items: center; justify-content: flex-end;
+}
+
+/* ════════════════════════════════════════════════
+   UP/DOWN ARROWS — desktop
+════════════════════════════════════════════════ */
+.nav-arrows {
+  position: fixed; right: 20px; top: 50%;
+  transform: translateY(-50%); z-index: 100;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.nav-arrow-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s, transform 0.15s;
+  backdrop-filter: blur(8px);
+}
+.nav-arrow-btn:hover { background: rgba(255,255,255,0.14); transform: scale(1.08); }
+.nav-arrow-btn:active { transform: scale(0.92); }
+
+/* ════════════════════════════════════════════════
+   FEED END CARD
+════════════════════════════════════════════════ */
+.feed-end {
+  height: 100vh; scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 40px; text-align: center; background: var(--bg);
+}
+.feed-end-icon  { font-size: 48px; }
+.feed-end-title { font-family: var(--font-display); font-size: 36px; letter-spacing: 1px; color: var(--white); }
+.feed-end-title em { color: var(--red); font-style: normal; }
+.feed-end-sub   { font-size: 14px; color: var(--gray); line-height: 1.7; max-width: 260px; }
+.btn-refresh {
+  margin-top: 8px; background: var(--red); color: #fff; border: none;
+  padding: 13px 28px; border-radius: 100px;
+  font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-refresh:hover { background: var(--red2); transform: scale(1.03); }
+
+/* ════════════════════════════════════════════════
+   RESPONSIVE — MOBILE OVERRIDES
+════════════════════════════════════════════════ */
+@media (max-width: 700px) {
+  :root { --clip-w: 100vw; }
+
+  .action-rail-outer { display: none; }
+  .nav-arrows        { display: none; }
+
+  .mobile-action-rail { display: flex; }
+  .mobile-watch-btn   { display: flex; }
+  .clip-logo-float    { display: flex; }
+
+  .mobile-watch-btn {
+    bottom: calc(var(--mobile-nav-h) + 14px);
+    right: 60px;
+  }
+  .mobile-action-rail {
+    bottom: calc(var(--mobile-nav-h) + 78px);
+  }
+  .clip-bottom {
+    padding-bottom: calc(var(--mobile-nav-h) + 80px);
+    padding-right: 60px;
+  }
+  .feed-end {
+    padding-bottom: calc(var(--mobile-nav-h) + 20px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     LEFT SIDEBAR — desktop
+════════════════════════════════════════════ -->
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark">
+      <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+    </div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item active" data-nav="feed" href="showshak-feed.html">
+      <div class="nav-item-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <span class="nav-item-label">Feed</span>
+    </a>
+    <a class="nav-item" data-nav="discover" href="showshak-discover.html">
+      <div class="nav-item-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <span class="nav-item-label">Discover</span>
+    </a>
+    <a class="nav-item" data-nav="watchlist" href="#" onclick="event.preventDefault(); ssToast('🔖 Watchlist coming soon')">
+      <div class="nav-item-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <span class="nav-item-label">Watchlist</span>
+    </a>
+    <a class="nav-item" data-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+      <div class="nav-item-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <span class="nav-item-label">Profile</span>
+    </a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item-settings" onclick="ssToast('⚙ Settings coming soon')">
+      <div class="nav-item-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+      <span class="nav-item-label">Settings</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════
+     MAIN LAYOUT
+════════════════════════════════════════════ -->
+<div class="layout" id="layout">
+  <div class="clip-column" id="clip-column">
+    <div class="feed" id="feed"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     DESKTOP ACTION RAIL
+════════════════════════════════════════════ -->
+<div class="action-rail-outer" id="action-rail">
+  <div class="act-btn" id="rail-lit" onclick="toggleLit(currentClip)">
+    <div class="act-icon">
+      <svg class="fire-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/>
+        <path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/>
+      </svg>
+      <svg class="fire-filled" width="28" height="28" viewBox="0 0 24 24" fill="none">
+        <path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/>
+        <path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/>
+      </svg>
+    </div>
+    <span class="act-label" id="rail-lit-count">—</span>
+  </div>
+  <div class="act-btn" id="rail-save" onclick="toggleSave(currentClip)">
+    <div class="act-icon">
+      <svg class="save-outline" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      <svg class="save-filled"  width="26" height="26" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <span class="act-label">Save</span>
+  </div>
+  <div class="act-btn" onclick="ssShare(SHOWS[currentClip])">
+    <div class="act-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    </div>
+    <span class="act-label">Share</span>
+  </div>
+  <div class="rail-watch-btn" id="rail-watch" onclick="ssOpenSheet(SHOWS[currentClip])">
+    <div class="rail-watch-pill" id="rail-watch-pill" style="background:#E50914; --pill-rgb:229,9,20">
+      <div class="rail-watch-pill-play">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <div class="rail-watch-pill-plat" id="rail-watch-pill-plat">Netflix</div>
+    </div>
+    <span class="rail-watch-label">Watch It</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     UP/DOWN ARROWS — desktop
+════════════════════════════════════════════ -->
+<div class="nav-arrows" id="nav-arrows">
+  <div class="nav-arrow-btn" onclick="navigateFeed(-1)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+  </div>
+  <div class="nav-arrow-btn" onclick="navigateFeed(1)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     WATCH IT SHEET (HTML from showshak-components.css)
+════════════════════════════════════════════ -->
+<div id="watch-sheet-overlay" onclick="ssCloseSheet()"></div>
+<div id="watch-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header" id="sheet-header"></div>
+  <div class="sheet-options-label">WATCH ON</div>
+  <div id="sheet-options"></div>
+  <div class="sheet-cancel" onclick="ssCloseSheet()">Cancel</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MOBILE BOTTOM NAV
+════════════════════════════════════════════ -->
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item active" data-mob-nav="feed" href="showshak-feed.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+    <span class="mob-nav-label">Feed</span>
+  </a>
+  <a class="mob-nav-item" data-mob-nav="discover" href="showshak-discover.html">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+    <span class="mob-nav-label">Discover</span>
+  </a>
+  <a class="mob-nav-item" data-mob-nav="watchlist" href="#" onclick="event.preventDefault(); ssToast('🔖 Watchlist coming soon')">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+    <span class="mob-nav-label">Watchlist</span>
+  </a>
+  <a class="mob-nav-item" data-mob-nav="profile" href="#" onclick="event.preventDefault(); ssToast('👤 Profile coming soon')">
+    <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+    <span class="mob-nav-label">Profile</span>
+  </a>
+</nav>
+
+<!-- ════════════════════════════════════════════
+     SHARED JS
+════════════════════════════════════════════ -->
+<script src="showshak-shared.js"></script>
+
+<!-- ════════════════════════════════════════════
+     PAGE-SPECIFIC JS — Feed logic only
+════════════════════════════════════════════ -->
+<script>
+const SHOWS = [
+  {
+    id:1, title:'SACRED GAMES',
+    year:2018, genre:['Crime','Thriller'], lang:'Hindi',
+    runtime:'55 min/ep', season:'S1 · 8 Episodes',
+    synopsis:'A link in their pasts leads Mumbai crime boss Ganesh Gaitonde to police officer Sartaj Singh.',
+    caption:'This is how you <em>open</em> a series. Zero warning. Zero mercy.',
+    creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' },
+    litCount: 1240,
+    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
+    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
+    bg:'linear-gradient(160deg, #1a0505 0%, #2d0808 30%, #0d0d0d 70%, #000 100%)',
+  },
+  {
+    id:2, title:'THE BEAR',
+    year:2022, genre:['Drama','Comedy'], lang:'English',
+    runtime:'34 min/ep', season:'S1–3 · Available',
+    synopsis:'A young chef from the fine dining world returns to Chicago to run his family sandwich shop.',
+    caption:'The kitchen scene in episode 7 will destroy you. <em>Watch it.</em>',
+    creator:{ name:'streamjunkie_sk', letter:'S', bg:'#FF6B35' },
+    litCount: 876,
+    platforms:[
+      { name:'Disney+', color:'#0E3BD4', label:'D+', sub:'Included in your plan', included:true },
+      { name:'Hulu', color:'#1CE783', label:'H', sub:'Not in your plan', included:false },
+    ],
+    platLabel:'Disney+', platColor:'#0E3BD4', platRgb:'14,59,212',
+    bg:'linear-gradient(160deg, #050510 0%, #0a0a20 30%, #080808 70%, #000 100%)',
+  },
+  {
+    id:3, title:'MIRZAPUR',
+    year:2018, genre:['Action','Crime'], lang:'Hindi',
+    runtime:'45–60 min/ep', season:'S1–3 · Available',
+    synopsis:"A drug baron's son forces two brothers into the world of crime and violence in eastern UP.",
+    caption:'No one escapes Mirzapur. Literally <em>no one.</em>',
+    creator:{ name:'binge_with_priya', letter:'P', bg:'#9B59B6' },
+    litCount: 2100,
+    platforms:[{ name:'Prime Video', color:'#00A8E0', label:'P', sub:'Included in your plan', included:true }],
+    platLabel:'Prime Video', platColor:'#00A8E0', platRgb:'0,168,224',
+    bg:'linear-gradient(160deg, #0a0510 0%, #150820 30%, #0a0505 70%, #000 100%)',
+  },
+  {
+    id:4, title:'STRANGER THINGS',
+    year:2016, genre:['Sci-Fi','Horror'], lang:'English',
+    runtime:'51 min/ep', season:'S1–4 · Available',
+    synopsis:'When a boy vanishes, a small town uncovers a mystery involving secret experiments and terrifying forces.',
+    caption:'Started as nostalgia. Became <em>obsession.</em> S4 Vol 2 is cinema.',
+    creator:{ name:'netflixnerd_rv', letter:'R', bg:'#3498DB' },
+    litCount: 3400,
+    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
+    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
+    bg:'linear-gradient(160deg, #020510 0%, #050a1a 30%, #050205 70%, #000 100%)',
+  },
+  {
+    id:5, title:'PANCHAYAT',
+    year:2020, genre:['Comedy','Drama'], lang:'Hindi',
+    runtime:'28–40 min/ep', season:'S1–3 · Available',
+    synopsis:'A city boy reluctantly joins as a government officer in a remote village.',
+    caption:'This show will make you quit your job and move to a village. <em>Not joking.</em>',
+    creator:{ name:'desi_binge', letter:'D', bg:'#27AE60' },
+    litCount: 5200,
+    platforms:[{ name:'Prime Video', color:'#00A8E0', label:'P', sub:'Included in your plan', included:true }],
+    platLabel:'Prime Video', platColor:'#00A8E0', platRgb:'0,168,224',
+    bg:'linear-gradient(160deg, #021005 0%, #041a08 30%, #020802 70%, #000 100%)',
+  },
+  {
+    id:6, title:'SQUID GAME',
+    year:2021, genre:['Thriller','Drama'], lang:'Korean',
+    runtime:'32–63 min/ep', season:'S1–2 · Available',
+    synopsis:"Hundreds of cash-strapped contestants compete in deadly children's games for an enormous cash prize.",
+    caption:'Episode 6. Front Man reveal. You will <em>not</em> be okay.',
+    creator:{ name:'kdrama_world', letter:'K', bg:'#E74C3C' },
+    litCount: 7800,
+    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
+    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
+    bg:'linear-gradient(160deg, #100008 0%, #1a0010 30%, #080005 70%, #000 100%)',
+  },
+  {
+    id:7, title:'SCAM 1992',
+    year:2020, genre:['Crime','Drama'], lang:'Hindi',
+    runtime:'40–55 min/ep', season:'S1 · 10 Episodes',
+    synopsis:'The rise and fall of Harshad Mehta — the man who took the Indian stock market by storm.',
+    caption:'Highest rated Indian show ever. One curator. One verdict. <em>Watch it.</em>',
+    creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' },
+    litCount: 4300,
+    platforms:[{ name:'SonyLIV', color:'#002868', label:'S', sub:'Not in your plan', included:false }],
+    platLabel:'SonyLIV', platColor:'#002868', platRgb:'0,40,104',
+    bg:'linear-gradient(160deg, #080500 0%, #140c00 30%, #050300 70%, #000 100%)',
+  },
+  {
+    id:8, title:'THE LAST OF US',
+    year:2023, genre:['Drama','Sci-Fi'], lang:'English',
+    runtime:'44–75 min/ep', season:'S1–2 · Available',
+    synopsis:'Joel smuggles a teenage girl across post-apocalyptic America.',
+    caption:'Episode 3 broke the internet. Broke <em>me</em>. Watch immediately.',
+    creator:{ name:'hbo_stan_official', letter:'H', bg:'#5C2D91' },
+    litCount: 6100,
+    platforms:[
+      { name:'HBO Max', color:'#5C2D91', label:'HBO', sub:'Not in your plan', included:false },
+      { name:'JioHotstar', color:'#FF6A00', label:'JH', sub:'Included in your plan', included:true },
+    ],
+    platLabel:'JioHotstar', platColor:'#FF6A00', platRgb:'255,106,0',
+    bg:'linear-gradient(160deg, #030805 0%, #050e08 30%, #020503 70%, #000 100%)',
+  },
+];
+
+const litState   = {};
+const savedState = {};
+let currentClip  = 0;
+let progressTimers = {};
+let isPaused = false;
+
+/* ── BUILD FEED ─── */
+function buildFeed() {
+  const feed = document.getElementById('feed');
+  feed.innerHTML = '';
+
+  SHOWS.forEach((show, i) => {
+    const card = document.createElement('div');
+    card.className = 'clip' + (i === 0 ? ' active' : '');
+    card.id = `clip-${i}`;
+    card.innerHTML = `
+      <div class="clip-bg" style="background:${show.bg}"></div>
+      <div class="clip-vignette"></div>
+      <div class="clip-grain"></div>
+      <div class="clip-logo-float">
+        <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+      </div>
+      <div class="muted-badge" id="muted-${i}" onclick="toggleMute(${i})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+        Tap for sound
+      </div>
+      <div class="clip-tap" id="tap-${i}">
+        <div class="clip-pause-icon" id="pause-icon-${i}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </div>
+      </div>
+      <div class="fire-burst" id="burst-${i}">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#EA3B32" d="M40 6C40 6 26 22 26 34a14 14 0 0 0 28 0c0-5.5-2.8-11-5-15C46 24 47 30 43 34c-1.5 2-3 3-3 3S32 32 32 26c0-8 8-20 8-20z"/>
+          <path fill="#FF4D42" d="M40 46c-7.7 0-14 6.3-14 14s6.3 14 14 14 14-6.3 14-14-6.3-14-14-14z"/>
+          <circle cx="40" cy="60" r="6" fill="#FFB800" opacity="0.7"/>
+        </svg>
+      </div>
+      <!-- Mobile action rail -->
+      <div class="mobile-action-rail" id="m-rail-${i}">
+        <div class="m-act-btn" id="m-lit-${i}" onclick="toggleLit(${i})">
+          <div class="m-act-icon">
+            <svg class="m-fire-outline" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+            <svg class="m-fire-filled" width="30" height="30" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+          </div>
+          <span class="m-act-label" id="m-lit-count-${i}">—</span>
+        </div>
+        <div class="m-act-btn" id="m-save-${i}" onclick="toggleSave(${i})">
+          <div class="m-act-icon">
+            <svg class="m-save-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <svg class="m-save-filled"  width="28" height="28" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <span class="m-act-label">Save</span>
+        </div>
+        <div class="m-act-btn" onclick="ssShare(SHOWS[${i}])">
+          <div class="m-act-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </div>
+          <span class="m-act-label">Share</span>
+        </div>
+      </div>
+      <!-- Mobile Watch It button -->
+      <button class="mobile-watch-btn" id="m-watch-${i}"
+        style="background:${show.platColor}; --btn-rgb:${show.platRgb}"
+        onclick="ssOpenSheet(SHOWS[${i}])">
+        <div class="mobile-watch-btn-inner">
+          <div class="mobile-watch-plat-logo">${show.platforms[0].label}</div>
+          <div class="mobile-watch-text">
+            <span class="mobile-watch-text-main">Watch It</span>
+            <span class="mobile-watch-text-sub">on ${show.platLabel}</span>
+          </div>
+          <div class="mobile-watch-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </button>
+      <!-- Bottom content -->
+      <div class="clip-bottom">
+        <div class="creator-row">
+          <div class="creator-avatar" style="background:${show.creator.bg}">${show.creator.letter}</div>
+          <span class="creator-name">@${show.creator.name}</span>
+          <span class="creator-follow">+ Follow</span>
+        </div>
+        <div class="tag-row">
+          ${show.genre.map(g => `<span class="tag">${g}</span>`).join('')}
+          <span class="tag">${show.lang}</span>
+        </div>
+        <div class="caption">${show.caption}</div>
+      </div>
+      <!-- Progress bar -->
+      <div class="clip-progress" id="prog-wrap-${i}">
+        <div class="clip-progress-fill" id="prog-${i}" style="width:0%"></div>
+      </div>
+    `;
+    feed.appendChild(card);
+    attachDoubleTap(card.querySelector(`#tap-${i}`), i);
+  });
+
+  // Feed end card
+  const end = document.createElement('div');
+  end.className = 'feed-end';
+  end.innerHTML = `
+    <div class="feed-end-icon">🎬</div>
+    <div class="feed-end-title">YOU'VE SEEN IT <em>ALL</em></div>
+    <p class="feed-end-sub">More clips are being added every day. Check back tomorrow.</p>
+    <button class="btn-refresh" onclick="ssScrollToTop('feed')">Back to Top</button>
+  `;
+  feed.appendChild(end);
+}
+
+function attachDoubleTap(el, idx) {
+  let lastTap = 0, tapTimer = null;
+  el.addEventListener('click', (e) => {
+    const now = Date.now(), gap = now - lastTap;
+    lastTap = now;
+    if (gap < 300 && gap > 0) {
+      clearTimeout(tapTimer);
+      triggerBurst(e, idx);
+      if (!litState[idx]) toggleLit(idx);
+    } else {
+      tapTimer = setTimeout(() => handleTap(idx), 310);
+    }
+  });
+}
+
+function triggerBurst(e, idx) {
+  const burst = document.getElementById(`burst-${idx}`);
+  if (!burst) return;
+  const clip = document.getElementById(`clip-${idx}`);
+  const rect = clip.getBoundingClientRect();
+  burst.style.left = (e.clientX - rect.left) + 'px';
+  burst.style.top  = (e.clientY - rect.top) + 'px';
+  burst.classList.remove('pop');
+  void burst.offsetWidth;
+  burst.classList.add('pop');
+  setTimeout(() => burst.classList.remove('pop'), 720);
+}
+
+function flashCTA(idx) {
+  const pill = document.getElementById('rail-watch-pill');
+  if (pill) {
+    pill.classList.remove('fire-flash'); void pill.offsetWidth; pill.classList.add('fire-flash');
+    pill.addEventListener('animationend', () => pill.classList.remove('fire-flash'), { once: true });
+  }
+  const mWatch = document.getElementById(`m-watch-${idx}`);
+  if (mWatch) {
+    mWatch.classList.remove('fire-flash'); void mWatch.offsetWidth; mWatch.classList.add('fire-flash');
+    mWatch.addEventListener('animationend', (e) => {
+      if (e.animationName === 'mobileCtaFireFlash') mWatch.classList.remove('fire-flash');
+    }, { once: true });
+  }
+}
+
+function syncRail(idx) {
+  const show = SHOWS[idx];
+  if (!show) return;
+
+  // Desktop
+  const litBtn   = document.getElementById('rail-lit');
+  const litCount = document.getElementById('rail-lit-count');
+  if (litCount) litCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
+  if (litBtn)   litState[idx] ? litBtn.classList.add('lit') : litBtn.classList.remove('lit');
+  const saveBtn = document.getElementById('rail-save');
+  if (saveBtn)  savedState[idx] ? saveBtn.classList.add('saved') : saveBtn.classList.remove('saved');
+  const pill  = document.getElementById('rail-watch-pill');
+  const plat  = document.getElementById('rail-watch-pill-plat');
+  if (pill) { pill.style.background = show.platColor; pill.style.setProperty('--pill-rgb', show.platRgb); }
+  if (plat) plat.textContent = show.platLabel;
+
+  // Mobile
+  const mLit   = document.getElementById(`m-lit-${idx}`);
+  const mCount = document.getElementById(`m-lit-count-${idx}`);
+  if (mCount) mCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
+  if (mLit)   litState[idx] ? mLit.classList.add('lit') : mLit.classList.remove('lit');
+  const mSave = document.getElementById(`m-save-${idx}`);
+  if (mSave)  savedState[idx] ? mSave.classList.add('saved') : mSave.classList.remove('saved');
+}
+
+function animateRailIn() {
+  const rail = document.getElementById('action-rail');
+  if (!rail) return;
+  rail.classList.remove('entering'); void rail.offsetWidth; rail.classList.add('entering');
+  rail.addEventListener('animationend', () => rail.classList.remove('entering'), { once: true });
+}
+
+function initScrollObserver() {
+  const feed = document.getElementById('feed');
+  const clips = document.querySelectorAll('.clip');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const id = entry.target.id;
+      if (!id || !id.startsWith('clip-')) return;
+      const idx = parseInt(id.split('-')[1]);
+      if (isNaN(idx)) return;
+      if (entry.isIntersecting) {
+        entry.target.classList.add('active');
+        currentClip = idx; isPaused = false;
+        const pw = document.getElementById(`prog-wrap-${idx}`);
+        if (pw) pw.classList.remove('visible');
+        startProgress(idx); syncRail(idx); animateRailIn();
+      } else {
+        entry.target.classList.remove('active');
+        stopProgress(idx);
+      }
+    });
+  }, { root: feed, threshold: 0.6 });
+  clips.forEach(c => { if (c.id && c.id.startsWith('clip-')) observer.observe(c); });
+}
+
+function startProgress(idx) {
+  stopProgress(idx);
+  const bar = document.getElementById(`prog-${idx}`);
+  if (!bar) return;
+  let pct = parseFloat(bar.style.width) || 0;
+  progressTimers[idx] = setInterval(() => {
+    pct += 0.25;
+    if (pct > 100) { pct = 100; stopProgress(idx); }
+    bar.style.width = pct + '%';
+  }, 40);
+}
+function stopProgress(idx) {
+  if (progressTimers[idx]) { clearInterval(progressTimers[idx]); delete progressTimers[idx]; }
+}
+
+function navigateFeed(dir) {
+  const newIdx = currentClip + dir;
+  if (newIdx < 0 || newIdx >= SHOWS.length) return;
+  document.getElementById(`clip-${newIdx}`)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'j') navigateFeed(1);
+  if (e.key === 'ArrowUp'   || e.key === 'k') navigateFeed(-1);
+});
+
+function handleTap(idx) {
+  isPaused = !isPaused;
+  const icon = document.getElementById(`pause-icon-${idx}`);
+  const pw   = document.getElementById(`prog-wrap-${idx}`);
+  if (isPaused) {
+    icon.classList.add('show');
+    if (pw) pw.classList.add('visible');
+    stopProgress(idx);
+    setTimeout(() => icon.classList.remove('show'), 900);
+  } else {
+    icon.classList.remove('show');
+    if (pw) pw.classList.remove('visible');
+    startProgress(idx);
+  }
+}
+
+function toggleMute(idx) {
+  const badge = document.getElementById(`muted-${idx}`);
+  if (badge) { badge.style.opacity = '0'; setTimeout(() => badge.remove(), 300); }
+  ssToast('🔊 Sound on');
+}
+
+function toggleLit(idx) {
+  const show = SHOWS[idx];
+  if (!show) return;
+  litState[idx] = !litState[idx];
+  const litBtn = document.getElementById('rail-lit');
+  if (litBtn) {
+    const icon = litBtn.querySelector('.act-icon');
+    icon.classList.remove('pulse'); void icon.offsetWidth; icon.classList.add('pulse');
+    setTimeout(() => icon.classList.remove('pulse'), 450);
+  }
+  const mLit = document.getElementById(`m-lit-${idx}`);
+  if (mLit) {
+    mLit.classList.remove('pulse'); void mLit.offsetWidth; mLit.classList.add('pulse');
+    setTimeout(() => mLit.classList.remove('pulse'), 450);
+  }
+  if (litState[idx]) setTimeout(() => flashCTA(idx), 120);
+  syncRail(idx);
+}
+
+function toggleSave(idx) {
+  savedState[idx] = !savedState[idx];
+  ssToast(savedState[idx] ? '🔖 Added to Watchlist' : 'Removed from Watchlist');
+  syncRail(idx);
+}
+
+function positionRail() {
+  const col  = document.getElementById('clip-column');
+  const rail = document.getElementById('action-rail');
+  if (!col || !rail) return;
+  const rect = col.getBoundingClientRect();
+  rail.style.left = (rect.right + 16) + 'px';
+}
+
+// ── INIT ──
+buildFeed();
+initScrollObserver();
+startProgress(0);
+syncRail(0);
+requestAnimationFrame(() => { positionRail(); animateRailIn(); });
+window.addEventListener('resize', positionRail);
+</script>
+</body>
+</html>

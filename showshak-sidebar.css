@@ -1,0 +1,223 @@
+/* ═══════════════════════════════════════════════════════════════
+   SHOWSHAK — DESKTOP SIDEBAR
+   Collapsed icon rail that expands on hover.
+   Shared across all pages.
+   ─────────────────────────────────────────────────────────────
+   Depends on: showshak-tokens.css
+═══════════════════════════════════════════════════════════════ */
+
+.sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-collapsed);
+  z-index: 200;
+  background: rgba(11, 11, 15, 0.97);
+  border-right: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s var(--ease-smooth);
+  will-change: width;
+}
+
+.sidebar:hover,
+.sidebar.expanded {
+  width: var(--sidebar-expanded);
+  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Logo ─── */
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 14px 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+  overflow: hidden;
+  min-height: 60px;
+}
+
+.sidebar-mark {
+  width: 36px;
+  height: 36px;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(234, 59, 50, 0.3);
+}
+
+.sidebar-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sidebar-wordmark {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--white);
+  white-space: nowrap;
+  line-height: 1;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.22s 0.05s, transform 0.22s 0.05s;
+}
+
+.sidebar-wordmark em {
+  color: var(--red);
+  font-style: normal;
+}
+
+.sidebar:hover .sidebar-wordmark,
+.sidebar.expanded .sidebar-wordmark {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── Divider ─── */
+.sidebar-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 14px 8px;
+  flex-shrink: 0;
+}
+
+/* ── Nav items ─── */
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  overflow: hidden;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--gray2);
+  transition: color 0.15s, background 0.15s;
+  position: relative;
+  overflow: hidden;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
+  color: var(--gray);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+  color: var(--white);
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--red);
+  border-radius: 0 3px 3px 0;
+}
+
+.nav-item-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-item-icon svg {
+  display: block;
+}
+
+.nav-item-label {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s 0.06s, transform 0.2s 0.06s;
+}
+
+.sidebar:hover .nav-item-label,
+.sidebar.expanded .nav-item-label {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Notification badge */
+.nav-badge {
+  position: absolute;
+  top: 8px;
+  left: 24px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 1.5px solid var(--bg);
+}
+
+/* ── Bottom section (Settings) ─── */
+.sidebar-bottom {
+  flex-shrink: 0;
+  padding: 8px 8px 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.nav-item-settings {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--gray2);
+  transition: color 0.15s, background 0.15s;
+  overflow: hidden;
+  min-height: 44px;
+}
+
+.nav-item-settings:hover {
+  color: var(--gray);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item-settings .nav-item-label {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s 0.06s, transform 0.2s 0.06s;
+}
+
+.sidebar:hover .nav-item-settings .nav-item-label,
+.sidebar.expanded .nav-item-settings .nav-item-label {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ─── RESPONSIVE: hide sidebar on mobile ──────── */
+@media (max-width: 700px) {
+  .sidebar {
+    display: none;
+  }
+}
