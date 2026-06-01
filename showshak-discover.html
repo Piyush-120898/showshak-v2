@@ -634,7 +634,7 @@ function clipCardHTML(clip, size = 'lg') {
   const fireCountClass= lg ? 'clip-fire-count' : 'fy-fire-count';
 
   return `
-    <div class="${cls}" onclick="ssToast('▶ Playing clip by @${clip.creator.name}')">
+    <div class="${cls}" onclick="ssOpenClip(${clip.id}, CLIPS)">
       <div style="width:100%;aspect-ratio:9/16;border-radius:${radius};overflow:hidden;position:relative;border:1px solid var(--border)">
         <div style="position:absolute;inset:0;background:${clip.bg};background-size:cover;background-position:center;transition:transform 0.4s ease"></div>
         <div class="${vigClass}"></div>
@@ -807,7 +807,7 @@ function showResultsView(clips, label) {
   if (!clips.length) { list.innerHTML = ''; noRes.classList.add('visible'); return; }
   noRes.classList.remove('visible');
   list.innerHTML = clips.map(clip => `
-    <div class="result-clip" onclick="ssToast('▶ Playing clip by @${clip.creator.name}')">
+    <div class="result-clip" onclick="ssOpenClip(${clip.id}, CLIPS)">
       <div class="result-clip-thumb">
         <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
         <div class="result-clip-thumb-plat" style="background:${clip.platColor}">${clip.platAbbr}</div>
@@ -864,4 +864,4 @@ buildForYou();
 ssSyncAllSaveBtns();
 </script>
 </body>
-</html>
+</html>

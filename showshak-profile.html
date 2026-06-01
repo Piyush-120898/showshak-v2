@@ -1108,7 +1108,7 @@ function renderPrimaryTab() {
     el.innerHTML = `
       <div class="clips-grid">
         ${MOCK_CLIPS.map((c, i) => `
-          <div class="clip-grid-card ${i===0?'top-clip':''}" onclick="ssToast('▶ Playing clip')">
+          <div class="clip-grid-card ${i===0?'top-clip':''}" onclick="ssOpenClip(${c.id}, MOCK_CLIPS)">
             ${i===0 ? '<div class="top-clip-badge">🔥 TOP</div>' : ''}
             <div class="clip-grid-thumb">
               <div class="clip-grid-bg" style="background:${c.bg}"></div>
@@ -1126,7 +1126,7 @@ function renderPrimaryTab() {
     el.innerHTML = `
       <div class="fires-grid">
         ${MOCK_FIRES.map(c => `
-          <div class="fire-grid-card" onclick="ssToast('▶ Opening clip')">
+          <div class="fire-grid-card" onclick="ssOpenClip(${c.id}, MOCK_FIRES)">
             <div class="fire-grid-thumb">
               <div class="fire-grid-bg" style="background:${c.bg}"></div>
               <div class="fire-grid-vig"></div>

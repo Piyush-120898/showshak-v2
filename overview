@@ -493,6 +493,117 @@ Closest references for mental model:
   "Your most trusted film-obsessed friend, with a platform."
 
 
+── CONTENT MODEL — CLIP, CAPTION, TAGS & UPLOAD ────────────────
+
+  THE CORE PRINCIPLE:
+  The curator makes their OWN content to promote a show. Keep their
+  job minimal. They provide a few things; the SYSTEM derives the rest.
+
+  WHAT THE CURATOR PROVIDES (the entire upload):
+    1. Their clip            (the video — their content)        REQUIRED
+    2. Their caption / pitch (a real paragraph, see below)      REQUIRED
+    3. The show/movie        (ONE tap — pick from a list)       REQUIRED
+    4. A vibe / "why watch"  (1–3 from a fixed set)             OPTIONAL
+
+  WHAT THE SYSTEM DERIVES AUTOMATICALLY (curator never types this):
+    - Genre, year, cast, language        ← from the picked show (TMDB)
+    - Platform + Watch It deep-link      ← resolved from show + region
+    - Platform color / label on the rail ← from resolved platform
+    - Algorithm signals                  ← mined from the caption text
+
+  ── CAPTION (the pitch) ─────────────────────────────────────
+    REQUIRED. NOT a one-liner. Target ~70–90 words so the curator
+    can properly express and tell a bigger story — tone, emotion,
+    what they're promising, why it hit them. This is the heart of
+    the trust-based model (CREATOR FIRST, SHOW SECOND) and our
+    single richest future algorithm signal (sentiment, theme,
+    intensity, mood). Enforce a minimum length so it stays a real
+    pitch, not "🔥🔥". The title is NEVER revealed in the caption.
+
+    Display: feed/grid shows a clamped preview ("…more"); the FULL
+    caption is readable in the expanded clip viewer (scrollable).
+    The line-clamp on .caption / .ssv-caption is preview-only and
+    will get a "more" expansion when real data is wired.
+
+  ── TAGS — DECISION: NO open hashtags ───────────────────────
+    We deliberately do NOT use Instagram-style free hashtags in the
+    caption. They invite spam (#fyp #viral) that pollutes search and
+    POISONS the algorithm with noise. Instead we use STRUCTURED
+    signals that stay clean and finite:
+
+      a) SHOW PICK   → gives us genre/language/platform for free
+      b) VIBE PICKER → 1–3 from the fixed mood set already used on
+                       Discover (Edge of My Seat, Feel Good, Want to
+                       Cry, Date Night, Mind-Bending, Family Night,
+                       Late Night, Laugh Out Loud). Controlled list,
+                       zero spam, perfect algorithm fuel.
+      c) CAPTION MINING → we extract themes/emotion from the caption
+                       text on OUR side. The curator writes naturally;
+                       we derive the tags. No tag field to spam.
+
+    Any user-facing "tag" discovery surface is built from OUR derived
+    tags + vibe picks (our taxonomy) — never from curator free text.
+
+  ── DATA MODEL (3 linked entities — build it this way) ──────
+    CREATOR  (handle, avatar, verified, general bio) → has many clips
+    CLIP     (video, caption/pitch, fire & save counts, vibe[])
+               → belongs to a Creator, points to a Title
+    TITLE    (name, year, poster, synopsis, platforms/availability)
+               → pulled from TMDB; ONE record shared by all clips
+                 about that show (unlocks "all clips for this show",
+                 reliable Watch It links, clean analytics)
+
+    The action rail (Fire, Save, Share, Watch It) is a CONSTANT frame
+    on every clip — only the DATA inside it swaps per clip.
+
+
+── LEGAL & CONTENT STRATEGY (READ BEFORE SCALING) ──────────────
+
+  This is a deliberate strategic stance, not legal advice. Get a
+  real entertainment/IP lawyer before public launch or fundraising.
+
+  THE RISK:
+  ShowShak's value depends on short clips of copyrighted shows and
+  movies. "It's fair use, like YouTube/TikTok do it" is NOT a safe
+  assumption. Fair use is a case-by-case US legal defense (4-factor
+  test), not a blanket shield — and it is NOT what actually protects
+  the big platforms.
+
+  WHAT ACTUALLY PROTECTS COMPARABLE PLATFORMS:
+    - DMCA safe harbor: they are HOSTS. Users upload; the platform
+      removes infringing content on valid notice and bans repeat
+      infringers. The platform itself does not upload.
+    - Content ID + direct licensing: YouTube pays/monetizes rights
+      holders through automated matching and studio deals.
+  Many clip-uploaders are technically infringing; they are tolerated
+  or monetized through those systems — not "protected by fair use."
+
+  SHOWSHAK'S STANCE (build this in from the start, it is cheap now):
+    1. Position clearly as a HOST/platform for curator-uploaded
+       clips — ShowShak does not upload content itself.
+    2. DMCA safe-harbor scaffolding before scale:
+         - Register a DMCA agent (US Copyright Office).
+         - Visible takedown / notice-and-counter-notice process.
+         - Repeat-infringer policy with enforcement.
+         - Terms of Service putting upload responsibility on the curator.
+    3. Long game = the YouTube path: licensing / revenue-share deals
+       or official studio-provided clips and trailers.
+    4. Do NOT bet the company on "fair use." It is invisible as a
+       risk until a studio's legal team makes it very visible.
+
+  WATCH IT — DATA & DEEP-LINKING (you can start TODAY, no deals needed):
+    - Streaming availability ("on Netflix/Prime in your region") is
+      available now for free via the TMDB API "watch providers"
+      endpoint (TMDB licenses this data from JustWatch).
+    - The deep link itself (open the Netflix/Prime app to a title)
+      uses public universal-link URLs — no partnership required.
+    - Partnerships / affiliate networks are needed for GETTING PAID
+      on the click (attribution + revenue share), not for the link.
+    - Positioning: ShowShak is the emotional, taste-driven top of the
+      funnel (curators). JustWatch is a cold utility search box. We
+      win on engagement and trust, not on database completeness.
+
+
 ═══════════════════════════════════════════════════════════════
   HOW TO USE THIS FILE
   ───────────────────
@@ -508,4 +619,4 @@ Closest references for mental model:
     + whichever page HTML you are working on
 
   The AI will have full context and can start immediately.
-═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════

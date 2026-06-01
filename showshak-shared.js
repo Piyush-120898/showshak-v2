@@ -82,13 +82,19 @@ function ssOpenSheet(show) {
 
   const header = document.getElementById('sheet-header');
   if (header) {
+    // Title is revealed only at the Watch It moment. Some clip data
+    // (Discover/Watchlist/Profile) has no title yet — degrade gracefully.
+    const title = show.title || 'Ready to watch';
+    const metaTop = [show.year, show.season].filter(Boolean).join(' · ');
+    const genres  = (show.genre || []).join(' · ');
+    const meta    = [metaTop, genres].filter(Boolean).join('<br>') || 'Choose where to watch it';
     header.innerHTML = `
       <div class="sheet-thumb" style="background:${show.bg}">
-        <span>${show.title}</span>
+        <span>${show.title || '▶'}</span>
       </div>
       <div class="sheet-info">
-        <div class="sheet-show-title">${show.title}</div>
-        <div class="sheet-meta">${show.year} · ${show.season}<br>${show.genre.join(' · ')}</div>
+        <div class="sheet-show-title">${title}</div>
+        <div class="sheet-meta">${meta}</div>
       </div>
     `;
   }
@@ -622,4 +628,447 @@ function _ssConfirmCreate() {
   }
 
   _ssCloseStackSheet();
+}
+
+
+
+/* ════════════════════════════════════════════════
+   ── UNIVERSAL WATCH IT SHEET (auto-inject) ──────
+   The Watch It sheet markup only lives inline on the
+   Feed page. Inject it on every OTHER page so that
+   ssOpenSheet() works everywhere (Discover, Watchlist,
+   Profile, and the universal clip viewer below).
+   Styles come from showshak-components.css.
+════════════════════════════════════════════════ */
+(function _injectWatchSheet() {
+  if (document.getElementById('watch-sheet')) return; // Feed already has it
+  const overlay = document.createElement('div');
+  overlay.id = 'watch-sheet-overlay';
+  overlay.addEventListener('click', ssCloseSheet);
+  const sheet = document.createElement('div');
+  sheet.id = 'watch-sheet';
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header" id="sheet-header"></div>
+    <div class="sheet-options-label">WATCH ON</div>
+    <div id="sheet-options"></div>
+    <div class="sheet-cancel">Cancel</div>
+  `;
+  sheet.querySelector('.sheet-cancel').addEventListener('click', ssCloseSheet);
+  document.body.appendChild(overlay);
+  document.body.appendChild(sheet);
+})();
+
+
+/* ════════════════════════════════════════════════
+   ── UNIVERSAL CLIP VIEWER ───────────────────────
+   Instagram-style full-screen clip player that opens
+   from ANY page (Discover, Watchlist, Profile).
+
+   - Covers the nav (z-index 250) but sits BELOW the
+     Watch It sheet (300/301), toast (400) and stack
+     sheet (500/501) so all of those still work.
+   - Vertical scroll-snap through related clips
+     ("same segment" — prototype algorithm groups by
+     shared genre, then fills with the rest).
+   - Normalizes the different per-page clip schemas
+     into one canonical shape.
+
+   Open from any card:
+     ssOpenClip(clipObject, listArray)
+     ssOpenClip(clipId, listArray)        // id lookup
+════════════════════════════════════════════════ */
+
+let _ssvClips      = [];      // normalized clips currently in the viewer
+let _ssvFired      = new Set; // indices fired this session
+let _ssvPrevScroll = null;    // saved body overflow
+let _ssvObserver   = null;
+
+/* ── Normalizer: any page schema → canonical clip ── */
+function _ssvNormalize(raw) {
+  if (!raw) return null;
+
+  // creator can be an object {name,letter,bg} or a string + sibling fields
+  let creator;
+  if (raw.creator && typeof raw.creator === 'object') {
+    creator = { name: raw.creator.name, letter: raw.creator.letter, bg: raw.creator.bg };
+  } else if (typeof raw.creator === 'string') {
+    creator = {
+      name:   raw.creator,
+      letter: raw.creatorLetter || raw.creator.charAt(0).toUpperCase(),
+      bg:     raw.creatorBg || '#EA3B32',
+    };
+  } else {
+    creator = { name: 'showshak', letter: 'S', bg: '#EA3B32' };
+  }
+
+  const fires     = (raw.fires != null) ? raw.fires : (raw.litCount != null ? raw.litCount : 0);
+  const platByAbbr = { 'N':'Netflix','P':'Prime Video','D+':'Disney+','JH':'JioHotstar','S':'SonyLIV','HBO':'HBO Max','Z5':'Zee5','▶':'Apple TV+' };
+  const platLabel = raw.platLabel || (raw.platforms && raw.platforms[0] && raw.platforms[0].name) || platByAbbr[raw.platAbbr] || 'Streaming';
+  const platColor = raw.platColor || (raw.platforms && raw.platforms[0] && raw.platforms[0].color) || '#EA3B32';
+  const platAbbr  = raw.platAbbr  || (raw.platforms && raw.platforms[0] && raw.platforms[0].label) || (platLabel.charAt(0) || '▶');
+  const platRgb   = raw.platRgb   || '234,59,50';
+
+  let platforms = raw.platforms;
+  if (!platforms || !platforms.length) {
+    platforms = [{ name: platLabel, color: platColor, label: platAbbr, sub: 'Available to stream', included: false }];
+  }
+
+  return {
+    id: raw.id,
+    title: raw.title || '',                 // hidden in viewer; revealed only at Watch It
+    bg: raw.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+    caption: raw.caption || '',
+    genre: raw.genre || [],
+    lang: raw.lang || '',
+    year: raw.year || '',
+    season: raw.season || '',
+    creator, fires,
+    platLabel, platColor, platAbbr, platRgb, platforms,
+  };
+}
+
+/* ── Build the "same segment" ordering ──────────── */
+function _ssvBuildList(clicked, list) {
+  const start = _ssvNormalize(clicked);
+  if (!Array.isArray(list) || !list.length) return [start];
+
+  const normalized = list.map(_ssvNormalize).filter(Boolean);
+  const seen = new Set([String(start.id)]);
+  const related = [];
+  const rest = [];
+
+  normalized.forEach(c => {
+    if (String(c.id) === String(start.id)) return;
+    if (seen.has(String(c.id))) return;
+    seen.add(String(c.id));
+    const sharesGenre = c.genre.some(g => start.genre.includes(g));
+    (sharesGenre ? related : rest).push(c);
+  });
+
+  return [start, ...related, ...rest];
+}
+
+/* ── Inject viewer CSS once ─────────────────────── */
+(function _injectClipViewerCSS() {
+  const s = document.createElement('style');
+  s.id = 'ss-clip-viewer-style';
+  s.textContent = `
+    #ss-clip-viewer {
+      position: fixed; inset: 0; z-index: 250;
+      background: #000;
+      display: flex; justify-content: center; align-items: stretch;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.28s ease;
+    }
+    #ss-clip-viewer.open { opacity: 1; pointer-events: all; }
+
+    .ssv-feed {
+      position: relative; height: 100%;
+      width: min(440px, 100vw);
+      overflow-y: scroll; scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .ssv-feed::-webkit-scrollbar { display: none; }
+
+    .ssv-clip {
+      position: relative; width: 100%; height: 100%;
+      scroll-snap-align: start; scroll-snap-stop: always;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .ssv-bg {
+      position: absolute; inset: 0;
+      background-size: cover; background-position: center;
+      transform: scale(1.04); transition: transform 0.6s var(--ease-smooth);
+    }
+    .ssv-clip.active .ssv-bg { transform: scale(1); }
+    .ssv-vig {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.35) 100%);
+    }
+
+    /* Close button */
+    .ssv-close {
+      position: absolute; top: 14px; left: 14px; z-index: 40;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; backdrop-filter: blur(8px);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .ssv-close:hover  { background: rgba(0,0,0,0.7); transform: scale(1.06); }
+    .ssv-close:active { transform: scale(0.92); }
+
+    /* Top "showing related" pill */
+    .ssv-top-pill {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 35; display: flex; align-items: center; gap: 6px;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 100px; padding: 5px 12px;
+      font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.85);
+      backdrop-filter: blur(8px); pointer-events: none;
+    }
+
+    /* Right action rail */
+    .ssv-rail {
+      position: absolute; right: 12px; bottom: 96px; z-index: 30;
+      display: flex; flex-direction: column; align-items: center; gap: 18px;
+    }
+    .ssv-act {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;
+    }
+    .ssv-ico {
+      width: 34px; height: 34px;
+      display: flex; align-items: center; justify-content: center;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.9));
+      transition: transform 0.15s var(--ease-spring);
+    }
+    .ssv-act:active .ssv-ico { transform: scale(0.82); }
+    .ssv-lbl {
+      font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.9);
+      text-shadow: 0 1px 6px rgba(0,0,0,1); letter-spacing: 0.3px;
+    }
+    @keyframes ssvPulse {
+      0%{transform:scale(1);} 30%{transform:scale(1.45);}
+      55%{transform:scale(0.9);} 75%{transform:scale(1.15);} 100%{transform:scale(1);}
+    }
+    .ssv-act.pulse .ssv-ico { animation: ssvPulse 0.42s cubic-bezier(.36,.07,.19,.97) forwards; }
+
+    .ssv-fire .ffill { display: none; }
+    .ssv-fire.lit .fout { display: none; }
+    .ssv-fire.lit .ffill { display: block; }
+    .ssv-fire.lit .ssv-lbl { color: var(--red); }
+
+    .ssv-save .sfill { display: none; }
+    .ssv-save.saved .sout { display: none; }
+    .ssv-save.saved .sfill { display: block; }
+    .ssv-save.saved .ssv-lbl { color: rgba(234,59,50,0.95); }
+
+    /* Bottom content */
+    .ssv-bottom {
+      position: absolute; left: 14px; right: 72px; bottom: 84px; z-index: 20;
+    }
+    .ssv-creator-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .ssv-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,0.35); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase;
+    }
+    .ssv-handle { font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
+    .ssv-follow {
+      font-size: 10px; color: var(--red); font-weight: 700; cursor: pointer;
+      padding: 2px 9px; border: 1px solid var(--red); border-radius: 100px;
+      transition: background 0.15s;
+    }
+    .ssv-follow:hover { background: rgba(234,59,50,0.15); }
+    .ssv-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
+    .ssv-caption {
+      font-size: 13px; color: rgba(255,255,255,0.78); line-height: 1.45;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .ssv-caption em { color: #fff; font-style: normal; font-weight: 600; }
+
+    /* Watch It button */
+    .ssv-watch {
+      position: absolute; left: 14px; right: 72px; bottom: 16px; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      height: 52px; border-radius: 16px;
+      font-family: var(--font-body); color: #fff; border: none; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 6px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
+      transition: transform 0.15s, filter 0.15s;
+      animation: ssvWatchBreathe 2.8s ease-in-out infinite;
+    }
+    @keyframes ssvWatchBreathe {
+      0%,100% { box-shadow: 0 0 0 0 rgba(var(--ssv-rgb,234,59,50),0), 0 6px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18); }
+      50%     { box-shadow: 0 0 20px 6px rgba(var(--ssv-rgb,234,59,50),0.4), 0 0 44px 14px rgba(var(--ssv-rgb,234,59,50),0.15), 0 6px 28px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18); }
+    }
+    .ssv-watch:active { transform: scale(0.97); }
+    .ssv-watch-inner { display: flex; align-items: center; gap: 10px; padding: 0 14px; width: 100%; pointer-events: none; }
+    .ssv-watch-logo {
+      width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 800; color: #fff;
+      background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25);
+    }
+    .ssv-watch-text { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+    .ssv-watch-main { font-size: 14px; font-weight: 800; letter-spacing: 0.4px; }
+    .ssv-watch-sub  { font-size: 10px; font-weight: 500; opacity: 0.85; }
+    .ssv-watch-arrow { width: 24px; display: flex; justify-content: flex-end; opacity: 0.75; }
+
+    /* Desktop: rounded column edges so it reads as a "player" */
+    @media (min-width: 701px) {
+      .ssv-feed { box-shadow: 0 0 80px rgba(0,0,0,0.8); }
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+/* ── Inject viewer container once ───────────────── */
+(function _injectClipViewerHTML() {
+  const v = document.createElement('div');
+  v.id = 'ss-clip-viewer';
+  v.innerHTML = `
+    <div class="ssv-close" onclick="ssCloseClip()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>
+    <div class="ssv-top-pill">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+      More like this
+    </div>
+    <div class="ssv-feed" id="ssv-feed"></div>
+  `;
+  document.body.appendChild(v);
+})();
+
+/* ── SVG snippets for viewer ────────────────────── */
+const _SSV_FIRE_OUT  = `<svg class="fout" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const _SSV_FIRE_FILL = `<svg class="ffill" width="30" height="30" viewBox="0 0 24 24" fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const _SSV_SAVE_OUT  = `<svg class="sout" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const _SSV_SAVE_FILL = `<svg class="sfill" width="26" height="26" viewBox="0 0 24 24" fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const _SSV_SHARE     = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`;
+
+/* ── Render one clip ────────────────────────────── */
+function _ssvClipHTML(c, i) {
+  const fired = _ssvFired.has(i);
+  const tags = [...(c.genre || []), c.lang].filter(Boolean)
+    .map(t => `<span class="tag">${t}</span>`).join('');
+  const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
+  return `
+    <div class="ssv-clip" id="ssv-clip-${i}" data-ssv-idx="${i}">
+      <div class="ssv-bg" style="background:${c.bg}"></div>
+      <div class="ssv-vig"></div>
+
+      <div class="ssv-rail">
+        <div class="ssv-act ssv-fire ${fired ? 'lit' : ''}" id="ssv-fire-${i}" onclick="_ssvToggleFire(${i})">
+          <div class="ssv-ico">${_SSV_FIRE_OUT}${_SSV_FIRE_FILL}</div>
+          <span class="ssv-lbl" id="ssv-fire-count-${i}">${fmtFires(c.fires + (fired ? 1 : 0))}</span>
+        </div>
+        <div class="ssv-act ssv-save" data-save-id="${c.id}" onclick="event.stopPropagation(); ssToggleSave(_ssvClips[${i}], this)">
+          <div class="ssv-ico">${_SSV_SAVE_OUT}${_SSV_SAVE_FILL}</div>
+          <span class="ssv-lbl">Save</span>
+        </div>
+        <div class="ssv-act" onclick="ssShare(_ssvClips[${i}])">
+          <div class="ssv-ico">${_SSV_SHARE}</div>
+          <span class="ssv-lbl">Share</span>
+        </div>
+      </div>
+
+      <div class="ssv-bottom">
+        <div class="ssv-creator-row">
+          <div class="ssv-avatar" style="background:${c.creator.bg}">${c.creator.letter}</div>
+          <span class="ssv-handle">@${c.creator.name}</span>
+          <span class="ssv-follow">+ Follow</span>
+        </div>
+        <div class="ssv-tags">${tags}</div>
+        <div class="ssv-caption">${caption}</div>
+      </div>
+
+      <button class="ssv-watch" style="background:${c.platColor}; --ssv-rgb:${c.platRgb}" onclick="ssOpenSheet(_ssvClips[${i}])">
+        <div class="ssv-watch-inner">
+          <div class="ssv-watch-logo">${c.platAbbr}</div>
+          <div class="ssv-watch-text">
+            <span class="ssv-watch-main">Watch It</span>
+            <span class="ssv-watch-sub">on ${c.platLabel}</span>
+          </div>
+          <div class="ssv-watch-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </button>
+    </div>
+  `;
+}
+
+/* ── Open the viewer ────────────────────────────── */
+function ssOpenClip(clipOrId, list) {
+  // Allow passing an id when a list is provided
+  let clicked = clipOrId;
+  if ((typeof clipOrId === 'number' || typeof clipOrId === 'string') && Array.isArray(list)) {
+    clicked = list.find(c => String(c.id) === String(clipOrId));
+  }
+  if (!clicked) return;
+
+  _ssvClips = _ssvBuildList(clicked, list);
+  _ssvFired = new Set();
+
+  const feed = document.getElementById('ssv-feed');
+  if (!feed) return;
+  feed.innerHTML = _ssvClips.map((c, i) => _ssvClipHTML(c, i)).join('');
+
+  // Lock background scroll
+  _ssvPrevScroll = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  const viewer = document.getElementById('ss-clip-viewer');
+  viewer.classList.add('open');
+
+  // First clip active + observer for the rest
+  feed.scrollTop = 0;
+  _ssvSetupObserver(feed);
+  document.getElementById('ssv-clip-0')?.classList.add('active');
+  ssSyncAllSaveBtns();
+
+  document.addEventListener('keydown', _ssvKeydown);
+}
+
+function ssCloseClip() {
+  const viewer = document.getElementById('ss-clip-viewer');
+  if (viewer) viewer.classList.remove('open');
+  document.body.style.overflow = _ssvPrevScroll || '';
+  if (_ssvObserver) { _ssvObserver.disconnect(); _ssvObserver = null; }
+  document.removeEventListener('keydown', _ssvKeydown);
+  // Re-sync any save buttons on the underlying page
+  setTimeout(ssSyncAllSaveBtns, 50);
+}
+
+function _ssvKeydown(e) {
+  if (e.key === 'Escape') ssCloseClip();
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const feed = document.getElementById('ssv-feed');
+    if (!feed) return;
+    const active = feed.querySelector('.ssv-clip.active');
+    const idx = active ? parseInt(active.dataset.ssvIdx) : 0;
+    const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+    document.getElementById(`ssv-clip-${next}`)?.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+function _ssvSetupObserver(feed) {
+  if (_ssvObserver) _ssvObserver.disconnect();
+  _ssvObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        feed.querySelectorAll('.ssv-clip.active').forEach(el => el.classList.remove('active'));
+        entry.target.classList.add('active');
+      }
+    });
+  }, { root: feed, threshold: 0.6 });
+  feed.querySelectorAll('.ssv-clip').forEach(c => _ssvObserver.observe(c));
+}
+
+/* ── Fire toggle inside the viewer ──────────────── */
+function _ssvToggleFire(i) {
+  const clip = _ssvClips[i];
+  if (!clip) return;
+  const fired = !_ssvFired.has(i);
+  fired ? _ssvFired.add(i) : _ssvFired.delete(i);
+
+  const btn = document.getElementById(`ssv-fire-${i}`);
+  if (btn) {
+    btn.classList.toggle('lit', fired);
+    const ico = btn.querySelector('.ssv-ico');
+    if (ico) { ico.classList.remove('pulse'); void ico.offsetWidth; ico.classList.add('pulse'); }
+  }
+  const count = document.getElementById(`ssv-fire-count-${i}`);
+  if (count) count.textContent = fmtFires(clip.fires + (fired ? 1 : 0));
+
+  // Fire energy → flash the Watch It CTA on this clip
+  if (fired) {
+    const watch = document.querySelector(`#ssv-clip-${i} .ssv-watch`);
+    if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => watch.style.filter = '', 360); }
+  }
 }
