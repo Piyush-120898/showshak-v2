@@ -73,6 +73,17 @@ function ssPageFadeIn() {
 
 document.addEventListener('DOMContentLoaded', ssPageFadeIn);
 
+// bfcache guard: when a page is restored from the back-forward cache
+// (e.g. the user swipes/navigates BACK to it), DOMContentLoaded does NOT
+// fire again — which previously left the body stuck at opacity:0 (black
+// screen). Force it visible on restore.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) {
+    document.body.style.transition = 'none';
+    document.body.style.opacity = '1';
+  }
+});
+
 
 /* ════════════════════════════════════════════════
    WATCH IT SHEET
@@ -683,6 +694,7 @@ let _ssvClips      = [];      // normalized clips currently in the viewer
 let _ssvFired      = new Set; // indices fired this session
 let _ssvPrevScroll = null;    // saved body overflow
 let _ssvObserver   = null;
+let _ssvHistoryActive = false;// true while our back-to-close history entry is live
 
 /* ── Normalizer: any page schema → canonical clip ── */
 function _ssvNormalize(raw) {
@@ -1012,10 +1024,31 @@ function ssOpenClip(clipOrId, list) {
   document.getElementById('ssv-clip-0')?.classList.add('active');
   ssSyncAllSaveBtns();
 
+  // Push a history entry so the mobile back-swipe (and the browser/
+  // Android back button) CLOSES the viewer instead of navigating away
+  // from the page. The popstate handler below does the actual close.
+  if (!_ssvHistoryActive) {
+    history.pushState({ ssvViewer: true }, '');
+    _ssvHistoryActive = true;
+  }
+
   document.addEventListener('keydown', _ssvKeydown);
 }
 
+// User-initiated close (close button, Escape, Watch It nav, etc.).
+// If we pushed a history entry, pop it — that triggers popstate, which
+// runs the real teardown. Otherwise tear down directly.
 function ssCloseClip() {
+  if (_ssvHistoryActive) {
+    history.back();           // → fires popstate → _ssvOnPopState → teardown
+  } else {
+    _ssvTeardownViewer();
+  }
+}
+
+// The actual close/teardown. Never touches history (so it's safe to call
+// from the popstate handler after the entry has already been popped).
+function _ssvTeardownViewer() {
   const viewer = document.getElementById('ss-clip-viewer');
   if (viewer) viewer.classList.remove('open');
   document.body.style.overflow = _ssvPrevScroll || '';
@@ -1024,6 +1057,16 @@ function ssCloseClip() {
   // Re-sync any save buttons on the underlying page
   setTimeout(ssSyncAllSaveBtns, 50);
 }
+
+// Back gesture / back button → close the viewer if it's open.
+function _ssvOnPopState() {
+  const viewer = document.getElementById('ss-clip-viewer');
+  if (viewer && viewer.classList.contains('open')) {
+    _ssvHistoryActive = false;   // our entry is already gone (it was popped)
+    _ssvTeardownViewer();
+  }
+}
+window.addEventListener('popstate', _ssvOnPopState);
 
 function _ssvKeydown(e) {
   if (e.key === 'Escape') ssCloseClip();
