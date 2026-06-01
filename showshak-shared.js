@@ -775,6 +775,11 @@ function _ssvBuildList(clicked, list) {
     }
     #ss-clip-viewer.open { opacity: 1; pointer-events: all; }
 
+    /* Drag-to-dismiss: the inner feed slides horizontally with the
+       finger (swipe right anywhere → go back). JS toggles .ssv-dragging
+       off so the spring-back / fly-out animates. */
+    .ssv-feed.ssv-snap { transition: transform 0.3s var(--ease-smooth); }
+
     .ssv-feed {
       position: relative; height: 100%;
       width: min(440px, 100vw);
@@ -924,8 +929,8 @@ function _ssvBuildList(clicked, list) {
   const v = document.createElement('div');
   v.id = 'ss-clip-viewer';
   v.innerHTML = `
-    <div class="ssv-close" onclick="ssCloseClip()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    <div class="ssv-close" onclick="ssCloseClip()" aria-label="Go back">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </div>
     <div class="ssv-top-pill">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
@@ -1033,6 +1038,71 @@ function ssOpenClip(clipOrId, list) {
   }
 
   document.addEventListener('keydown', _ssvKeydown);
+  _ssvAttachSwipe(feed);
+}
+
+/* ── Swipe-anywhere to go back (Instagram-style) ──────────────────
+   A rightward horizontal drag from ANYWHERE on the clip slides the
+   viewer with the finger and closes it past a threshold. Vertical
+   drags are left alone so the normal clip scroll still works — we
+   lock to whichever axis the finger commits to first. */
+function _ssvAttachSwipe(feed) {
+  let startX = 0, startY = 0, dx = 0, dy = 0;
+  let axis = null;            // null | 'h' | 'v' — locked after first move
+  let tracking = false;
+
+  const reset = (animate) => {
+    feed.classList.toggle('ssv-snap', !!animate);
+    feed.style.transform = '';
+    if (animate) setTimeout(() => feed.classList.remove('ssv-snap'), 320);
+  };
+
+  feed.ontouchstart = (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = dy = 0; axis = null; tracking = true;
+    feed.classList.remove('ssv-snap');
+  };
+
+  feed.ontouchmove = (e) => {
+    if (!tracking) return;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
+
+    // Decide the gesture axis once the finger has clearly committed.
+    if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    }
+    if (axis !== 'h') return;            // vertical → let the feed scroll
+
+    // Only track rightward drags (going back); clamp left at 0.
+    const slide = Math.max(0, dx);
+    feed.style.transform = `translateX(${slide}px)`;
+    // Fade the backdrop a touch as it slides for depth.
+    const viewer = document.getElementById('ss-clip-viewer');
+    if (viewer) viewer.style.opacity = String(Math.max(0.35, 1 - slide / 600));
+    e.preventDefault();                  // stop the page/native gesture fighting us
+  };
+
+  feed.ontouchend = () => {
+    if (!tracking) return;
+    tracking = false;
+    const viewer = document.getElementById('ss-clip-viewer');
+    const width = feed.offsetWidth || window.innerWidth;
+    // Close if dragged past ~32% of the width OR a confident flick.
+    if (axis === 'h' && dx > Math.min(140, width * 0.32)) {
+      // Fly the viewer out to the right, then close.
+      feed.classList.add('ssv-snap');
+      feed.style.transform = `translateX(${width}px)`;
+      if (viewer) viewer.style.opacity = '0';
+      setTimeout(() => { if (viewer) viewer.style.opacity = ''; ssCloseClip(); }, 230);
+    } else {
+      // Snap back.
+      if (viewer) viewer.style.opacity = '';
+      reset(true);
+    }
+  };
 }
 
 // User-initiated close (close button, Escape, Watch It nav, etc.).
@@ -1050,7 +1120,13 @@ function ssCloseClip() {
 // from the popstate handler after the entry has already been popped).
 function _ssvTeardownViewer() {
   const viewer = document.getElementById('ss-clip-viewer');
-  if (viewer) viewer.classList.remove('open');
+  if (viewer) { viewer.classList.remove('open'); viewer.style.opacity = ''; }
+  const feed = document.getElementById('ssv-feed');
+  if (feed) {
+    feed.style.transform = '';
+    feed.classList.remove('ssv-snap');
+    feed.ontouchstart = feed.ontouchmove = feed.ontouchend = null;
+  }
   document.body.style.overflow = _ssvPrevScroll || '';
   if (_ssvObserver) { _ssvObserver.disconnect(); _ssvObserver = null; }
   document.removeEventListener('keydown', _ssvKeydown);
