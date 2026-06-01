@@ -620,7 +620,6 @@ function clipCardHTML(clip, size = 'lg') {
   const lg = size === 'lg';
   const cls = lg ? 'clip-card' : 'fy-clip-card';
   const radius = lg ? '16px' : '14px';
-  const platSize = lg ? '22px' : '20px';
   const avSize  = lg ? '20px' : '18px';
   const avFont  = lg ? '8px'  : '7px';
   const handleFont = lg ? '10px' : '9px';
@@ -638,7 +637,6 @@ function clipCardHTML(clip, size = 'lg') {
       <div style="width:100%;aspect-ratio:9/16;border-radius:${radius};overflow:hidden;position:relative;border:1px solid var(--border)">
         <div style="position:absolute;inset:0;background:${clip.bg};background-size:cover;background-position:center;transition:transform 0.4s ease"></div>
         <div class="${vigClass}"></div>
-        <div style="position:absolute;top:${lg?8:7}px;right:${lg?8:7}px;width:${platSize};height:${platSize};border-radius:${lg?6:5}px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;background:${clip.platColor};border:1px solid rgba(255,255,255,0.15)">${clip.platAbbr}</div>
         ${playEl}
         <div style="position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:5px">
           <div style="width:${avSize};height:${avSize};border-radius:50%;border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-size:${avFont};font-weight:700;color:#fff;flex-shrink:0;background:${clip.creator.bg}">${clip.creator.letter}</div>
@@ -810,7 +808,6 @@ function showResultsView(clips, label) {
     <div class="result-clip" onclick="ssOpenClip(${clip.id}, CLIPS)">
       <div class="result-clip-thumb">
         <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
-        <div class="result-clip-thumb-plat" style="background:${clip.platColor}">${clip.platAbbr}</div>
       </div>
       <div class="result-clip-info">
         <div class="result-clip-creator">@${clip.creator.name}</div>

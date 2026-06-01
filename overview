@@ -63,6 +63,14 @@ Closest references for mental model:
    on clip, follower counts, view counts.
    Platform reveal lives ONLY in the Watch It sheet.
 
+   APPLIES EVERYWHERE, NOT JUST THE FEED: clip CARDS on Discover,
+   Watchlist and Profile (grid + horizontal) must ALSO not stamp a
+   platform badge. (Removed 2026 — they previously did, which both
+   contradicted this rule and looked like a fake "Watch It" button.)
+   Platform stays a FILTER dimension only (e.g. Discover platform
+   chips: "show me Prime clips"), never a label on each card. Cards
+   lead with ShowShak-native signals instead: creator + 🔥 fires.
+
    WHY NO SHOW TITLE: If the user has already seen the show, they
    skip immediately. Hiding the title forces them to connect with
    the curator's voice and energy first. If they trust the curator,

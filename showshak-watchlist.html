@@ -750,7 +750,6 @@ function render() {
         <div class="wl-clip-thumb">
           <div class="wl-clip-bg" style="background:${c.bg}"></div>
           <div class="wl-clip-vig"></div>
-          <div class="wl-clip-plat" style="background:${c.platColor}">${c.platAbbr}</div>
           <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}',${c.id})">✕</div>
           <div class="wl-clip-meta">
             <div class="wl-clip-creator">@${c.creator}</div>
@@ -823,7 +822,6 @@ function buildRec() {
       <div class="rec-clip-thumb">
         <div class="rec-clip-bg" style="background:${c.bg}"></div>
         <div class="rec-clip-vig"></div>
-        <div class="rec-clip-plat" style="background:${c.platColor}">${c.platAbbr}</div>
         <div class="rec-clip-play">${PLAY_SVG}</div>
         <div class="rec-clip-creator-row">
           <div class="rec-clip-avatar" style="background:${c.creatorBg}">${c.creatorLetter}</div>
