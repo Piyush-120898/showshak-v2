@@ -205,6 +205,29 @@ function shareClip(idx) {
   if (typeof SHOWS !== 'undefined') ssShare(SHOWS[idx]);
 }
 
+/* Share a whole Stack / collection. Native share sheet on mobile,
+   clipboard fallback on desktop. Used by Watchlist (and later the
+   profile Highlights shelf). Pass the stack object from ssGetStacks(). */
+function ssShareStack(stack) {
+  if (!stack) return;
+  const n = stack.clips ? stack.clips.length : 0;
+  const countTxt = n ? `${n} hand-picked clip${n !== 1 ? 's' : ''}` : 'a collection';
+  const title = `${stack.name} — a ShowShak Stack`;
+  const text  = `Check out "${stack.name}" on ShowShak — ${countTxt} of what to watch next. 🔥`;
+  // Stack-specific deep link (route not built yet; harmless + future-proof).
+  const url = `${location.origin}${location.pathname}#stack=${encodeURIComponent(stack.id)}`;
+
+  if (navigator.share) {
+    navigator.share({ title, text, url }).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(`${text}\n${url}`)
+      .then(() => ssToast(`🔗 “${stack.name}” link copied`))
+      .catch(() => ssToast('Could not copy link'));
+  } else {
+    ssToast('Sharing not supported on this browser');
+  }
+}
+
 
 /* ════════════════════════════════════════════════
    SMOOTH PAGE NAVIGATION
