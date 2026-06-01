@@ -624,20 +624,26 @@ function _ssToggleInStack(stackId) {
   if (!stack) return;
 
   const alreadyIn = stack.clips.some(c => String(c.id) === String(_ssSheetClip.id));
+  const clipId = _ssSheetClip.id;
 
   if (alreadyIn) {
-    stack.clips = stack.clips.filter(c => String(c.id) !== String(_ssSheetClip.id));
+    // Removing is not a "done" action — keep the sheet open so the user
+    // can re-pick. Just update the row + buttons in place.
+    stack.clips = stack.clips.filter(c => String(c.id) !== String(clipId));
     _ss_writeStacks(stacks);
     ssToast(`Removed from ${stack.name}`);
+    _ssRenderStackList();
+    ssSyncSaveBtn(clipId);
   } else {
+    // Saving IS a completion action — save, show the checkmark, then
+    // auto-close the sheet (like Instagram/TikTok save-to-collection).
     stack.clips.unshift(_ssSheetClip);
     _ss_writeStacks(stacks);
     ssToast(`🔖 Saved to ${stack.name}`);
+    _ssRenderStackList();          // briefly shows the checkmark filling in
+    ssSyncSaveBtn(clipId);
+    setTimeout(_ssCloseStackSheet, 380);  // let the check animate, then dismiss
   }
-
-  // Re-render list and sync all save buttons for this clip
-  _ssRenderStackList();
-  ssSyncSaveBtn(_ssSheetClip.id);
 }
 
 /* ── Create new stack inline ─────────────────── */
