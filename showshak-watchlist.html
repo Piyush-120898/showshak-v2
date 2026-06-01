@@ -714,6 +714,14 @@ const ALL_CLIPS = [
 
 let activeStackId = null;
 
+/* Open an in-stack clip in the universal viewer (related = the stack itself) */
+function wlOpenStackClip(stackId, clipId) {
+  const stack = ssGetStacks().find(s => s.id === stackId);
+  if (!stack) return;
+  const clip = stack.clips.find(c => String(c.id) === String(clipId));
+  if (clip) ssOpenClip(clip, stack.clips);
+}
+
 /* ════════════════════════════════════════════════
    RENDER — reads ONLY from ssGetStacks() (shared.js)
    This is now the single source of truth.
@@ -738,7 +746,7 @@ function render() {
       : 'linear-gradient(160deg,#0B0B0F,#13131A)';
 
     const clipsHtml = stack.clips.map(c => `
-      <div class="wl-clip" onclick="ssToast('▶ Opening clip — go to Feed')">
+      <div class="wl-clip" onclick="wlOpenStackClip('${stack.id}',${c.id})">
         <div class="wl-clip-thumb">
           <div class="wl-clip-bg" style="background:${c.bg}"></div>
           <div class="wl-clip-vig"></div>
@@ -811,7 +819,7 @@ function buildRec() {
   const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
 
   grid.innerHTML = shuffled.map(c => `
-    <div class="rec-clip-card" onclick="ssToast('▶ Opening clip — go to Feed')">
+    <div class="rec-clip-card" onclick="ssOpenClip(${c.id}, ALL_CLIPS)">
       <div class="rec-clip-thumb">
         <div class="rec-clip-bg" style="background:${c.bg}"></div>
         <div class="rec-clip-vig"></div>
@@ -910,4 +918,4 @@ ssSyncAllSaveBtns();
 
 </script>
 </body>
-</html>
+</html>

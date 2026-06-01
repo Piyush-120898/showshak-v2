@@ -492,19 +492,31 @@ html, body { overflow: hidden; }
   .mobile-watch-btn   { display: flex; }
   .clip-logo-float    { display: flex; }
 
+  /* ── Constrain the feed area to sit ABOVE the bottom nav ──────
+     Each clip ends exactly at the top of the mobile menu bar, so
+     no clip pixels hide behind it. dvh = real visible viewport
+     height (kills the mobile address-bar 100vh quirk); vh is the
+     fallback for older browsers. */
+  .clip-column { height: calc(100vh - var(--mobile-nav-h)); height: calc(100dvh - var(--mobile-nav-h)); }
+  .clip        { height: calc(100vh - var(--mobile-nav-h)); height: calc(100dvh - var(--mobile-nav-h)); }
+  .feed-end    { height: calc(100vh - var(--mobile-nav-h)); height: calc(100dvh - var(--mobile-nav-h)); }
+
+  /* Offsets are now relative to the clip bottom (= nav bar top),
+     so the Watch It button + rail sit fully on the clip, never
+     behind the menu bar. */
   .mobile-watch-btn {
-    bottom: calc(var(--mobile-nav-h) + 14px);
+    bottom: 14px;
     right: 60px;
   }
   .mobile-action-rail {
-    bottom: calc(var(--mobile-nav-h) + 78px);
+    bottom: 78px;
   }
   .clip-bottom {
-    padding-bottom: calc(var(--mobile-nav-h) + 80px);
+    padding-bottom: 80px;
     padding-right: 60px;
   }
   .feed-end {
-    padding-bottom: calc(var(--mobile-nav-h) + 20px);
+    padding-bottom: 20px;
   }
 }
 </style>
@@ -1079,4 +1091,4 @@ requestAnimationFrame(() => { positionRail(); animateRailIn(); });
 window.addEventListener('resize', positionRail);
 </script>
 </body>
-</html>
+</html>
