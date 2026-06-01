@@ -1,0 +1,233 @@
+═══════════════════════════════════════════════════════════════
+  SHOWSHAK — POINTS TO KEEP IN MIND (PITCH-WISE)
+  Internal strategy notes. Not user-facing. Keep updated.
+  Captures revenue thinking + the data/neutrality strategy +
+  investor-grade framing to use when raising / pitching.
+═══════════════════════════════════════════════════════════════
+
+
+── THE ONE-LINE REFRAME (lead with this) ──────────────────────
+
+  ShowShak is NOT just a "what to watch" app.
+  It is potentially the DEMAND-SIDE INTELLIGENCE + MARKETING LAYER
+  for the entire streaming industry.
+
+  Mental model for investors:
+    Users give us   → attention + cross-platform taste & intent data
+    We sell that to → streamers (user acquisition + title marketing)
+                      and studios (trend intelligence)
+  This is the Google/Meta playbook applied to streaming discovery.
+
+  KEY FRAMING RULE: "The user is not our customer — the user is our
+  inventory." We monetize the taste-graph and intent data, not the
+  user's wallet. That is what makes a discovery layer valuable
+  beyond its raw user count.
+
+
+═══════════════════════════════════════════════════════════════
+  REVENUE MODELS (ranked by strength / defensibility)
+═══════════════════════════════════════════════════════════════
+
+1. PROMOTED CLIPS / NATIVE TITLE MARKETING  ★ THE REAL PRIZE
+   - Studios & streamers spend BILLIONS marketing individual titles
+     (new season drops, film launches).
+   - On ShowShak a "promoted clip" from a real curator is native
+     advertising that looks identical to organic content — no banner,
+     no interruption, fully on-concept.
+   - Why it's the headline: it is DEMAND-INDEPENDENT. A studio pays to
+     promote a title (e.g. a new season) whether or not the viewer
+     subscribes — they're buying awareness + intent at the moment of
+     taste. Recurring marketing budget, not a one-time bounty.
+   - This is the line item that supports a billion-dollar outcome.
+     Defensible because we own the taste data.
+
+2. PERFORMANCE USER-ACQUISITION FOR STREAMERS  ★ HEADLINE
+   - The mechanic: build trust by first showing clips for platforms the
+     user ALREADY subscribes to; over time also surface great content on
+     platforms they DON'T have → they subscribe to watch that specific
+     thing → we drove a net-new, pre-sold, high-intent subscriber.
+   - This is the HIGHEST-INTENT acquisition funnel a streamer can dream
+     of (warm customer at peak desire), and converts far better than a
+     streamer's own cold ads.
+   - DON'T pitch this as "affiliate links" (that shrinks it to a $5–25
+     one-time crumb, and note Netflix has NO affiliate program, Prime's
+     are thin). Pitch it as a CPA / UA PARTNERSHIP: the streamer's growth
+     team has a line item with our name on it, measured on cost-per-
+     acquisition. Same product behaviour, 10–100x the revenue framing.
+
+3. DATA / MARKET-INTELLIGENCE BUSINESS  ★ QUIET COMPOUNDER / MOAT
+   - We accumulate something no one else has cleanly: CROSS-PLATFORM
+     taste + intent data. What's heating up across ALL services at once,
+     what curators are pushing, what's converting attention into "Watch
+     It" taps — before it shows in any single platform's numbers.
+   - Sellable as trend intelligence (the Nielsen / Parrot Analytics
+     model). High margin, defensible, and GROWS AUTOMATICALLY as the
+     product is used. This is the real long-term moat — the taste-graph
+     compounds. (See the NEUTRALITY section below — critical.)
+
+4. CONSUMER SUBSCRIPTION — "SHOWSHAK PREMIUM"  ☆ DIVERSIFIER
+   - Power-user tier: advanced Stack tools, unlimited collections,
+     "notify me when X is streamable on a platform I have," ad-free,
+     curator analytics.
+   - Modest, but it's diversified, recurring, FIRST-PARTY revenue that
+     does NOT depend on studios. Good for de-risking the model. Not a
+     headline.
+
+5. CREATOR-ECONOMY TAKE-RATE  ☆ LATER (Series B+)
+   - Once curators have audiences: tipping, paid premium Stacks, fan
+     subscriptions — we take a cut. Only exists AFTER we've won supply.
+     Deepens curator lock-in.
+
+6. DISPLAY ADS  ✗ LOWEST VALUE — DO NOT BUILD TOWARD
+   - Pennies until 10M+ DAU. Selling ads TO OTT platforms is weak — they
+     have their own massive inventory. Let it fall out naturally at
+     scale; never lead with it.
+
+  CAVEAT ON ALL OF THE ABOVE: every model (1–5) is GATED BEHIND SCALE +
+  DATA. None can be sold off a prototype with no traffic. Revenue
+  diversity is a STRENGTH OF THE THESIS, not a fix for the early stage.
+  First job is still cracking cold-start (see RISKS).
+
+
+═══════════════════════════════════════════════════════════════
+  THE DATA / NEUTRALITY STRATEGY (handle with extreme care)
+═══════════════════════════════════════════════════════════════
+
+THE TENSION (we must be ready for this question):
+  If we surface insights like "what's trending, what's driving Watch It
+  clicks, which platform's content is winning attention," don't we anger
+  the platforms by exposing one platform's performance to its rivals?
+  (e.g. revealing Netflix's hits to Disney.) These platforms are our
+  content source, our deep-link partners, AND our future customers — a
+  three-front war we cannot win. The naive "sell each platform's secrets
+  to its rivals" version is a LANDMINE. The worry is valid.
+
+THE REFRAME THAT DEFUSES IT — SELL THE MIRROR, NOT THE SPY REPORT:
+  Don't sell Netflix's secrets to Disney. Sell EVERY platform a mirror
+  of the whole market — including, especially, their OWN performance.
+  - Each platform knows everything INSIDE its own walls but is BLIND to
+    what happens on competitors. We are the only ones standing above all
+    of them with that cross-platform view.
+  - So "here's where YOU stand in the open market" is a product they will
+    PAY for and literally cannot buy anywhere else — not a betrayal.
+  - Same data, opposite political outcome:
+      ✗ "We tell your competitor your secrets" → everyone hates us
+      ✓ "We give YOU the cross-platform scoreboard" → everyone pays us
+
+THE FOUR RULES THAT KEEP US SAFE (the playbook — Nielsen/Parrot model):
+  1. Sell AGGREGATE TRENDS, never raw competitive intelligence.
+     "Crime thrillers are surging in India this month" = a market signal
+     everyone benefits from. "Here are Netflix's exact conversion
+     numbers" = a betrayal + a lawsuit + a blacklisting.
+  2. WE ARE SWITZERLAND. Neutrality IS the product. The moment we're seen
+     favouring one platform, the data loses value to everyone AND we lose
+     supply. Protect the neutral reputation like it's the company.
+  3. Sell each platform PRIMARILY ITS OWN MIRROR (how IT performs in the
+     open market) — highest value, lowest conflict, politically clean.
+  4. Data is ANONYMIZED / AUDIENCE-LEVEL, never a leak of a rival's
+     internal dashboard. We report taste & attention patterns.
+
+WHY THIS IS ACTUALLY A STRENGTH:
+  The data is sensitive BECAUSE it's valuable and no one else has it. A
+  data asset nobody would be upset about is one nobody would pay for. No
+  single platform can replicate it (Netflix structurally cannot see
+  Prime's numbers). Only a NEUTRAL cross-platform layer can hold it —
+  and Netflix will never send users to Prime, so they can't copy our
+  neutrality without ceasing to be themselves. THAT neutrality is the
+  moat.
+
+
+═══════════════════════════════════════════════════════════════
+  ADDITIONAL HIGH-VALUE POINTS TO KEEP IN MIND
+  (worth adding — surfaced while writing this up)
+═══════════════════════════════════════════════════════════════
+
+A. THE MOAT, STATED PLAINLY:
+   Our defensibility is NEUTRALITY + the TASTE-GRAPH. Netflix/Prime/etc.
+   structurally cannot be cross-platform (they won't promote rivals). We
+   can. The longer we run, the deeper the taste + intent data compounds.
+   That's the durable edge — not any single feature.
+
+B. THE TRUST TAX (execution risk to respect):
+   The moment we push content users can't watch without paying, we risk
+   the exact thing the product is built on — TRUST. "Build trust first,
+   monetize the gap later" only works if we're disciplined about the
+   ratio of organic vs. monetized/pushed content. Lean too hard → the
+   curator bond breaks and we become an ad unit. Guard the ratio.
+
+C. WHY WE WIN VS. BIG PLATFORMS:
+   TikTok is already a de facto discovery engine; YouTube/Netflix/Amazon
+   could ship "creator clips → watch." Our defense: we own the TASTE
+   GRAPH and CROSS-PLATFORM NEUTRALITY they can't have. Only matters if
+   we reach scale before they bother — so speed + a real wedge matter.
+
+D. THE COLD-START IS THE WHOLE GAME (3-sided):
+   We need users ← curators ← users, AND content/clips to exist at all.
+   Two-sided marketplaces kill most startups; we have THREE sides.
+   Proof that de-risks everything (cheapest first):
+     1. Manufacture supply ourselves: recruit 10–20 real film-obsessed
+        taste-makers, hand-hold them to post, show RETENTION on a small
+        cohort (e.g. 100 users returning daily because they trust ~15
+        curators). Worth more than any deck.
+     2. A demand signal: a few thousand genuinely excited signups, or one
+        curator's clips driving real Watch It clicks.
+     3. De-risk the law on day one (see E).
+     4. Get a cofounder (see F).
+   Target HUNGRY RISING creators (10k–50k), not established 100k names —
+   they have the most to gain, least to lose, and will move cold.
+
+E. LEGAL / LICENSING = THE #1 EXISTENTIAL RISK:
+   Entire value rests on clips of copyrighted film/TV. "Fair use like
+   TikTok" is NOT a moat — it's a hope. What protects comparable
+   platforms is DMCA SAFE HARBOR (they're hosts; users upload; takedowns
+   + repeat-infringer bans) + Content ID + licensing deals. Build the
+   safe-harbor scaffolding early (registered DMCA agent, takedown +
+   counter-notice flow, repeat-infringer policy, ToS putting upload
+   responsibility on the curator). Long game = the YouTube path
+   (licensing / official studio clips & trailers). MUST convert this
+   from a "hope" into a "strategy" before serious capital. (Full detail
+   lives in the overview file's LEGAL & CONTENT STRATEGY section.)
+
+F. THE TEAM GAP (be honest about it):
+   This is a content + licensing + deep-linking business — it lives or
+   dies on STUDIO/PLATFORM RELATIONSHIPS and ENGINEERING. A technical
+   cofounder and/or someone with streaming-industry relationships
+   de-risks investors more than any feature. AI tooling closes the
+   engineering gap for a PROTOTYPE, not for scaled real-time multi-region
+   availability + video infrastructure.
+
+G. WATCH IT — DATA & DEEP-LINKING, START TODAY (no deals needed):
+   Availability ("on Netflix/Prime in your region") is free now via the
+   TMDB API "watch providers" endpoint (TMDB licenses JustWatch data).
+   The deep link itself uses public universal-link URLs — no partnership
+   required. Partnerships/affiliate networks are only needed to GET PAID
+   on the click. Positioning vs. JustWatch: they're a cold utility search
+   box; we're the emotional, taste-driven TOP of the funnel. We win on
+   engagement + trust, not database completeness.
+
+H. CATEGORY POSITIONING:
+   "Trust-based, creator-curated, action-oriented discovery."
+   Letterboxd's soul + TikTok's format + an action (Watch It) layer.
+   We are the bridge, not the destination — we send users TO platforms;
+   we don't own content.
+
+
+═══════════════════════════════════════════════════════════════
+  THE BLUNT INVESTOR SUMMARY (keep ego in check)
+═══════════════════════════════════════════════════════════════
+
+  - The problem is real, global, recurring, and unsolved. Big TAM.
+  - The core insight (hide the title → trust the curator) is a sharp,
+    defensible behavioural wedge.
+  - The revenue thinking is GENUINELY STRONG once framed correctly
+    (promoted clips + UA/CPA + intel data — NOT affiliate crumbs).
+  - The data sensitivity is proof of value + the basis of the moat.
+  - BUT: at idea+prototype, pre-traction, solo non-technical stage, the
+    check is "not yet." Revenue was never the blocker. The blockers, in
+    order: (1) legal/licensing existential risk, (2) cold-start, (3) solo
+    non-technical team.
+  - We don't have a money problem. We have a "prove the thing works at
+    all" problem. Go get ~15 hungry curators + ~100 daily-returning
+    users + one IP-lawyer conversation. Then everything above unlocks.
+
+═══════════════════════════════════════════════════════════════
