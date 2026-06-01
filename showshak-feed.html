@@ -541,7 +541,7 @@ html, body { overflow: hidden; }
       </div>
       <span class="nav-item-label">Watchlist</span>
     </a>
-    <a class="nav-item active" data-nav="profile" href="showshak-profile.html">
+    <a class="nav-item" data-nav="profile" href="showshak-profile.html">
       <div class="nav-item-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
@@ -584,7 +584,7 @@ html, body { overflow: hidden; }
     </div>
     <span class="act-label" id="rail-lit-count">—</span>
   </div>
-  <div class="act-btn" id="rail-save" onclick="toggleSave(currentClip)">
+  <div class="act-btn" id="rail-save" data-save-id="" onclick="toggleSave(currentClip)">
     <div class="act-icon">
       <svg class="save-outline" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       <svg class="save-filled"  width="26" height="26" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -648,7 +648,7 @@ html, body { overflow: hidden; }
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
     <span class="mob-nav-label">Watchlist</span>
   </a>
-  <a class="mob-nav-item active" data-mob-nav="profile" href="showshak-profile.html">
+  <a class="mob-nav-item" data-mob-nav="profile" href="showshak-profile.html">
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
     <span class="mob-nav-label">Profile</span>
   </a>
@@ -769,7 +769,6 @@ const SHOWS = [
 ];
 
 const litState   = {};
-const savedState = {};
 let currentClip  = 0;
 let progressTimers = {};
 let isPaused = false;
@@ -815,7 +814,7 @@ function buildFeed() {
           </div>
           <span class="m-act-label" id="m-lit-count-${i}">—</span>
         </div>
-        <div class="m-act-btn" id="m-save-${i}" onclick="toggleSave(${i})">
+        <div class="m-act-btn" id="m-save-${i}" data-save-id="${show.id}" onclick="toggleSave(${i}, this)">
           <div class="m-act-icon">
             <svg class="m-save-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
             <svg class="m-save-filled"  width="28" height="28" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -930,20 +929,31 @@ function syncRail(idx) {
   const litCount = document.getElementById('rail-lit-count');
   if (litCount) litCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
   if (litBtn)   litState[idx] ? litBtn.classList.add('lit') : litBtn.classList.remove('lit');
+
+  // Desktop save button — update data-save-id so ssSyncAllSaveBtns works,
+  // then sync its visual state from shared storage
   const saveBtn = document.getElementById('rail-save');
-  if (saveBtn)  savedState[idx] ? saveBtn.classList.add('saved') : saveBtn.classList.remove('saved');
+  if (saveBtn) {
+    saveBtn.setAttribute('data-save-id', show.id);
+    const isSaved = ssIsClipSaved(show.id);
+    isSaved ? saveBtn.classList.add('saved') : saveBtn.classList.remove('saved');
+    // wire its click to the shared system with the correct show
+    saveBtn.onclick = () => ssToggleSave(show, saveBtn);
+  }
+
   const pill  = document.getElementById('rail-watch-pill');
   const plat  = document.getElementById('rail-watch-pill-plat');
   if (pill) { pill.style.background = show.platColor; pill.style.setProperty('--pill-rgb', show.platRgb); }
   if (plat) plat.textContent = show.platLabel;
 
-  // Mobile
+  // Mobile — sync the per-clip save button from shared storage
   const mLit   = document.getElementById(`m-lit-${idx}`);
   const mCount = document.getElementById(`m-lit-count-${idx}`);
   if (mCount) mCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
   if (mLit)   litState[idx] ? mLit.classList.add('lit') : mLit.classList.remove('lit');
-  const mSave = document.getElementById(`m-save-${idx}`);
-  if (mSave)  savedState[idx] ? mSave.classList.add('saved') : mSave.classList.remove('saved');
+
+  // Sync ALL mobile save buttons from shared storage
+  ssSyncAllSaveBtns();
 }
 
 function animateRailIn() {
@@ -1044,10 +1054,11 @@ function toggleLit(idx) {
   syncRail(idx);
 }
 
-function toggleSave(idx) {
-  savedState[idx] = !savedState[idx];
-  ssToast(savedState[idx] ? '🔖 Added to Watchlist' : 'Removed from Watchlist');
-  syncRail(idx);
+function toggleSave(idx, btnEl) {
+  const show = SHOWS[idx];
+  if (!show) return;
+  // btnEl may be the mobile button; desktop rail button handled separately
+  ssToggleSave(show, btnEl || null);
 }
 
 function positionRail() {
@@ -1060,6 +1071,7 @@ function positionRail() {
 
 // ── INIT ──
 buildFeed();
+ssSyncAllSaveBtns();   // restore saved states from sessionStorage on page load
 initScrollObserver();
 startProgress(0);
 syncRail(0);

@@ -3,7 +3,6 @@
   Paste this at the start of every new conversation along with
   the four shared files listed below.
 ═══════════════════════════════════════════════════════════════
-//dhjueyweu
 
 ── WHAT IS SHOWSHAK ────────────────────────────────────────────
 
@@ -58,13 +57,16 @@ Closest references for mental model:
    emotional peak → decision). This flash is called fire-flash.
 
 5. CONTENT SIGNALS ONLY — NO SOCIAL SIGNALS
-   On the feed clip we show: show title, genre tags, language tag,
+   On the feed clip we show: genre tags, language tag,
    creator handle + follow button, curator caption (2 lines).
-   We do NOT show: IMDb score on clip, follower counts, view counts.
+   We do NOT show: show title on clip, IMDb score, platform badge
+   on clip, follower counts, view counts.
    Platform reveal lives ONLY in the Watch It sheet.
-   NOTE: The overview previously said "do not show show title" —
-   this has been UPDATED. The show title IS shown on the clip
-   in the current build (bottom content area of each clip card).
+
+   WHY NO SHOW TITLE: If the user has already seen the show, they
+   skip immediately. Hiding the title forces them to connect with
+   the curator's voice and energy first. If they trust the curator,
+   they'll watch anything recommended — title revealed at Watch It.
 
 6. CURATORS, NOT INFLUENCERS
    People who post clips are curators / tastemakers — people

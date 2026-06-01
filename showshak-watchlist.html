@@ -593,7 +593,7 @@ html, body { overflow: hidden; }
       <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
       <span class="nav-item-label">Watchlist</span>
     </a>
-    <a class="nav-item active" data-nav="profile" href="showshak-profile.html">
+    <a class="nav-item" data-nav="profile" href="showshak-profile.html">
       <div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
       <span class="nav-item-label">Profile</span>
     </a>
@@ -675,48 +675,11 @@ html, body { overflow: hidden; }
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
     <span class="mob-nav-label">Watchlist</span>
   </a>
-  <a class="mob-nav-item active" data-mob-nav="profile" href="showshak-profile.html">
+  <a class="mob-nav-item" data-mob-nav="profile" href="showshak-profile.html">
     <div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
     <span class="mob-nav-label">Profile</span>
   </a>
 </nav>
-
-<!-- SAVE-TO-STACK SHEET -->
-<div id="stack-overlay" onclick="closeStackSheet()"></div>
-<div id="stack-sheet">
-  <div class="sh-handle"></div>
-  <div class="sh-title">SAVE TO <em>STACK</em></div>
-  <div class="sh-new-row" id="sh-new-row" onclick="closeStackSheet(); openNewStack(true)">
-    <div class="sh-new-icon">+</div>
-    <div class="sh-new-text">
-      <div class="t1">Create New Stack</div>
-      <div class="t2">Start a fresh one for this clip</div>
-    </div>
-  </div>
-  <div id="sh-stack-list"></div>
-  <div class="sh-actions">
-    <button class="sh-done" onclick="confirmSave()">Save to Stack</button>
-    <div class="sh-cancel" onclick="closeStackSheet()">Cancel</div>
-  </div>
-</div>
-
-<!-- CREATE NEW STACK SHEET -->
-<div id="new-stack-overlay" onclick="closeNewStack()"></div>
-<div id="new-stack-sheet">
-  <div class="sh-handle"></div>
-  <div class="ns-title">NAME YOUR <em>STACK</em></div>
-  <div class="ns-label">Quick Picks</div>
-  <div class="ns-picks" id="ns-picks"></div>
-  <div class="ns-label">Or type your own</div>
-  <div class="ns-input-wrap">
-    <input class="ns-input" id="ns-input" type="text"
-      placeholder="e.g. Late Night Thrills..." maxlength="30"
-      oninput="onNsInput()"/>
-    <span class="ns-char" id="ns-char">0/30</span>
-  </div>
-  <button class="ns-create" id="ns-create" onclick="createStack()" disabled>Create Stack</button>
-  <div class="ns-cancel-lnk" onclick="closeNewStack()">Cancel</div>
-</div>
 
 <!-- STACK OPTIONS MENU -->
 <div id="opts-menu">
@@ -735,7 +698,8 @@ html, body { overflow: hidden; }
 
 <script>
 /* ════════════════════════════════════════════════
-   CLIP DATA — same as Feed / Discover
+   CLIP DATA — matches Feed & Discover exactly
+   id values must match so cross-page save works
 ════════════════════════════════════════════════ */
 const ALL_CLIPS = [
   { id:1, creator:'cinephile_arj',    creatorLetter:'A', creatorBg:'#E8373E', genre:['Crime','Thriller'], lang:'Hindi',   fires:1240, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#1a0505 0%,#2d0808 35%,#0d0d0d 100%)' },
@@ -748,63 +712,14 @@ const ALL_CLIPS = [
   { id:8, creator:'hbo_stan_official',creatorLetter:'H', creatorBg:'#5C2D91', genre:['Drama','Sci-Fi'],   lang:'English', fires:6100, platColor:'#FF6A00', platAbbr:'JH', bg:'linear-gradient(160deg,#030805 0%,#050e08 35%,#020503 100%)' },
 ];
 
-const QUICK_NAMES = ['Watch Tonight','Weekend Binge','Date Night','Slow Burns','Hidden Gems','Share With Friends'];
+let activeStackId = null;
 
 /* ════════════════════════════════════════════════
-   SESSION STORAGE — persists across page nav
-   within the same browser session
-════════════════════════════════════════════════ */
-const SS_KEY = 'ss_stacks_v1';
-
-function loadStacks() {
-  try {
-    const raw = sessionStorage.getItem(SS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveStacks(arr) {
-  try { sessionStorage.setItem(SS_KEY, JSON.stringify(arr)); } catch {}
-}
-
-/* ════════════════════════════════════════════════
-   STATE
-════════════════════════════════════════════════ */
-let stacks         = loadStacks();
-// On load: pull any clips saved from Feed into a default stack
-(function importFeedSaved() {
-  try {
-    const feedSaved = JSON.parse(sessionStorage.getItem('ss_feed_saved_v1') || '[]');
-    if (!feedSaved.length) return;
-
-    // Find or create the "Saved from Feed" stack
-    let stack = stacks.find(s => s.name === 'Saved from Feed');
-    if (!stack) {
-      stack = { id: nextId++, name: 'Saved from Feed', clips: [] };
-      stacks.push(stack);
-    }
-
-    // Add any clips not already in the stack
-    feedSaved.forEach(clip => {
-      if (!stack.clips.find(c => c.id === clip.id)) {
-        stack.clips.push(clip);
-      }
-    });
-
-    saveStacks(stacks);
-  } catch {}
-})();
-let nextId         = stacks.length ? Math.max(...stacks.map(s => s.id)) + 1 : 1;
-let pendingClip    = null;   // clip object waiting to be saved
-let selectedIds    = new Set();
-let activeStackId  = null;
-let fromSaveSheet  = false;  // whether new-stack was opened from save sheet
-let savedInRec     = new Set(); // track which rec clips are saved in this session
-
-/* ════════════════════════════════════════════════
-   RENDER — main page state
+   RENDER — reads ONLY from ssGetStacks() (shared.js)
+   This is now the single source of truth.
 ════════════════════════════════════════════════ */
 function render() {
+  const stacks   = ssGetStacks();  // ← always read fresh from shared storage
   const emptyEl  = document.getElementById('empty-state');
   const stacksEl = document.getElementById('stacks-wrap');
 
@@ -828,7 +743,7 @@ function render() {
           <div class="wl-clip-bg" style="background:${c.bg}"></div>
           <div class="wl-clip-vig"></div>
           <div class="wl-clip-plat" style="background:${c.platColor}">${c.platAbbr}</div>
-          <div class="wl-clip-remove" onclick="removeClip(event,${stack.id},${c.id})">✕</div>
+          <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}',${c.id})">✕</div>
           <div class="wl-clip-meta">
             <div class="wl-clip-creator">@${c.creator}</div>
             <div class="wl-clip-tag">${c.genre[0]} · ${c.lang}</div>
@@ -849,7 +764,7 @@ function render() {
                 <div class="stack-count">${stack.clips.length} clip${stack.clips.length !== 1 ? 's' : ''}</div>
               </div>
             </div>
-            <button class="stack-opts-btn" onclick="openOpts(event,${stack.id})">
+            <button class="stack-opts-btn" onclick="openOpts(event,'${stack.id}')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
             </button>
           </div>
@@ -866,19 +781,33 @@ function render() {
     `;
   }).join('');
 
-  saveStacks(stacks);
+  // Sync rec save button states against current storage
+  ssSyncAllSaveBtns();
+}
+
+/* ════════════════════════════════════════════════
+   NEW STACK — routes through shared.js system
+   "New Stack" button on this page triggers shared
+   stack sheet with no pending clip
+════════════════════════════════════════════════ */
+function openNewStack() {
+  // Open shared sheet with a dummy placeholder clip that won't be saved
+  // We just need the "create new stack" input to appear
+  // ssToggleSave with null shows the sheet; instead open directly:
+  _ssShowCreateInput && _ssShowCreateInput();
+  // Actually: open the shared sheet with null clip so user can create stack
+  _ssOpenStackSheet(null, null);
 }
 
 /* ════════════════════════════════════════════════
    RECOMMENDED CLIPS GRID
 ════════════════════════════════════════════════ */
-const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
-const PLAY_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-const BKMK_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
-const BKMK_FILL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const FIRE_SVG  = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const PLAY_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+const BKMK_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
 
 function buildRec() {
-  const grid   = document.getElementById('rec-grid');
+  const grid = document.getElementById('rec-grid');
   const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
 
   grid.innerHTML = shuffled.map(c => `
@@ -895,161 +824,14 @@ function buildRec() {
       </div>
       <div class="rec-clip-foot">
         <div class="rec-fire-row">${FIRE_SVG} ${fmtFires(c.fires)}</div>
-        <div class="rec-save-btn ${savedInRec.has(c.id) ? 'saved' : ''}"
-          id="rec-save-${c.id}"
-          onclick="event.stopPropagation(); recSave(${c.id})">
-          ${savedInRec.has(c.id) ? BKMK_FILL : BKMK_SVG}
+        <div class="rec-save-btn"
+          data-save-id="${c.id}"
+          onclick="event.stopPropagation(); ssToggleSave(ALL_CLIPS.find(x=>x.id===${c.id}), this)">
+          ${BKMK_SVG}
         </div>
       </div>
     </div>
   `).join('');
-}
-
-function recSave(clipId) {
-  const clip = ALL_CLIPS.find(c => c.id === clipId);
-  if (!clip) return;
-  savedInRec.add(clipId);
-  // update the button immediately
-  const btn = document.getElementById(`rec-save-${clipId}`);
-  if (btn) { btn.classList.add('saved'); btn.innerHTML = BKMK_FILL; }
-  openStackSheet(clip);
-}
-
-/* ════════════════════════════════════════════════
-   SAVE-TO-STACK SHEET
-════════════════════════════════════════════════ */
-function openStackSheet(clip) {
-  pendingClip = clip;
-  selectedIds = new Set();
-
-  const listEl = document.getElementById('sh-stack-list');
-
-  if (!stacks.length) {
-    listEl.innerHTML = `
-      <div style="padding:18px 20px 8px; font-size:13px; color:var(--gray2); line-height:1.7">
-        No stacks yet. Create one first — it only takes a second.
-      </div>`;
-  } else {
-    listEl.innerHTML = stacks.map(s => {
-      const thumbStyle = s.clips.length
-        ? `background:${s.clips[0].bg}`
-        : `background:var(--bg3)`;
-      return `
-        <div class="sh-stack-row" onclick="toggleSel(${s.id}, this)">
-          <div class="sh-stack-thumb">
-            <div class="sh-stack-thumb-bg" style="${thumbStyle}"></div>
-            <div class="sh-stack-thumb-vig"></div>
-          </div>
-          <div class="sh-stack-info">
-            <div class="t1">${s.name}</div>
-            <div class="t2">${s.clips.length} clip${s.clips.length !== 1 ? 's' : ''}</div>
-          </div>
-          <div class="sh-check" id="chk-${s.id}">
-            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="2,6 5,9 10,3"/></svg>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  document.getElementById('stack-overlay').classList.add('open');
-  document.getElementById('stack-sheet').classList.add('open');
-}
-
-function toggleSel(id, el) {
-  const chk = document.getElementById(`chk-${id}`);
-  if (selectedIds.has(id)) {
-    selectedIds.delete(id);
-    chk.classList.remove('on');
-    chk.querySelector('svg').style.display = 'none';
-  } else {
-    selectedIds.add(id);
-    chk.classList.add('on');
-    chk.querySelector('svg').style.display = 'block';
-  }
-}
-
-function closeStackSheet() {
-  document.getElementById('stack-sheet').classList.remove('open');
-  document.getElementById('stack-overlay').classList.remove('open');
-}
-
-function confirmSave() {
-  if (!pendingClip)    { ssToast('No clip selected'); return; }
-  if (!selectedIds.size) { ssToast('Pick a stack first'); return; }
-
-  selectedIds.forEach(sid => {
-    const s = stacks.find(s => s.id === sid);
-    if (s && !s.clips.find(c => c.id === pendingClip.id)) {
-      s.clips.push(pendingClip);
-    }
-  });
-
-  const count = selectedIds.size;
-  closeStackSheet();
-  pendingClip = null;
-  selectedIds = new Set();
-  render();
-  ssToast(`🔖 Saved to ${count} stack${count > 1 ? 's' : ''}`);
-}
-
-/* ════════════════════════════════════════════════
-   CREATE NEW STACK SHEET
-════════════════════════════════════════════════ */
-function buildQuickPicks() {
-  document.getElementById('ns-picks').innerHTML = QUICK_NAMES.map(n => `
-    <div class="ns-pick" onclick="pickName(this,'${n}')">${n}</div>
-  `).join('');
-}
-
-function pickName(el, name) {
-  document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
-  el.classList.add('on');
-  document.getElementById('ns-input').value = name;
-  onNsInput();
-}
-
-function onNsInput() {
-  const val = document.getElementById('ns-input').value;
-  document.getElementById('ns-char').textContent = `${val.length}/30`;
-  document.getElementById('ns-create').disabled = !val.trim().length;
-  if (!QUICK_NAMES.includes(val)) {
-    document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
-  }
-}
-
-function openNewStack(fromSheet = false) {
-  fromSaveSheet = fromSheet;
-  document.getElementById('ns-input').value = '';
-  document.getElementById('ns-char').textContent = '0/30';
-  document.getElementById('ns-create').disabled = true;
-  document.querySelectorAll('.ns-pick').forEach(p => p.classList.remove('on'));
-  document.getElementById('new-stack-overlay').classList.add('open');
-  document.getElementById('new-stack-sheet').classList.add('open');
-  setTimeout(() => document.getElementById('ns-input').focus(), 440);
-}
-
-function closeNewStack() {
-  document.getElementById('new-stack-sheet').classList.remove('open');
-  document.getElementById('new-stack-overlay').classList.remove('open');
-}
-
-function createStack() {
-  const name = document.getElementById('ns-input').value.trim();
-  if (!name) return;
-
-  const newStack = { id: nextId++, name, clips: [] };
-
-  // If a clip is pending (came from the save flow), auto-save into this stack
-  if (pendingClip) {
-    newStack.clips.push(pendingClip);
-    pendingClip = null;
-  }
-
-  stacks.push(newStack);
-  closeNewStack();
-  render();
-  ssToast(`✓ Stack "${name}" created`);
 }
 
 /* ════════════════════════════════════════════════
@@ -1062,13 +844,13 @@ function openOpts(e, stackId) {
   menu.classList.add('show');
   const rect = e.currentTarget.getBoundingClientRect();
   menu.style.top   = (rect.bottom + 6) + 'px';
-  menu.style.right  = (window.innerWidth - rect.right) + 'px';
-  menu.style.left   = 'auto';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  menu.style.left  = 'auto';
 }
 
 document.addEventListener('click', e => {
   const menu = document.getElementById('opts-menu');
-  if (menu.classList.contains('show') && !menu.contains(e.target)) {
+  if (menu && menu.classList.contains('show') && !menu.contains(e.target)) {
     menu.classList.remove('show');
     activeStackId = null;
   }
@@ -1082,8 +864,10 @@ function renameActiveStack() {
 
 function deleteActiveStack() {
   document.getElementById('opts-menu').classList.remove('show');
-  if (activeStackId === null) return;
-  stacks = stacks.filter(s => s.id !== activeStackId);
+  if (!activeStackId) return;
+  // Delete via shared storage
+  const stacks = ssGetStacks().filter(s => s.id !== activeStackId);
+  try { sessionStorage.setItem('ss_stacks_v1', JSON.stringify(stacks)); } catch {}
   activeStackId = null;
   render();
   ssToast('Stack deleted');
@@ -1094,19 +878,36 @@ function deleteActiveStack() {
 ════════════════════════════════════════════════ */
 function removeClip(e, stackId, clipId) {
   e.stopPropagation();
-  const s = stacks.find(s => s.id === stackId);
-  if (!s) return;
-  s.clips = s.clips.filter(c => c.id !== clipId);
+  ssRemoveClipFromStack(stackId, clipId);
   render();
   ssToast('Removed from stack');
 }
 
 /* ════════════════════════════════════════════════
+   REFRESH — re-read storage and re-render.
+   Called when tab regains focus (user coming back
+   from Feed/Discover after saving clips).
+════════════════════════════════════════════════ */
+function refresh() {
+  render();
+  ssSyncAllSaveBtns();
+}
+
+// Re-render whenever this page becomes visible again
+// (covers both Back navigation and tab switching)
+window.addEventListener('pageshow',  refresh);
+window.addEventListener('focus',     refresh);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refresh();
+});
+
+/* ════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════ */
-buildQuickPicks();
 buildRec();
 render();
+ssSyncAllSaveBtns();
+
 </script>
 </body>
 </html>

@@ -272,6 +272,10 @@ html, body { overflow: hidden; }
 .clip-fire-row  { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
 .clip-fire-count{ font-size: 11px; font-weight: 600; color: var(--gray2); letter-spacing: 0.2px; }
 
+/* Save button on clip cards */
+.disc-save-btn:hover { background: rgba(234,59,50,0.25) !important; }
+.disc-save-btn.saved { background: var(--red) !important; border-color: var(--red) !important; }
+
 /* ════════════════════════════════════════════════
    PLATFORM CHIPS
 ════════════════════════════════════════════════ */
@@ -643,9 +647,17 @@ function clipCardHTML(clip, size = 'lg') {
       </div>
       <div class="${capClass}">
         <div class="${textClass}">${clip.caption}</div>
-        <div class="${fireRowClass}">
-          ${FIRE_SVG}
-          <span class="${fireCountClass}">${fmtFires(clip.fires)}</span>
+        <div class="${fireRowClass}" style="justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:4px">
+            ${FIRE_SVG}
+            <span class="${fireCountClass}">${fmtFires(clip.fires)}</span>
+          </div>
+          <div class="disc-save-btn"
+            data-save-id="${clip.id}"
+            onclick="event.stopPropagation(); ssToggleSave(CLIPS.find(c=>c.id===${clip.id}), this)"
+            style="width:22px;height:22px;border-radius:50%;background:rgba(234,59,50,0.1);border:1px solid rgba(234,59,50,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background 0.15s">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          </div>
         </div>
       </div>
     </div>
@@ -848,6 +860,8 @@ buildMoods();
 buildFeatured();
 buildPlatforms();
 buildForYou();
+// Restore saved states from sessionStorage on page load
+ssSyncAllSaveBtns();
 </script>
 </body>
 </html>
