@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Profile (Redesign Preview)</title>
+<style>body{opacity:0}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; }
+
+/* ════════════════════════════════════════════════
+   PREVIEW RIBBON — only on this mockup, never ships
+════════════════════════════════════════════════ */
+.preview-ribbon {
+  position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+  z-index: 600; display: flex; align-items: center; gap: 8px;
+  background: var(--red); color: #fff;
+  font-family: var(--font-body); font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 5px 16px; border-radius: 0 0 12px 12px;
+  box-shadow: 0 6px 24px rgba(234,59,50,0.4);
+}
+.preview-ribbon span { width: 6px; height: 6px; border-radius: 50%; background: #fff; opacity: 0.8; }
+
+/* ════════════════════════════════════════════════
+   LAYOUT
+════════════════════════════════════════════════ */
+.layout {
+  position: fixed; inset: 0;
+  left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column;
+  background: var(--bg); overflow: hidden;
+  transition: left 0.3s var(--ease-smooth);
+}
+@media (max-width: 700px) { .layout { left: 0; } }
+
+.profile-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.profile-scroll::-webkit-scrollbar { width: 3px; }
+.profile-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+@media (max-width: 700px) { .profile-scroll { padding-bottom: calc(var(--mobile-nav-h) + 8px); } }
+
+/* ════════════════════════════════════════════════
+   CINEMATIC HERO — "wall of their taste"
+   The backdrop is built from the curator's own clip
+   gradients, blurred + darkened. No generic banner.
+════════════════════════════════════════════════ */
+.hero {
+  position: relative; overflow: hidden; flex-shrink: 0;
+  padding: 0 40px 26px;
+}
+@media (max-width: 700px) { .hero { padding: 0 18px 22px; } }
+
+.hero-wall {
+  position: absolute; inset: 0; z-index: 0;
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  filter: blur(34px) saturate(1.1); transform: scale(1.25);
+  opacity: 0.55;
+}
+.hero-wall div { width: 100%; height: 100%; }
+.hero-scrim {
+  position: absolute; inset: 0; z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(11,11,15,0.55) 0%, rgba(11,11,15,0.82) 55%, var(--bg) 100%),
+    radial-gradient(ellipse 70% 80% at 18% 0%, rgba(234,59,50,0.18) 0%, transparent 60%);
+}
+.hero-grain {
+  position: absolute; inset: 0; z-index: 2; opacity: 0.04; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Top utility bar (share / settings) */
+.hero-top {
+  position: relative; z-index: 3;
+  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
+  padding-top: 18px;
+}
+.hero-icon-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12);
+  color: var(--white); cursor: pointer; backdrop-filter: blur(10px);
+  transition: background 0.15s, transform 0.15s, border-color 0.15s;
+}
+.hero-icon-btn:hover { background: rgba(0,0,0,0.6); border-color: rgba(255,255,255,0.25); transform: scale(1.06); }
+.hero-icon-btn:active { transform: scale(0.92); }
+
+/* Identity */
+.hero-identity {
+  position: relative; z-index: 3;
+  display: flex; align-items: flex-end; gap: 22px;
+  padding-top: 30px;
+}
+@media (max-width: 560px) { .hero-identity { flex-direction: column; align-items: flex-start; gap: 16px; padding-top: 22px; } }
+
+.av-wrap { position: relative; flex-shrink: 0; }
+.av-ring {
+  position: absolute; inset: -5px; border-radius: 26px;
+  background: linear-gradient(135deg, var(--red), transparent 60%);
+  opacity: 0.7;
+}
+.av {
+  position: relative; z-index: 1;
+  width: 104px; height: 104px; border-radius: 24px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 46px; color: #fff;
+  border: 3px solid var(--bg);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+}
+@media (max-width: 700px) { .av { width: 86px; height: 86px; font-size: 38px; border-radius: 20px; } }
+.av-flame {
+  position: absolute; z-index: 2; bottom: -6px; right: -6px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--red); border: 3px solid var(--bg);
+  display: none; align-items: center; justify-content: center; font-size: 13px;
+  box-shadow: 0 0 14px rgba(234,59,50,0.6);
+}
+.is-creator .av-flame { display: flex; }
+
+.id-text { flex: 1; min-width: 0; padding-bottom: 4px; }
+.id-pill {
+  display: none; align-items: center; gap: 6px; width: fit-content;
+  background: rgba(234,59,50,0.12); border: 1px solid var(--border2);
+  border-radius: 100px; padding: 3px 11px 3px 8px;
+  font-size: 10px; font-weight: 700; color: var(--red);
+  letter-spacing: 1.5px; margin-bottom: 10px;
+}
+.is-creator .id-pill { display: flex; }
+.id-pip { width: 5px; height: 5px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+.id-name {
+  font-family: var(--font-display);
+  font-size: clamp(34px, 5.5vw, 54px);
+  letter-spacing: 2px; color: var(--white); line-height: 0.92;
+  text-shadow: 0 4px 30px rgba(0,0,0,0.5);
+}
+.id-name em { color: var(--red); font-style: normal; }
+.id-sub {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-top: 9px; font-size: 13px; color: var(--gray);
+}
+.id-handle { font-weight: 600; color: var(--white); }
+.id-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--gray2); }
+.id-since { color: var(--gray2); }
+
+/* Bio standfirst — editorial */
+.bio {
+  position: relative; z-index: 3;
+  margin-top: 16px; max-width: 540px;
+  font-size: 15px; line-height: 1.62; color: var(--gray);
+  font-weight: 300;
+}
+.bio strong { color: var(--white); font-weight: 600; }
+
+/* Taste signature tags */
+.taste {
+  position: relative; z-index: 3;
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 14px;
+}
+.taste-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--gray2); text-transform: uppercase; margin-right: 2px;
+}
+.taste-tag {
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.82);
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 100px; padding: 4px 11px;
+}
+
+/* Action row */
+.hero-actions {
+  position: relative; z-index: 3;
+  display: flex; gap: 9px; margin-top: 20px; flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 100px; cursor: pointer;
+  font-family: var(--font-body); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.2px; transition: transform 0.12s, background 0.15s, border-color 0.15s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap; border: 1.5px solid transparent;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--red); color: #fff; }
+.btn-primary:hover { background: var(--red2); box-shadow: 0 10px 30px rgba(234,59,50,0.35); }
+.btn-ghost { background: transparent; border-color: rgba(255,255,255,0.14); color: var(--white); }
+.btn-ghost:hover { border-color: rgba(255,255,255,0.32); background: rgba(255,255,255,0.04); }
+.btn-accent { background: rgba(234,59,50,0.1); border-color: var(--border2); color: var(--red); }
+.btn-accent:hover { background: rgba(234,59,50,0.18); }
+
+/* ════════════════════════════════════════════════
+   CREDENTIALS STRIP — stats as film credits
+════════════════════════════════════════════════ */
+.creds {
+  display: flex; align-items: center;
+  padding: 18px 40px; gap: 0;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.012);
+}
+@media (max-width: 700px) { .creds { padding: 16px 18px; } }
+.cred { display: flex; flex-direction: column; gap: 3px; padding-right: 30px; margin-right: 30px; position: relative; }
+.cred + .cred::before {
+  content: ''; position: absolute; left: -30px; top: 8%; bottom: 8%; width: 1px; background: var(--border);
+}
+.cred-num { font-family: var(--font-display); font-size: 30px; letter-spacing: 1px; color: var(--white); line-height: 1; }
+.cred-num em { color: var(--red); font-style: normal; }
+.cred-label { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gray2); }
+@media (max-width: 480px) {
+  .creds { justify-content: space-between; }
+  .cred { padding-right: 0; margin-right: 0; }
+  .cred + .cred::before { display: none; }
+  .cred-num { font-size: 24px; }
+}
+
+/* ════════════════════════════════════════════════
+   HIGHLIGHTS / COLLECTIONS SHELF
+   The shareable-Stacks-as-playlists feature, previewed.
+   "Stack spines": a fanned poster stack — NOT IG circles.
+════════════════════════════════════════════════ */
+.shelf { padding: 26px 40px 8px; }
+@media (max-width: 700px) { .shelf { padding: 22px 18px 6px; } }
+.shelf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+.shelf-title {
+  font-family: var(--font-display); font-size: 22px; letter-spacing: 1.5px; color: var(--white);
+  display: flex; align-items: center; gap: 9px;
+}
+.shelf-title em { color: var(--red); font-style: normal; }
+.shelf-sub { font-size: 11px; color: var(--gray2); font-weight: 500; }
+.shelf-scroll {
+  display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  margin: 0 -40px; padding-left: 40px; padding-right: 40px;
+}
+.shelf-scroll::-webkit-scrollbar { display: none; }
+@media (max-width: 700px) { .shelf-scroll { margin: 0 -18px; padding-left: 18px; padding-right: 18px; } }
+
+/* A collection = fanned stack of clip spines */
+.coll { flex-shrink: 0; width: 150px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.coll-stack {
+  position: relative; height: 196px; margin-bottom: 11px;
+  transition: transform 0.25s var(--ease-spring);
+}
+.coll:hover .coll-stack { transform: translateY(-6px); }
+.coll:active .coll-stack { transform: scale(0.97); }
+.coll-card {
+  position: absolute; border-radius: 14px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background-size: cover; background-position: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+/* fanned layers */
+.coll-card.l3 { inset: 0 22px 0 0; transform: rotate(6deg) translateX(6px); filter: brightness(0.5); z-index: 1; }
+.coll-card.l2 { inset: 0 11px 0 0; transform: rotate(3deg) translateX(3px); filter: brightness(0.72); z-index: 2; }
+.coll-card.l1 { inset: 0 0 0 0; z-index: 3; }
+.coll-card.l1 .coll-vig {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 55%, rgba(0,0,0,0.35) 100%);
+}
+.coll-count {
+  position: absolute; top: 9px; left: 9px; z-index: 4;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+  padding: 3px 8px; font-size: 10px; font-weight: 700; color: #fff;
+  display: flex; align-items: center; gap: 4px;
+}
+.coll-vis {
+  position: absolute; top: 9px; right: 9px; z-index: 4;
+  width: 24px; height: 24px; border-radius: 7px;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.coll-vis.public  { color: #6FD08C; border-color: rgba(111,208,140,0.4); }
+.coll-vis.friends { color: #F0B450; border-color: rgba(240,180,80,0.4); }
+.coll-vis.private { color: var(--gray); }
+.coll-share {
+  position: absolute; bottom: 9px; right: 9px; z-index: 4;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(234,59,50,0.92); border: none;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  cursor: pointer; opacity: 0; transform: scale(0.7);
+  transition: opacity 0.2s, transform 0.2s var(--ease-spring);
+  box-shadow: 0 4px 14px rgba(234,59,50,0.5);
+}
+.coll:hover .coll-share { opacity: 1; transform: scale(1); }
+.coll-name { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.8px; color: var(--white); line-height: 1; margin-bottom: 4px; }
+.coll-meta { font-size: 11px; color: var(--gray2); display: flex; align-items: center; gap: 6px; }
+
+/* "New collection" spine */
+.coll-new .coll-stack {
+  border: 1.5px dashed rgba(234,59,50,0.35); border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  color: var(--red);
+}
+.coll-new .coll-plus { font-size: 34px; line-height: 1; font-weight: 300; }
+.coll-new .coll-new-label { font-size: 12px; font-weight: 600; }
+
+/* ════════════════════════════════════════════════
+   STICKY TABS
+════════════════════════════════════════════════ */
+.tabs {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(11,11,15,0.96);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 40px; display: flex; gap: 0; flex-shrink: 0; margin-top: 12px;
+}
+@media (max-width: 700px) { .tabs { padding: 0 18px; } }
+.tab {
+  display: flex; align-items: center; gap: 7px; padding: 15px 18px;
+  border: none; background: transparent; color: var(--gray2);
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
+  cursor: pointer; position: relative; white-space: nowrap; transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab:hover { color: var(--gray); }
+.tab.active { color: var(--white); }
+.tab.active::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; background:var(--red); border-radius:2px 2px 0 0; }
+.tab-c { font-size: 10px; font-weight: 700; color: var(--gray2); background: var(--bg3); border-radius: 100px; padding: 1px 6px; }
+.tab.active .tab-c { background: rgba(234,59,50,0.15); color: var(--red); }
+@media (max-width: 420px) { .tab { padding: 14px 11px; font-size: 12px; } .tab-c { display: none; } }
+
+/* Panels */
+.panel { display: none; padding: 24px 40px 44px; animation: ss-fadeUp 0.3s ease both; }
+.panel.active { display: block; }
+@media (max-width: 700px) { .panel { padding: 20px 18px 36px; } }
+
+/* Clips / Fires grid */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 560px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 9px; } }
+.g-card { cursor: pointer; position: relative; transition: transform 0.2s var(--ease-spring); -webkit-tap-highlight-color: transparent; }
+.g-card:hover { transform: translateY(-5px); }
+.g-card:active { transform: scale(0.95); }
+.g-thumb { width: 100%; aspect-ratio: 9/16; border-radius: 14px; overflow: hidden; position: relative; border: 1px solid var(--border); }
+.g-bg { position: absolute; inset: 0; background-size: cover; background-position: center; transition: transform 0.4s ease; }
+.g-card:hover .g-bg { transform: scale(1.07); }
+.g-vig { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 100%); }
+.g-fires { position: absolute; bottom: 8px; left: 9px; display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.92); text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.g-card.top .g-thumb { border-color: var(--border2); box-shadow: 0 0 0 1px rgba(234,59,50,0.25), 0 6px 24px rgba(234,59,50,0.2); }
+.g-top-badge { position: absolute; top: 8px; left: 8px; z-index: 2; background: var(--red); border-radius: 5px; padding: 2px 7px; font-size: 8px; font-weight: 800; color: #fff; letter-spacing: 0.5px; }
+.g-cap { padding: 7px 2px 0; font-size: 11px; font-weight: 400; color: var(--gray2); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Following */
+.follow-list { display: flex; flex-direction: column; }
+.follow-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.follow-row:last-child { border-bottom: none; }
+.follow-av { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 21px; color: #fff; }
+.follow-info { flex: 1; min-width: 0; }
+.follow-handle { font-size: 14px; font-weight: 700; color: var(--white); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+.follow-v { width: 14px; height: 14px; border-radius: 50%; background: var(--red); display: inline-flex; align-items: center; justify-content: center; font-size: 7px; }
+.follow-meta { font-size: 11px; color: var(--gray2); font-weight: 500; }
+.btn-following { padding: 8px 16px; border-radius: 100px; flex-shrink: 0; background: transparent; border: 1.5px solid rgba(255,255,255,0.1); color: var(--gray); font-family: var(--font-body); font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
+.btn-following:hover { border-color: var(--border2); color: var(--red2); }
+
+/* Analytics */
+.an-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
+@media (max-width: 560px) { .an-grid { grid-template-columns: 1fr 1fr; } }
+.an-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 18px 16px; transition: border-color 0.15s, transform 0.15s; }
+.an-card:hover { border-color: rgba(255,255,255,0.1); transform: translateY(-2px); }
+.an-icon { font-size: 19px; margin-bottom: 10px; }
+.an-val { font-family: var(--font-display); font-size: 28px; letter-spacing: 1px; color: var(--white); line-height: 1; margin-bottom: 4px; }
+.an-val em { color: var(--red); font-style: normal; }
+.an-label { font-size: 10px; font-weight: 700; color: var(--gray2); text-transform: uppercase; letter-spacing: 1px; }
+.an-trend { font-size: 11px; font-weight: 600; color: #6FD08C; margin-top: 5px; }
+.an-chart { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px 14px; }
+.an-chart-t { font-size: 11px; font-weight: 700; color: var(--gray2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px; }
+.an-bars { display: flex; align-items: flex-end; gap: 7px; height: 64px; }
+.an-bcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.an-bar { width: 100%; border-radius: 4px 4px 0 0; background: rgba(234,59,50,0.3); transition: background 0.2s; min-height: 4px; }
+.an-bar:hover, .an-bar.peak { background: var(--red); }
+.an-day { font-size: 9px; color: var(--gray2); font-weight: 600; }
+.an-sec-t { font-family: var(--font-display); font-size: 16px; letter-spacing: 1.5px; color: var(--white); margin: 28px 0 14px; }
+.an-sec-t em { color: var(--red); font-style: normal; }
+.perf-row { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.perf-row:last-child { border-bottom: none; }
+.perf-rank { font-family: var(--font-display); font-size: 20px; color: var(--gray2); width: 24px; text-align: center; flex-shrink: 0; }
+.perf-rank.top { color: var(--red); }
+.perf-thumb { width: 38px; height: 52px; border-radius: 8px; overflow: hidden; position: relative; border: 1px solid var(--border); flex-shrink: 0; }
+.perf-thumb-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.perf-info { flex: 1; min-width: 0; }
+.perf-cap { font-size: 13px; font-weight: 600; color: var(--white); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.perf-stats { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; color: var(--gray2); }
+.perf-fires { color: var(--red); }
+
+/* Become a curator CTA */
+.cta-wrap { padding: 8px 40px 44px; }
+@media (max-width: 700px) { .cta-wrap { padding: 8px 18px 36px; } }
+.cta { position: relative; border-radius: 22px; overflow: hidden; padding: 30px; border: 1px solid var(--border2); }
+.cta-bg { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(234,59,50,0.12) 0%, rgba(234,59,50,0.04) 50%, var(--bg2) 100%); }
+.cta-glow { position: absolute; top: -60px; right: -60px; width: 260px; height: 260px; background: radial-gradient(circle, rgba(234,59,50,0.16) 0%, transparent 65%); }
+.cta-in { position: relative; z-index: 1; }
+.cta-eye { font-size: 10px; font-weight: 700; color: var(--red); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.cta-title { font-family: var(--font-display); font-size: clamp(24px, 3.5vw, 34px); letter-spacing: 1.5px; color: var(--white); line-height: 1.02; margin-bottom: 12px; }
+.cta-title em { color: var(--red); font-style: normal; }
+.cta-desc { font-size: 14px; color: var(--gray); line-height: 1.65; max-width: 420px; margin-bottom: 20px; font-weight: 300; }
+.cta-perks { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.cta-perk { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 400; color: var(--gray); }
+.cta-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--red); flex-shrink: 0; box-shadow: 0 0 6px rgba(234,59,50,0.6); }
+
+/* Section title shared */
+.sec-t { font-family: var(--font-display); font-size: 18px; letter-spacing: 1px; color: var(--white); margin-bottom: 14px; }
+.sec-t em { color: var(--red); font-style: normal; }
+</style>
+</head>
+<body>
+
+<div class="preview-ribbon"><span></span>Profile Redesign — Preview Only</div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item" data-nav="feed" href="showshak-feed.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="nav-item-label">Feed</span></a>
+    <a class="nav-item" data-nav="discover" href="showshak-discover.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="nav-item-label">Discover</span></a>
+    <a class="nav-item" data-nav="watchlist" href="showshak-watchlist.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="nav-item-label">Watchlist</span></a>
+    <a class="nav-item active" data-nav="profile" href="showshak-profile.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="nav-item-label">Profile</span></a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item-settings" onclick="ssToast('⚙ Settings coming soon')"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="layout">
+  <div class="profile-scroll" id="profile-scroll">
+
+    <!-- HERO -->
+    <section class="hero" id="hero">
+      <div class="hero-wall" id="hero-wall"></div>
+      <div class="hero-scrim"></div>
+      <div class="hero-grain"></div>
+
+      <div class="hero-top">
+        <div class="hero-icon-btn" onclick="ssToast('🔗 Profile link copied')" title="Share profile">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </div>
+        <div class="hero-icon-btn" onclick="ssToast('⚙ Settings coming soon')" title="Settings">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+      </div>
+
+      <div class="hero-identity" id="identity">
+        <div class="av-wrap">
+          <div class="av-ring"></div>
+          <div class="av" id="av"></div>
+          <div class="av-flame">🔥</div>
+        </div>
+        <div class="id-text">
+          <div class="id-pill"><span class="id-pip"></span>VERIFIED CURATOR</div>
+          <h1 class="id-name" id="id-name"></h1>
+          <div class="id-sub">
+            <span class="id-handle" id="id-handle"></span>
+            <span class="id-dot"></span>
+            <span class="id-since">Curating since 2023</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="bio" id="bio"></p>
+
+      <div class="taste">
+        <span class="taste-label">Tastes in</span>
+        <span class="taste-tag">Crime</span>
+        <span class="taste-tag">Thriller</span>
+        <span class="taste-tag">World Cinema</span>
+        <span class="taste-tag">Slow Burns</span>
+      </div>
+
+      <div class="hero-actions" id="hero-actions"></div>
+    </section>
+
+    <!-- CREDENTIALS -->
+    <div class="creds" id="creds"></div>
+
+    <!-- HIGHLIGHTS / COLLECTIONS -->
+    <section class="shelf">
+      <div class="shelf-head">
+        <div class="shelf-title">🔥 <em id="shelf-word">Highlights</em></div>
+        <div class="shelf-sub" id="shelf-sub">Curated collections · tap to open, share to send</div>
+      </div>
+      <div class="shelf-scroll" id="shelf"></div>
+    </section>
+
+    <!-- TABS -->
+    <div class="tabs" id="tabs"></div>
+
+    <!-- PANELS -->
+    <div id="panels">
+      <div class="panel active" id="panel-primary"><div id="primary"></div></div>
+      <div class="panel" id="panel-stacks"><div id="stacks"></div></div>
+      <div class="panel" id="panel-analytics"><div id="analytics"></div></div>
+      <div class="panel" id="panel-following"><div class="follow-list" id="following"></div></div>
+    </div>
+
+    <!-- BECOME CURATOR (user mode) -->
+    <div class="cta-wrap" id="cta-wrap">
+      <div class="cta">
+        <div class="cta-bg"></div><div class="cta-glow"></div>
+        <div class="cta-in">
+          <div class="cta-eye">🔥 For Curators</div>
+          <div class="cta-title">YOUR TASTE<br>DESERVES <em>AN AUDIENCE.</em></div>
+          <p class="cta-desc">Post clips of the shows and movies you love. Build a following of people who trust your taste. Turn your obsession into influence.</p>
+          <div class="cta-perks">
+            <div class="cta-perk"><span class="cta-dot"></span>Post short clips about any show, on any platform</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Earn a verified curator badge</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Build shareable Highlights from your Stacks</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Earn from every Watch It you drive — soon</div>
+          </div>
+          <button class="btn btn-primary" onclick="toggleMode()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Become a Curator
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MOBILE NAV -->
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item" data-mob-nav="feed" href="showshak-feed.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="mob-nav-label">Feed</span></a>
+  <a class="mob-nav-item" data-mob-nav="discover" href="showshak-discover.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="mob-nav-label">Discover</span></a>
+  <a class="mob-nav-item" data-mob-nav="watchlist" href="showshak-watchlist.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="mob-nav-label">Watchlist</span></a>
+  <a class="mob-nav-item active" data-mob-nav="profile" href="showshak-profile.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="mob-nav-label">Profile</span></a>
+</nav>
+
+<script src="showshak-shared.js"></script>
+<script>
+/* ── DATA (same as live profile) ── */
+const PROFILE = {
+  name:'ARJUN MEHTA', handle:'@cinephile_arj', letter:'A', color:'#E8373E',
+  bio:'Curating the best of world cinema and Indian streaming. If it is fire, you will find it here first — no algorithm, just taste.',
+  firesGiven:847, stacks:6, following:23, clipsPosted:42, firesReceived:18400, watchItTaps:3200,
+};
+const MOCK_CLIPS = [
+  { id:1, bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'This is how you open a series. Zero warning.' },
+  { id:2, bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)', platColor:'#0E3BD4', platAbbr:'D+', fires:2100, caption:'Episode 7 will genuinely destroy you.' },
+  { id:3, bg:'linear-gradient(160deg,#0a0510,#150820,#0a0505,#000)', platColor:'#00A8E0', platAbbr:'P', fires:1840, caption:'No one escapes. Literally no one.' },
+  { id:4, bg:'linear-gradient(160deg,#080500,#140c00,#050300,#000)', platColor:'#002868', platAbbr:'S', fires:1240, caption:'9.3 on IMDb. One verdict. Watch it.' },
+  { id:5, bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)', platColor:'#E50914', platAbbr:'N', fires:980, caption:'Front Man reveal. You will not be okay.' },
+  { id:6, bg:'linear-gradient(160deg,#030805,#050e08,#020503,#000)', platColor:'#FF6A00', platAbbr:'JH', fires:760, caption:'Episode 3 broke the internet. Broke me.' },
+  { id:7, bg:'linear-gradient(160deg,#021005,#041a08,#020802,#000)', platColor:'#00A8E0', platAbbr:'P', fires:5200, caption:'Quit your job, move to a village. Not joking.' },
+  { id:8, bg:'linear-gradient(160deg,#020510,#050a1a,#050205,#000)', platColor:'#E50914', platAbbr:'N', fires:3400, caption:'Started as nostalgia. Became obsession.' },
+  { id:9, bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', platColor:'#E50914', platAbbr:'N', fires:890, caption:'Zero warning. Zero mercy. Just watch.' },
+];
+const MOCK_FIRES = [
+  { id:1, bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'Front Man reveal changes everything.' },
+  { id:2, bg:'linear-gradient(160deg,#021005,#041a08,#020802,#000)', platColor:'#00A8E0', platAbbr:'P', fires:5200, caption:'5 seasons of pure joy.' },
+  { id:3, bg:'linear-gradient(160deg,#080500,#140c00,#050300,#000)', platColor:'#002868', platAbbr:'S', fires:1240, caption:'9.3 rating is fully earned.' },
+  { id:4, bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)', platColor:'#0E3BD4', platAbbr:'D+', fires:2100, caption:'The Bear is pure cinema.' },
+  { id:5, bg:'linear-gradient(160deg,#030805,#050e08,#020503,#000)', platColor:'#FF6A00', platAbbr:'JH', fires:760, caption:'Episode 3 is a masterpiece.' },
+  { id:6, bg:'linear-gradient(160deg,#020510,#050a1a,#050205,#000)', platColor:'#E50914', platAbbr:'N', fires:3400, caption:'S4 Vol 2 is cinema.' },
+];
+/* Collections / Highlights — with visibility levels */
+const MOCK_COLLECTIONS = [
+  { id:1, name:'Watch Tonight', count:4, vis:'public',
+    thumbs:['linear-gradient(160deg,#1a0505,#2d0808)','linear-gradient(160deg,#100008,#1a0010)','linear-gradient(160deg,#050510,#0a0a20)'] },
+  { id:2, name:'Weekend Binge', count:7, vis:'public',
+    thumbs:['linear-gradient(160deg,#0a0510,#150820)','linear-gradient(160deg,#030805,#050e08)','linear-gradient(160deg,#021005,#041a08)'] },
+  { id:3, name:'Date Night', count:3, vis:'friends',
+    thumbs:['linear-gradient(160deg,#080500,#140c00)','linear-gradient(160deg,#1a0505,#2d0808)','linear-gradient(160deg,#020510,#050a1a)'] },
+  { id:4, name:'Indian Gems', count:11, vis:'public',
+    thumbs:['linear-gradient(160deg,#1a0505,#2d0808)','linear-gradient(160deg,#080500,#140c00)','linear-gradient(160deg,#0a0510,#150820)'] },
+  { id:5, name:'Guilty Pleasures', count:8, vis:'private',
+    thumbs:['linear-gradient(160deg,#100008,#1a0010)','linear-gradient(160deg,#1a0505,#2d0808)','linear-gradient(160deg,#030805,#050e08)'] },
+];
+const MOCK_FOLLOWING = [
+  { handle:'streamjunkie_sk', letter:'S', color:'#FF6B35', clips:28, fires:12400, verified:true },
+  { handle:'kdrama_world', letter:'K', color:'#E74C3C', clips:64, fires:31000, verified:true },
+  { handle:'desi_binge', letter:'D', color:'#27AE60', clips:19, fires:8700, verified:false },
+  { handle:'hbo_stan_official', letter:'H', color:'#5C2D91', clips:35, fires:22100, verified:true },
+  { handle:'netflixnerd_rv', letter:'R', color:'#3498DB', clips:47, fires:18900, verified:false },
+];
+const CHART = [28,42,35,68,91,57,84];
+const FIRE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const VIS_ICON = {
+  public:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>`,
+  friends:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87M9 21v-2a4 4 0 0 1 3-3.87"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="8" r="2.5"/></svg>`,
+  private:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`,
+};
+const VIS_LABEL = { public:'Public', friends:'Friends & Family', private:'Only me' };
+
+let isCreator = true;   // preview opens in Creator view to show the full vision
+let activeTab = 'primary';
+
+/* ── HERO WALL (built from the curator's own clips) ── */
+function renderWall() {
+  const wall = document.getElementById('hero-wall');
+  const tiles = [...MOCK_CLIPS, ...MOCK_CLIPS].slice(0, 18);
+  wall.innerHTML = tiles.map(c => `<div style="background:${c.bg}"></div>`).join('');
+}
+
+/* ── HEADER ── */
+function renderHeader() {
+  const av = document.getElementById('av');
+  av.textContent = PROFILE.letter; av.style.background = PROFILE.color;
+  document.getElementById('id-name').textContent = PROFILE.name;
+  document.getElementById('id-handle').textContent = PROFILE.handle;
+  document.getElementById('bio').innerHTML = PROFILE.bio;
+
+  document.getElementById('identity').classList.toggle('is-creator', isCreator);
+
+  const actions = document.getElementById('hero-actions');
+  actions.innerHTML = `
+    <button class="btn btn-ghost" onclick="ssToast('✏️ Edit Profile coming soon')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Edit Profile
+    </button>
+    <button class="btn btn-ghost" onclick="ssToast('🔗 Profile link copied')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      Share
+    </button>
+    <button class="btn btn-accent" onclick="toggleMode()">${isCreator ? '👤 User View' : '✨ Creator View'}</button>
+  `;
+  renderCreds();
+  document.getElementById('shelf-word').textContent = isCreator ? 'Highlights' : 'My Collections';
+  document.getElementById('shelf-sub').textContent = isCreator
+    ? 'Shared collections shown on your profile · tap to open, share to send'
+    : 'Your Stacks as shareable collections · public, friends, or private';
+}
+
+function renderCreds() {
+  const el = document.getElementById('creds');
+  const data = isCreator
+    ? [['clipsPosted','Clips',false],['firesReceived','Fires Received',true],['watchItTaps','Watch Its',false],['following','Following',false]]
+    : [['firesGiven','Fires Given',true],['stacks','Stacks',false],['following','Following',false]];
+  el.innerHTML = data.map(([k,label,accent]) => `
+    <div class="cred">
+      <div class="cred-num">${accent?'<em>':''}${fmtFires(PROFILE[k])}${accent?'</em>':''}</div>
+      <div class="cred-label">${label}</div>
+    </div>`).join('');
+}
+
+/* ── HIGHLIGHTS / COLLECTIONS shelf ── */
+function renderShelf() {
+  const el = document.getElementById('shelf');
+  const cards = MOCK_COLLECTIONS.map(c => {
+    const t = c.thumbs;
+    return `
+    <div class="coll" onclick="ssToast('▶ Opening “${c.name}” collection')">
+      <div class="coll-stack">
+        <div class="coll-card l3" style="background:${t[2]||t[0]}"></div>
+        <div class="coll-card l2" style="background:${t[1]||t[0]}"></div>
+        <div class="coll-card l1" style="background:${t[0]}">
+          <div class="coll-vig"></div>
+        </div>
+        <div class="coll-count">${FIRE_SVG.replace('11','10').replace('11','10')}${c.count}</div>
+        <div class="coll-vis ${c.vis}" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>
+        <button class="coll-share" title="Share collection" onclick="event.stopPropagation(); ssToast('🔗 Share “${c.name}” — link copied')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
+      </div>
+      <div class="coll-name">${c.name}</div>
+      <div class="coll-meta">${VIS_ICON[c.vis]} ${VIS_LABEL[c.vis]}</div>
+    </div>`;
+  }).join('');
+  const addCard = `
+    <div class="coll coll-new" onclick="ssToast('➕ New collection — coming soon')">
+      <div class="coll-stack"><div class="coll-plus">+</div><div class="coll-new-label">New collection</div></div>
+      <div class="coll-name" style="opacity:0">.</div>
+    </div>`;
+  el.innerHTML = cards + addCard;
+}
+
+/* ── TABS ── */
+function renderTabs() {
+  const bar = document.getElementById('tabs');
+  bar.innerHTML = isCreator ? `
+    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${MOCK_CLIPS.length}</span></button>
+    <button class="tab ${activeTab==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
+    <button class="tab ${activeTab==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
+    <button class="tab ${activeTab==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>
+  ` : `
+    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">Fires <span class="tab-c">${MOCK_FIRES.length}</span></button>
+    <button class="tab ${activeTab==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
+    <button class="tab ${activeTab==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>
+  `;
+}
+function switchTab(t) {
+  activeTab = t;
+  ['primary','stacks','analytics','following'].forEach(id =>
+    document.getElementById('panel-'+id).classList.toggle('active', id===t));
+  renderTabs();
+}
+
+/* ── PRIMARY (clips / fires) ── */
+function renderPrimary() {
+  const el = document.getElementById('primary');
+  const list = isCreator ? MOCK_CLIPS : MOCK_FIRES;
+  const arrName = isCreator ? 'MOCK_CLIPS' : 'MOCK_FIRES';
+  el.innerHTML = `<div class="grid">${list.map((c,i)=>`
+    <div class="g-card ${isCreator&&i===0?'top':''}" onclick="ssOpenClip(${c.id}, ${arrName})">
+      ${isCreator&&i===0?'<div class="g-top-badge">🔥 TOP</div>':''}
+      <div class="g-thumb">
+        <div class="g-bg" style="background:${c.bg}"></div>
+        <div class="g-vig"></div>
+        <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires)}</div>
+      </div>
+      <div class="g-cap">${c.caption}</div>
+    </div>`).join('')}</div>`;
+}
+
+/* ── STACKS / COLLECTIONS tab (full list with manage) ── */
+function renderStacks() {
+  const el = document.getElementById('stacks');
+  el.innerHTML = `
+    <div class="sec-t">Your <em>Collections</em></div>
+    <div class="grid">${MOCK_COLLECTIONS.map(c=>`
+      <div class="g-card" onclick="ssToast('▶ Opening “${c.name}”')">
+        <div class="g-thumb">
+          <div class="g-bg" style="background:${c.thumbs[0]}"></div>
+          <div class="g-vig"></div>
+          <div class="coll-vis ${c.vis}" style="position:absolute;top:8px;right:8px" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>
+          <div class="g-fires">${c.count} clips</div>
+        </div>
+        <div class="g-cap" style="color:var(--white);font-weight:600;font-family:var(--font-display);font-size:14px;letter-spacing:0.5px;-webkit-line-clamp:1">${c.name}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
+/* ── FOLLOWING ── */
+function renderFollowing() {
+  document.getElementById('following').innerHTML = MOCK_FOLLOWING.map(f=>`
+    <div class="follow-row">
+      <div class="follow-av" style="background:${f.color}">${f.letter}</div>
+      <div class="follow-info">
+        <div class="follow-handle">@${f.handle}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
+        <div class="follow-meta">${f.clips} clips · ${fmtFires(f.fires)} fires received</div>
+      </div>
+      <button class="btn-following" onclick="ssToast('Unfollowed @${f.handle}')">Following</button>
+    </div>`).join('');
+}
+
+/* ── ANALYTICS ── */
+function renderAnalytics() {
+  const max = Math.max(...CHART), days=['M','T','W','T','F','S','S'], peak=CHART.indexOf(max);
+  document.getElementById('analytics').innerHTML = `
+    <div class="an-grid">
+      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(PROFILE.firesReceived)}</em></div><div class="an-label">Total Fires</div><div class="an-trend">↑ 12% this week</div></div>
+      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(PROFILE.watchItTaps)}</div><div class="an-label">Watch It Taps</div><div class="an-trend">↑ 8% this week</div></div>
+      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(PROFILE.clipsPosted*820)}</div><div class="an-label">Total Reach</div><div class="an-trend">↑ 21% this week</div></div>
+    </div>
+    <div class="an-chart">
+      <div class="an-chart-t">Fires this week</div>
+      <div class="an-bars">${CHART.map((v,i)=>`<div class="an-bcol"><div class="an-bar ${i===peak?'peak':''}" style="height:${Math.round(v/max*100)}%"></div><div class="an-day">${days[i]}</div></div>`).join('')}</div>
+    </div>
+    <div class="an-sec-t">Top <em>Performing</em> Clips</div>
+    ${MOCK_CLIPS.slice(0,5).map((c,i)=>`
+      <div class="perf-row">
+        <div class="perf-rank ${i===0?'top':''}">${i+1}</div>
+        <div class="perf-thumb"><div class="perf-thumb-bg" style="background:${c.bg}"></div></div>
+        <div class="perf-info">
+          <div class="perf-cap">${c.caption}</div>
+          <div class="perf-stats"><span class="perf-fires">${FIRE_SVG} ${fmtFires(c.fires)} fires</span><span>▶ ${fmtFires(Math.round(c.fires*0.18))} watch its</span></div>
+        </div>
+      </div>`).join('')}`;
+}
+
+/* ── MODE TOGGLE ── */
+function toggleMode() {
+  isCreator = !isCreator;
+  activeTab = 'primary';
+  document.getElementById('profile-scroll').scrollTo({ top:0, behavior:'smooth' });
+  document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
+  renderHeader(); renderShelf(); renderTabs(); renderPrimary(); renderStacks();
+  ssToast(isCreator ? '✨ Viewing as Creator' : '👤 Viewing as User');
+}
+
+/* ── INIT ── */
+renderWall();
+renderHeader();
+renderShelf();
+renderTabs();
+renderPrimary();
+renderStacks();
+renderFollowing();
+renderAnalytics();
+document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
+</script>
+</body>
+</html>
