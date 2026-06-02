@@ -465,6 +465,140 @@ html, body { overflow: hidden; }
 /* Section title shared */
 .sec-t { font-family: var(--font-display); font-size: 18px; letter-spacing: 1px; color: var(--white); margin-bottom: 14px; }
 .sec-t em { color: var(--red); font-style: normal; }
+
+/* ════════════════════════════════════════════════
+   BECOME A CURATOR — onboarding flow (modal)
+════════════════════════════════════════════════ */
+#bc-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+#bc-overlay.open { opacity: 1; pointer-events: all; }
+.bc-card {
+  position: relative; width: min(440px, 100%); max-height: 90vh; overflow: hidden;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 24px;
+  display: flex; flex-direction: column;
+  transform: translateY(16px) scale(0.98); transition: transform 0.35s var(--ease-spring);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+#bc-overlay.open .bc-card { transform: translateY(0) scale(1); }
+.bc-glow { position: absolute; top: -80px; right: -80px; width: 280px; height: 280px; background: radial-gradient(circle, rgba(234,59,50,0.18) 0%, transparent 65%); pointer-events: none; }
+
+.bc-top { display: flex; align-items: center; gap: 12px; padding: 18px 20px 0; position: relative; z-index: 1; }
+.bc-progress { flex: 1; display: flex; gap: 6px; }
+.bc-pip { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.bc-pip-fill { display: block; height: 100%; width: 0%; background: var(--red); transition: width 0.35s var(--ease-smooth); }
+.bc-pip.done .bc-pip-fill, .bc-pip.current .bc-pip-fill { width: 100%; }
+.bc-x { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--white); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s; -webkit-tap-highlight-color: transparent; }
+.bc-x:hover { background: rgba(255,255,255,0.12); }
+
+.bc-body { padding: 22px 24px 8px; overflow-y: auto; position: relative; z-index: 1; scrollbar-width: none; }
+.bc-body::-webkit-scrollbar { display: none; }
+.bc-step { display: none; animation: ss-fadeUp 0.3s ease both; }
+.bc-step.active { display: block; }
+
+.bc-badge-icon {
+  width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 18px;
+  background: rgba(234,59,50,0.12); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; color: var(--red);
+}
+.bc-eyebrow { font-size: 10px; font-weight: 700; color: var(--red); letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 8px; text-align: center; }
+.bc-title { font-family: var(--font-display); font-size: 30px; letter-spacing: 1px; color: var(--white); line-height: 1.02; margin-bottom: 10px; text-align: center; }
+.bc-title em { color: var(--red); font-style: normal; }
+.bc-sub { font-size: 13.5px; color: var(--gray); line-height: 1.6; margin-bottom: 20px; text-align: center; font-weight: 300; }
+
+.bc-perks { display: flex; flex-direction: column; gap: 12px; }
+.bc-perk { display: flex; align-items: flex-start; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 13px 15px; }
+.bc-perk-ic { font-size: 18px; flex-shrink: 0; line-height: 1.3; }
+.bc-perk-t { font-size: 13.5px; font-weight: 700; color: var(--white); margin-bottom: 2px; }
+.bc-perk-d { font-size: 12px; color: var(--gray2); line-height: 1.45; }
+
+.bc-field { margin-bottom: 16px; }
+.bc-label { font-size: 11px; font-weight: 700; color: var(--gray2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; display: block; }
+.bc-input-wrap { display: flex; align-items: center; background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px; padding: 0 14px; transition: border-color 0.2s; }
+.bc-input-wrap.focused { border-color: rgba(234,59,50,0.5); }
+.bc-input-wrap .bc-at { color: var(--gray2); font-size: 15px; font-weight: 600; margin-right: 2px; }
+.bc-input { flex: 1; background: transparent; border: none; outline: none; padding: 13px 0; color: var(--white); font-family: var(--font-body); font-size: 15px; caret-color: var(--red); }
+.bc-input::placeholder { color: var(--gray2); }
+.bc-textarea { width: 100%; min-height: 70px; resize: none; background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 14px; color: var(--white); font-family: var(--font-body); font-size: 14px; line-height: 1.5; outline: none; caret-color: var(--red); transition: border-color 0.2s; }
+.bc-textarea:focus { border-color: rgba(234,59,50,0.5); }
+.bc-textarea::placeholder { color: var(--gray2); }
+.bc-hint { font-size: 11.5px; color: var(--gray2); margin-top: 6px; }
+.bc-hint.err { color: var(--red); }
+
+.bc-agree { display: flex; align-items: flex-start; gap: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 14px; cursor: pointer; margin-bottom: 12px; -webkit-tap-highlight-color: transparent; }
+.bc-check { width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0; border: 1.5px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; transition: all 0.2s var(--ease-spring); color: #fff; }
+.bc-agree.on .bc-check { background: var(--red); border-color: var(--red); }
+.bc-agree-text { font-size: 12.5px; color: var(--gray); line-height: 1.5; }
+.bc-agree-text strong { color: var(--white); font-weight: 600; }
+
+.bc-foot { padding: 8px 24px 22px; position: relative; z-index: 1; }
+.bc-next { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-radius: 100px; background: var(--red); color: #fff; border: none; font-family: var(--font-body); font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.15s, opacity 0.15s, transform 0.12s; -webkit-tap-highlight-color: transparent; }
+.bc-next:hover { background: var(--red2); }
+.bc-next:active { transform: scale(0.98); }
+.bc-next:disabled { opacity: 0.4; cursor: not-allowed; }
+.bc-back { display: block; width: 100%; text-align: center; margin-top: 10px; background: none; border: none; color: var(--gray2); font-family: var(--font-body); font-size: 13px; font-weight: 500; cursor: pointer; }
+.bc-back:hover { color: var(--white); }
+
+/* ── Photo picker (used in become-curator + edit profile) ── */
+.pic-picker { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 20px; }
+.pic-ring { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pic-av {
+  width: 92px; height: 92px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 40px; color: #fff;
+  border: 3px solid var(--bg); background-size: cover; background-position: center;
+  box-shadow: 0 0 0 2px var(--border2);
+}
+.pic-edit-dot {
+  position: absolute; bottom: 0; right: 0;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--red); border: 3px solid var(--bg2);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.pic-hint { font-size: 12px; color: var(--gray2); }
+.pic-hint a { color: var(--red); cursor: pointer; font-weight: 600; }
+
+/* ── Genre / specialty chips ── */
+.gpick { display: flex; flex-wrap: wrap; gap: 8px; }
+.gchip {
+  font-size: 12.5px; font-weight: 600; color: var(--gray);
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 100px;
+  padding: 8px 14px; cursor: pointer; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.gchip:hover { border-color: rgba(255,255,255,0.22); color: var(--white); }
+.gchip.on { background: rgba(234,59,50,0.12); border-color: var(--red); color: var(--red); }
+
+/* ── Edit Profile modal (shares #bc styling) ── */
+#ep-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+#ep-overlay.open { opacity: 1; pointer-events: all; }
+.ep-card {
+  position: relative; width: min(440px, 100%); max-height: 90vh; overflow: hidden;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 24px;
+  display: flex; flex-direction: column;
+  transform: translateY(16px) scale(0.98); transition: transform 0.35s var(--ease-spring);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+#ep-overlay.open .ep-card { transform: translateY(0) scale(1); }
+.ep-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+.ep-head-title { font-family: var(--font-display); font-size: 20px; letter-spacing: 1px; color: var(--white); }
+.ep-head-title em { color: var(--red); font-style: normal; }
+.ep-body { padding: 20px 24px; overflow-y: auto; scrollbar-width: none; }
+.ep-body::-webkit-scrollbar { display: none; }
+.ep-foot { padding: 14px 24px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+.ep-foot .bc-next { flex: 1; }
+.ep-cancel { padding: 14px 22px; border-radius: 100px; background: transparent; border: 1.5px solid var(--border); color: var(--gray); font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ep-cancel:hover { border-color: rgba(255,255,255,0.3); color: var(--white); }
+.ep-creator-only { display: none; }
+.ep-card.is-creator .ep-creator-only { display: block; }
 </style>
 </head>
 <body>
@@ -525,12 +659,8 @@ html, body { overflow: hidden; }
 
       <p class="bio" id="bio"></p>
 
-      <div class="taste">
+      <div class="taste" id="taste">
         <span class="taste-label">Tastes in</span>
-        <span class="taste-tag">Crime</span>
-        <span class="taste-tag">Thriller</span>
-        <span class="taste-tag">World Cinema</span>
-        <span class="taste-tag">Slow Burns</span>
       </div>
 
       <div class="hero-actions" id="hero-actions"></div>
@@ -567,14 +697,14 @@ html, body { overflow: hidden; }
         <div class="cta-in">
           <div class="cta-eye">🔥 For Curators</div>
           <div class="cta-title">YOUR TASTE<br>DESERVES <em>AN AUDIENCE.</em></div>
-          <p class="cta-desc">Post clips of the shows and movies you love. Build a following of people who trust your taste. Turn your obsession into influence.</p>
+          <p class="cta-desc">You already tell friends what to watch. Do it for thousands. Post clips of the shows you love, build a following that trusts your taste, and turn your obsession into influence.</p>
           <div class="cta-perks">
-            <div class="cta-perk"><span class="cta-dot"></span>Post short clips about any show, on any platform</div>
-            <div class="cta-perk"><span class="cta-dot"></span>Earn a verified curator badge</div>
-            <div class="cta-perk"><span class="cta-dot"></span>Build shareable Highlights from your Stacks</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Post clips about any show, on any platform</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Grow followers who watch what you recommend</div>
+            <div class="cta-perk"><span class="cta-dot"></span>Get a verified curator badge &amp; analytics</div>
             <div class="cta-perk"><span class="cta-dot"></span>Earn from every Watch It you drive — soon</div>
           </div>
-          <button class="btn btn-primary" onclick="toggleMode()">
+          <button class="btn btn-primary" onclick="openBecomeCurator()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             Become a Curator
           </button>
@@ -582,6 +712,146 @@ html, body { overflow: hidden; }
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     BECOME A CURATOR — onboarding modal
+════════════════════════════════════════════ -->
+<div id="bc-overlay">
+  <div class="bc-card">
+    <div class="bc-glow"></div>
+
+    <div class="bc-top">
+      <div class="bc-progress">
+        <div class="bc-pip" id="bc-pip-1"><span class="bc-pip-fill"></span></div>
+        <div class="bc-pip" id="bc-pip-2"><span class="bc-pip-fill"></span></div>
+        <div class="bc-pip" id="bc-pip-3"><span class="bc-pip-fill"></span></div>
+      </div>
+      <div class="bc-x" onclick="closeBecomeCurator()" aria-label="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+
+    <div class="bc-body">
+      <!-- STEP 1 — what it means -->
+      <div class="bc-step active" id="bc-step-1">
+        <div class="bc-badge-icon">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+        </div>
+        <div class="bc-eyebrow">Become a Curator</div>
+        <div class="bc-title">Turn your taste into <em>a following</em></div>
+        <p class="bc-sub">Curators are the heart of ShowShak. Here's what you unlock:</p>
+        <div class="bc-perks">
+          <div class="bc-perk"><span class="bc-perk-ic">🎬</span><div><div class="bc-perk-t">Post recommendations</div><div class="bc-perk-d">Share clips of any show or movie, on any platform.</div></div></div>
+          <div class="bc-perk"><span class="bc-perk-ic">👥</span><div><div class="bc-perk-t">Build a following</div><div class="bc-perk-d">People who trust your taste and watch what you pick.</div></div></div>
+          <div class="bc-perk"><span class="bc-perk-ic">📊</span><div><div class="bc-perk-t">See your impact</div><div class="bc-perk-d">Fires, followers, reach and Watch It taps — all tracked.</div></div></div>
+          <div class="bc-perk"><span class="bc-perk-ic">💸</span><div><div class="bc-perk-t">Earn from it — soon</div><div class="bc-perk-d">Monetise the Watch Its you drive as we grow.</div></div></div>
+        </div>
+      </div>
+
+      <!-- STEP 2 — identity -->
+      <div class="bc-step" id="bc-step-2">
+        <div class="bc-eyebrow">Step 2 of 3</div>
+        <div class="bc-title">Set up your <em>curator profile</em></div>
+        <p class="bc-sub">This is what viewers see when they visit you.</p>
+
+        <div class="pic-picker">
+          <div class="pic-ring" onclick="document.getElementById('bc-pic-file').click()">
+            <div class="pic-av" id="bc-pic-av"></div>
+            <div class="pic-edit-dot">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+          </div>
+          <div class="pic-hint">Add a profile photo <span style="opacity:0.6">(optional)</span></div>
+          <input type="file" id="bc-pic-file" accept="image/*" style="display:none" onchange="bcPickPhoto(event)">
+        </div>
+
+        <div class="bc-field">
+          <label class="bc-label">Username</label>
+          <div class="bc-input-wrap" id="bc-handle-wrap">
+            <span class="bc-at">@</span>
+            <input class="bc-input" id="bc-handle" type="text" placeholder="yourname" autocomplete="off" maxlength="24">
+          </div>
+          <div class="bc-hint" id="bc-handle-hint">Letters, numbers and underscores. This is your @handle.</div>
+        </div>
+
+        <div class="bc-field">
+          <label class="bc-label">Your specialties <span style="color:var(--gray2);font-weight:500;text-transform:none;letter-spacing:0">(pick a few)</span></label>
+          <div class="gpick" id="bc-genres"></div>
+          <div class="bc-hint" id="bc-genre-hint">What kind of shows are you known for? Shows up as your taste tags.</div>
+        </div>
+
+        <div class="bc-field">
+          <label class="bc-label">Curator bio <span style="color:var(--gray2);font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <textarea class="bc-textarea" id="bc-bio" placeholder="What's your taste? e.g. World cinema, slow-burn thrillers, and hidden gems no one's talking about."></textarea>
+        </div>
+      </div>
+
+      <!-- STEP 3 — agree + activate -->
+      <div class="bc-step" id="bc-step-3">
+        <div class="bc-eyebrow">Almost there</div>
+        <div class="bc-title">One quick <em>agreement</em></div>
+        <p class="bc-sub">ShowShak is a home for original recommendations — keep it clean and it stays great for everyone.</p>
+        <div class="bc-agree" id="bc-agree" onclick="bcToggleAgree()">
+          <div class="bc-check" id="bc-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <div class="bc-agree-text">I'll post <strong>my own content</strong>, respect creators' rights, and follow ShowShak's <strong>Community &amp; Content Guidelines</strong>. I understand I'm responsible for what I upload.</div>
+        </div>
+        <p class="bc-sub" style="margin-bottom:4px;font-size:12px">You can switch back to a viewer account anytime in Settings.</p>
+      </div>
+    </div>
+
+    <div class="bc-foot">
+      <button class="bc-next" id="bc-next" onclick="bcNext()">Continue</button>
+      <button class="bc-back" id="bc-back" onclick="bcBack()" style="display:none">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     EDIT PROFILE — modal (user + curator)
+════════════════════════════════════════════ -->
+<div id="ep-overlay">
+  <div class="ep-card" id="ep-card">
+    <div class="ep-head">
+      <div class="ep-head-title">Edit <em>Profile</em></div>
+      <div class="bc-x" onclick="closeEditProfile()" aria-label="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="ep-body">
+      <div class="pic-picker">
+        <div class="pic-ring" onclick="document.getElementById('ep-pic-file').click()">
+          <div class="pic-av" id="ep-pic-av"></div>
+          <div class="pic-edit-dot">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+        </div>
+        <div class="pic-hint">Tap to change photo <span id="ep-pic-remove" style="display:none">· <a onclick="epRemovePhoto(event)">Remove</a></span></div>
+        <input type="file" id="ep-pic-file" accept="image/*" style="display:none" onchange="epPickPhoto(event)">
+      </div>
+
+      <div class="bc-field">
+        <label class="bc-label">Display name</label>
+        <div class="bc-input-wrap" id="ep-name-wrap">
+          <input class="bc-input" id="ep-name" type="text" placeholder="Your name" autocomplete="off" maxlength="40">
+        </div>
+      </div>
+
+      <div class="bc-field">
+        <label class="bc-label">Bio</label>
+        <textarea class="bc-textarea" id="ep-bio" placeholder="Tell people a little about your taste."></textarea>
+      </div>
+
+      <div class="bc-field ep-creator-only">
+        <label class="bc-label">Your specialties</label>
+        <div class="gpick" id="ep-genres"></div>
+      </div>
+    </div>
+    <div class="ep-foot">
+      <button class="ep-cancel" onclick="closeEditProfile()">Cancel</button>
+      <button class="bc-next" onclick="saveEditProfile()">Save changes</button>
+    </div>
   </div>
 </div>
 
@@ -597,10 +867,14 @@ html, body { overflow: hidden; }
 <script>
 /* ── DATA (same as live profile) ── */
 const PROFILE = {
-  name:'ARJUN MEHTA', handle:'@cinephile_arj', letter:'A', color:'#E8373E',
+  name:'ARJUN MEHTA', handle:'@cinephile_arj', letter:'A', color:'#E8373E', photo:null,
   bio:'Curating the best of world cinema and Indian streaming. If it is fire, you will find it here first — no algorithm, just taste.',
+  genres:['Crime','Thriller','World Cinema','Slow Burns'],
   firesGiven:847, stacks:6, following:23, clipsPosted:42, firesReceived:18400, watchItTaps:3200, followers:12600,
 };
+
+/* Genre / specialty options for curator setup + edit profile */
+const GENRE_OPTIONS = ['Crime','Thriller','Drama','Comedy','Horror','Action','Romance','Sci-Fi','Anime','K-Drama','Bollywood','Fantasy','Documentary','True Crime','World Cinema','Slow Burns','Feel Good','Mind-Bending'];
 const MOCK_CLIPS = [
   { id:1, bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'This is how you open a series. Zero warning.' },
   { id:2, bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)', platColor:'#0E3BD4', platAbbr:'D+', fires:2100, caption:'Episode 7 will genuinely destroy you.' },
@@ -660,18 +934,35 @@ function renderWall() {
 }
 
 /* ── HEADER ── */
+function applyAvatar(el) {
+  // Show uploaded photo if present, else the letter monogram.
+  if (PROFILE.photo) {
+    el.textContent = '';
+    el.style.backgroundImage = `url(${PROFILE.photo})`;
+    el.style.backgroundColor = '';
+  } else {
+    el.textContent = PROFILE.letter;
+    el.style.backgroundImage = '';
+    el.style.backgroundColor = PROFILE.color;
+  }
+}
+
 function renderHeader() {
-  const av = document.getElementById('av');
-  av.textContent = PROFILE.letter; av.style.background = PROFILE.color;
+  applyAvatar(document.getElementById('av'));
   document.getElementById('id-name').textContent = PROFILE.name;
   document.getElementById('id-handle').textContent = PROFILE.handle;
   document.getElementById('bio').innerHTML = PROFILE.bio;
+
+  // Taste tags (dynamic from PROFILE.genres)
+  const taste = document.getElementById('taste');
+  taste.innerHTML = `<span class="taste-label">Tastes in</span>` +
+    (PROFILE.genres || []).map(g => `<span class="taste-tag">${g}</span>`).join('');
 
   document.getElementById('identity').classList.toggle('is-creator', isCreator);
 
   const actions = document.getElementById('hero-actions');
   actions.innerHTML = `
-    <button class="btn btn-ghost" onclick="ssToast('✏️ Edit Profile coming soon')">
+    <button class="btn btn-ghost" onclick="openEditProfile()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       Edit Profile
     </button>
@@ -882,6 +1173,175 @@ function renderAnalytics() {
       </div>`).join('')}`;
 }
 
+/* ── BECOME A CURATOR FLOW ── */
+let bcStep = 1;
+let bcAgreed = false;
+let bcPhoto = null;            // data URL of chosen photo (session)
+let bcGenres = [];             // selected specialty genres
+
+function openBecomeCurator() {
+  bcStep = 1; bcAgreed = false; bcPhoto = null; bcGenres = [];
+  document.getElementById('bc-agree').classList.remove('on');
+  document.getElementById('bc-bio').value = '';
+  // Prefill handle from the existing profile handle (minus the @)
+  const h = document.getElementById('bc-handle');
+  if (h) h.value = (PROFILE.handle || '').replace(/^@/, '');
+  applyAvatar(document.getElementById('bc-pic-av'));   // start from current avatar
+  bcRenderGenres();
+  bcRender();
+  document.getElementById('bc-overlay').classList.add('open');
+}
+function closeBecomeCurator() {
+  document.getElementById('bc-overlay').classList.remove('open');
+}
+function bcPickPhoto(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    bcPhoto = ev.target.result;
+    const av = document.getElementById('bc-pic-av');
+    av.textContent = ''; av.style.backgroundImage = `url(${bcPhoto})`; av.style.backgroundColor = '';
+  };
+  reader.readAsDataURL(file);
+}
+function bcRenderGenres() {
+  document.getElementById('bc-genres').innerHTML = GENRE_OPTIONS.map(g =>
+    `<div class="gchip ${bcGenres.includes(g)?'on':''}" onclick="bcToggleGenre('${g}')">${g}</div>`).join('');
+}
+function bcToggleGenre(g) {
+  const i = bcGenres.indexOf(g);
+  if (i >= 0) bcGenres.splice(i,1);
+  else { if (bcGenres.length >= 6) { ssToast('Pick up to 6 specialties'); return; } bcGenres.push(g); }
+  bcRenderGenres();
+}
+function bcRender() {
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`bc-step-${i}`).classList.toggle('active', i === bcStep);
+    const pip = document.getElementById(`bc-pip-${i}`);
+    pip.classList.toggle('done', i < bcStep);
+    pip.classList.toggle('current', i === bcStep);
+  }
+  document.getElementById('bc-back').style.display = bcStep > 1 ? 'block' : 'none';
+  const next = document.getElementById('bc-next');
+  if (bcStep === 1) { next.textContent = 'Get Started'; next.disabled = false; }
+  else if (bcStep === 2) { next.textContent = 'Continue'; next.disabled = !bcHandleValid(); }
+  else { next.textContent = 'Activate Curator Mode 🔥'; next.disabled = !bcAgreed; }
+}
+function bcHandleValid() {
+  const v = (document.getElementById('bc-handle').value || '').trim();
+  return /^[a-zA-Z0-9_]{3,24}$/.test(v);
+}
+function bcCheckHandle() {
+  const hint = document.getElementById('bc-handle-hint');
+  const v = (document.getElementById('bc-handle').value || '').trim();
+  if (v && !bcHandleValid()) {
+    hint.classList.add('err');
+    hint.textContent = v.length < 3 ? 'A bit longer — at least 3 characters.' : 'Only letters, numbers and underscores.';
+  } else {
+    hint.classList.remove('err');
+    hint.textContent = 'Letters, numbers and underscores. This is your @handle.';
+  }
+  if (bcStep === 2) document.getElementById('bc-next').disabled = !bcHandleValid();
+}
+function bcToggleAgree() {
+  bcAgreed = !bcAgreed;
+  document.getElementById('bc-agree').classList.toggle('on', bcAgreed);
+  if (bcStep === 3) document.getElementById('bc-next').disabled = !bcAgreed;
+}
+function bcBack() { if (bcStep > 1) { bcStep--; bcRender(); } }
+function bcNext() {
+  if (bcStep === 2 && !bcHandleValid()) return;
+  if (bcStep === 3) {
+    if (!bcAgreed) return;
+    bcActivate();
+    return;
+  }
+  bcStep++;
+  bcRender();
+}
+function bcActivate() {
+  // Apply the chosen identity to the profile, then flip into creator mode.
+  const handle = (document.getElementById('bc-handle').value || '').trim();
+  const bio = (document.getElementById('bc-bio').value || '').trim();
+  if (handle) { PROFILE.handle = '@' + handle; PROFILE.letter = handle.charAt(0).toUpperCase(); }
+  if (bio) PROFILE.bio = bio;
+  if (bcPhoto) PROFILE.photo = bcPhoto;
+  if (bcGenres.length) PROFILE.genres = bcGenres.slice();
+  closeBecomeCurator();
+  // Become a creator (without re-toggling) and land on the Create tab
+  isCreator = true;
+  activeTab = 'create';
+  document.getElementById('profile-scroll').scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('cta-wrap').style.display = 'none';
+  renderHeader(); renderShelf(); renderTabs(); renderCreate(); renderPrimary(); renderStacks();
+  ['create','primary','stacks','analytics','following'].forEach(id =>
+    document.getElementById('panel-'+id).classList.toggle('active', id === 'create'));
+  setTimeout(() => ssToast('🔥 Welcome, curator! Post your first clip.'), 400);
+}
+
+/* ── EDIT PROFILE (user + curator) ── */
+let epPhoto = null;            // pending photo (data URL), or '' to remove, or null = unchanged
+let epGenres = [];
+
+function openEditProfile() {
+  epPhoto = null;
+  epGenres = (PROFILE.genres || []).slice();
+  document.getElementById('ep-card').classList.toggle('is-creator', isCreator);
+  document.getElementById('ep-name').value = PROFILE.name || '';
+  document.getElementById('ep-bio').value = PROFILE.bio || '';
+  applyAvatar(document.getElementById('ep-pic-av'));
+  document.getElementById('ep-pic-remove').style.display = PROFILE.photo ? 'inline' : 'none';
+  epRenderGenres();
+  document.getElementById('ep-overlay').classList.add('open');
+}
+function closeEditProfile() { document.getElementById('ep-overlay').classList.remove('open'); }
+function epPickPhoto(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    epPhoto = ev.target.result;
+    const av = document.getElementById('ep-pic-av');
+    av.textContent = ''; av.style.backgroundImage = `url(${epPhoto})`; av.style.backgroundColor = '';
+    document.getElementById('ep-pic-remove').style.display = 'inline';
+  };
+  reader.readAsDataURL(file);
+}
+function epRemovePhoto(e) {
+  if (e) e.stopPropagation();
+  epPhoto = '';   // explicit removal
+  const av = document.getElementById('ep-pic-av');
+  av.style.backgroundImage = '';
+  av.style.backgroundColor = PROFILE.color;
+  av.textContent = (document.getElementById('ep-name').value || PROFILE.name || 'S').charAt(0).toUpperCase();
+  document.getElementById('ep-pic-remove').style.display = 'none';
+}
+function epRenderGenres() {
+  document.getElementById('ep-genres').innerHTML = GENRE_OPTIONS.map(g =>
+    `<div class="gchip ${epGenres.includes(g)?'on':''}" onclick="epToggleGenre('${g}')">${g}</div>`).join('');
+}
+function epToggleGenre(g) {
+  const i = epGenres.indexOf(g);
+  if (i >= 0) epGenres.splice(i,1);
+  else { if (epGenres.length >= 6) { ssToast('Pick up to 6 specialties'); return; } epGenres.push(g); }
+  epRenderGenres();
+}
+function saveEditProfile() {
+  const name = (document.getElementById('ep-name').value || '').trim();
+  const bio = (document.getElementById('ep-bio').value || '').trim();
+  if (!name) { ssToast('Add a display name'); return; }
+  PROFILE.name = name;
+  PROFILE.letter = name.charAt(0).toUpperCase();
+  PROFILE.bio = bio;
+  if (epPhoto === '') PROFILE.photo = null;        // removed
+  else if (epPhoto) PROFILE.photo = epPhoto;       // changed
+  if (isCreator) PROFILE.genres = epGenres.slice();
+  closeEditProfile();
+  renderHeader();
+  ssToast('✓ Profile updated');
+}
+
 /* ── MODE TOGGLE ── */
 function toggleMode() {
   isCreator = !isCreator;
@@ -913,6 +1373,17 @@ document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block'
 // reflect initial active panel (handles the ?creator=1 deep-link landing on My Clips)
 ['create','primary','stacks','analytics','following'].forEach(id =>
   document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
+
+// Become-a-curator: live handle validation + focus styling
+(function bcWire() {
+  const h = document.getElementById('bc-handle');
+  const wrap = document.getElementById('bc-handle-wrap');
+  if (h) {
+    h.addEventListener('input', bcCheckHandle);
+    h.addEventListener('focus', () => wrap.classList.add('focused'));
+    h.addEventListener('blur',  () => wrap.classList.remove('focused'));
+  }
+})();
 </script>
 </body>
 </html>

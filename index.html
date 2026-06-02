@@ -665,16 +665,16 @@ body {
 
     <div class="splash-stats">
       <div>
-        <div class="s-stat-val"><em>14</em> min</div>
-        <div class="s-stat-lbl">Avg. Decision</div>
-      </div>
-      <div>
-        <div class="s-stat-val"><em>19</em>%</div>
-        <div class="s-stat-lbl">Abandon Sessions</div>
-      </div>
-      <div>
         <div class="s-stat-val"><em>11</em>+</div>
-        <div class="s-stat-lbl">Platforms</div>
+        <div class="s-stat-lbl">Platforms, One Feed</div>
+      </div>
+      <div>
+        <div class="s-stat-val"><em>1</em> Tap</div>
+        <div class="s-stat-lbl">Clip → Watching</div>
+      </div>
+      <div>
+        <div class="s-stat-val">100<em>%</em></div>
+        <div class="s-stat-lbl">Human Taste</div>
       </div>
     </div>
 
@@ -694,12 +694,44 @@ body {
 <div style="background:var(--bg)">
   <div id="site-hero">
     <div>
-      <p class="hero-desc">The neutral, cross-platform discovery layer above every streaming service. One swipe to go from not knowing what to watch, to watching it.</p>
+      <h1 class="hero-title">DON'T SEARCH.<br><em>FEEL IT.</em></h1>
+      <div class="hero-tagline">Swipe · Discover · Watch</div>
+      <p class="hero-desc">ShowShak is the neutral, cross-platform discovery layer that sits above every streaming service. Trusted curators show you what's worth watching in short clips — one tap takes you straight into Netflix, Prime, Disney+ or wherever it lives.</p>
       <div class="hero-actions">
-        <a class="btn-ghost" href="#features">Learn More</a>
+        <button class="btn-primary" onclick="openOnboarding()">Get Started — Free</button>
+        <a class="btn-ghost" href="#features">How it works</a>
       </div>
-      
-  
+      <div class="hero-stats">
+        <div>
+          <div class="stat-v"><em>1</em> tap</div>
+          <div class="stat-l">From clip to watching</div>
+        </div>
+        <div>
+          <div class="stat-v"><em>11</em>+</div>
+          <div class="stat-l">Platforms, one feed</div>
+        </div>
+        <div>
+          <div class="stat-v"><em>0</em></div>
+          <div class="stat-l">Endless scrolling</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="hero-logo-ring">
+        <div class="h-orbit"></div>
+        <div class="h-orbit-2"></div>
+        <div class="h-glow"></div>
+        <div class="hero-logo-box">
+          <svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg>
+        </div>
+        <div class="hero-plat-pills">
+          <div class="hero-ppill"><span class="hero-ppill-dot" style="background:#E50914"></span>Netflix</div>
+          <div class="hero-ppill"><span class="hero-ppill-dot" style="background:#00A8E0"></span>Prime</div>
+          <div class="hero-ppill"><span class="hero-ppill-dot" style="background:#0E3BD4"></span>Disney+</div>
+          <div class="hero-ppill"><span class="hero-ppill-dot" style="background:#FF6A00"></span>JioHotstar</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -712,12 +744,12 @@ body {
       <p class="section-desc">Stop scrolling through thumbnails. Start feeling your next watch.</p>
     </div>
     <div class="features-grid">
-      <div class="feat-card"><div class="feat-icon">⚡</div><div class="feat-title">INSTANT DISCOVERY</div><p class="feat-desc">30–90 second hook clips that make you feel something. Find your next show in under a minute instead of 14.</p></div>
-      <div class="feat-card"><div class="feat-icon">🎯</div><div class="feat-title">WATCH NOW</div><p class="feat-desc">One tap and you land inside the streaming platform where that content lives. Deep links to Netflix, Prime, Disney+ and more.</p></div>
-      <div class="feat-card"><div class="feat-icon">🔀</div><div class="feat-title">ALL PLATFORMS</div><p class="feat-desc">Truly neutral. The one cross-platform discovery layer that Netflix, Disney+ and Prime Video structurally cannot build.</p></div>
-      <div class="feat-card"><div class="feat-icon">📂</div><div class="feat-title">WISHLIST</div><p class="feat-desc">Save clips to named folders synced across all your devices. Watch Tonight, Bingeworthy, Weekend Films — your way.</p></div>
-      <div class="feat-card"><div class="feat-icon">🔍</div><div class="feat-title">MOOD SEARCH</div><p class="feat-desc">Search by "Edge of my seat", "Want to cry", "Feel good" — content clusters built around how you actually feel.</p></div>
-      <div class="feat-card"><div class="feat-icon">🎬</div><div class="feat-title">CREATOR ECONOMY</div><p class="feat-desc">The world's first monetisation path for show and movie clip creators. Earn from every Watch Now tap you drive.</p></div>
+      <div class="feat-card"><div class="feat-icon">🔥</div><div class="feat-title">CURATOR-LED</div><p class="feat-desc">Real people with great taste — not an algorithm — show you what to watch through short, honest clips you actually feel.</p></div>
+      <div class="feat-card"><div class="feat-icon">🎯</div><div class="feat-title">WATCH IT</div><p class="feat-desc">One tap drops you inside the streaming app where it lives. Deep links to Netflix, Prime, Disney+, JioHotstar and more.</p></div>
+      <div class="feat-card"><div class="feat-icon">🔀</div><div class="feat-title">ALL PLATFORMS</div><p class="feat-desc">Truly neutral. The one cross-platform discovery layer that Netflix, Disney+ and Prime structurally can't build themselves.</p></div>
+      <div class="feat-card"><div class="feat-icon">📂</div><div class="feat-title">STACKS</div><p class="feat-desc">Save clips into named collections — Watch Tonight, Weekend Binge, Date Night — and share them with friends and family.</p></div>
+      <div class="feat-card"><div class="feat-icon">🎭</div><div class="feat-title">DISCOVER BY MOOD</div><p class="feat-desc">Browse by how you feel — "Edge of my seat", "Want to cry", "Feel good" — clips grouped around the moment, not just the genre.</p></div>
+      <div class="feat-card"><div class="feat-icon">✨</div><div class="feat-title">BECOME A CURATOR</div><p class="feat-desc">Built a taste people trust? Post your own clips, grow a following, and earn from every Watch It you drive.</p></div>
     </div>
   </div>
 </div>
@@ -747,8 +779,8 @@ body {
 <!-- CTA -->
 <div style="background:var(--bg2);border-top:1px solid var(--border)">
   <div class="cta-section">
-    <div class="cta-title">STOP DECIDING.<br><em>START WATCHING.</em></div>
-    <p class="cta-sub">14 minutes per session wasted deciding what to watch. That ends now.</p>
+    <div class="cta-title">STOP SCROLLING.<br><em>START WATCHING.</em></div>
+    <p class="cta-sub">Your next favourite show is one swipe away. Let people with great taste find it for you.</p>
     <button class="btn-cta" onclick="openOnboarding()">
       Set Up My Feed
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -894,9 +926,9 @@ body {
   <div class="success-inner">
     <div class="success-icon">🎬</div>
     <div class="success-title">YOU'RE <em>IN!</em></div>
-    <p class="success-sub">Your personalised ShowShak feed is being built.<br>We'll notify you the moment the app launches.</p>
+    <p class="success-sub">Your feed is built around your taste.<br>Time to find your next watch.</p>
     <button class="btn-explore" onclick="closeSuccess()">
-      Explore ShowShak
+      Enter ShowShak
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </button>
   </div>
@@ -1067,6 +1099,19 @@ function handleAuth(el, method) {
   el.style.background = 'rgba(234,59,50,0.12)';
   el.style.borderColor = 'var(--red)';
   el.style.color = 'var(--red)';
+
+  // Persist the basic profile gathered during onboarding so the app can
+  // personalise from day one (genres, subscribed platforms, auth method).
+  try {
+    const profile = {
+      genres:    [...selG].map(i => GENRES[i] && GENRES[i][1]).filter(Boolean),
+      platforms: [...selP].map(i => PLATFORMS[i] && PLATFORMS[i].n).filter(Boolean),
+      authMethod: method,
+      onboardedAt: Date.now(),
+    };
+    localStorage.setItem('ss_user_profile_v1', JSON.stringify(profile));
+  } catch (e) { /* storage unavailable — proceed anyway */ }
+
   setTimeout(() => {
     closeOnboarding();
     document.getElementById('success-overlay').classList.add('open');

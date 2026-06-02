@@ -117,7 +117,7 @@ html, body { overflow: hidden; }
 .empty-headline em { color: var(--red); font-style: normal; }
 .empty-sub {
   font-size: 14px; color: var(--gray); line-height: 1.75;
-  max-width: 300px; margin-bottom: 30px;
+  max-width: 360px; margin-bottom: 30px;
 }
 .empty-cta {
   display: inline-flex; align-items: center; gap: 9px;
@@ -134,10 +134,11 @@ html, body { overflow: hidden; }
 }
 .empty-cta:active { transform: scale(0.97); }
 .empty-hint {
-  margin-top: 18px; font-size: 11px; color: var(--gray2);
+  margin-top: 18px; font-size: 12px; color: var(--gray2);
   font-weight: 500; letter-spacing: 0.3px; line-height: 1.8;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
 }
+.empty-hint strong { color: var(--gray); font-weight: 700; }
 .empty-hint-row { display: flex; align-items: center; gap: 7px; }
 .empty-hint-dot {
   width: 3px; height: 3px; border-radius: 50%; background: var(--gray2);
@@ -652,16 +653,16 @@ html, body { overflow: hidden; }
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EA3B32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         </div>
       </div>
-      <div class="empty-headline">NOTHING<br>SAVED <em>YET</em></div>
-      <p class="empty-sub">Go to the Feed, fire a clip you love, hit Save — then drop it into a Stack. Tonight, weekend, date night — you decide.</p>
+      <div class="empty-headline">YOUR WATCHLIST<br>IS A <em>BLANK CANVAS</em></div>
+      <p class="empty-sub">Stacks are your personal collections — the shows and movies you're saving for the right moment. Build one for tonight, the weekend, date night, whatever fits your mood.</p>
       <button class="empty-cta" onclick="openNewStack()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Create Your First Stack
       </button>
       <div class="empty-hint">
-        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Fire on Feed to save clips</div>
-        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Organise into named Stacks</div>
-        <div class="empty-hint-row"><div class="empty-hint-dot"></div> Watch It whenever you're ready</div>
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> <span><strong>Find</strong> a clip you love on the Feed</span></div>
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> <span><strong>Save</strong> it into a Stack you name</span></div>
+        <div class="empty-hint-row"><div class="empty-hint-dot"></div> <span><strong>Watch It</strong> the moment you're ready</span></div>
       </div>
     </div>
 
