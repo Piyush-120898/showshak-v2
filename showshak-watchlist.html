@@ -960,6 +960,11 @@ buildRec();
 render();
 ssSyncAllSaveBtns();
 
+// Live update: when a stack is created/changed via the shared sheet
+// (e.g. "New Stack" or saving a clip), re-render immediately instead of
+// waiting for a refresh. ssOnStacksChange is provided by showshak-shared.js.
+if (typeof ssOnStacksChange === 'function') ssOnStacksChange(refresh);
+
 </script>
 </body>
 </html>

@@ -287,6 +287,8 @@ function _ss_writeStacks(stacks) {
   try {
     sessionStorage.setItem(SS_STACKS_KEY, JSON.stringify(stacks));
   } catch (e) { console.warn('ShowShak: sessionStorage write failed', e); }
+  // Notify any subscribed page (e.g. Watchlist) so it can re-render live.
+  if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
 }
 
 /* ── Read helpers ──────────────────────────────── */
@@ -296,6 +298,21 @@ function ssIsClipSaved(clipId) {
 }
 
 /* ── Stack operations ──────────────────────────── */
+
+/* ── Stacks change notifications ───────────────────
+   Any page can subscribe to be told when the Stacks data
+   changes (created/renamed/deleted, clips added/removed),
+   so it can re-render live without a refresh. This keeps
+   page-specific logic OUT of shared.js — pages opt in.
+     ssOnStacksChange(fn)  → register a listener
+   _ss_writeStacks() fires all listeners after every write. */
+const _ssStacksListeners = [];
+function ssOnStacksChange(fn) {
+  if (typeof fn === 'function') _ssStacksListeners.push(fn);
+}
+function _ssNotifyStacksChange() {
+  _ssStacksListeners.forEach(fn => { try { fn(); } catch (e) { console.warn('ShowShak: stacks listener failed', e); } });
+}
 
 function ssCreateStack(name) {
   const stacks = ssGetStacks();
