@@ -298,14 +298,19 @@ html, body { overflow: hidden; }
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   padding: 0 40px; display: flex; gap: 0; flex-shrink: 0; margin-top: 12px;
+  /* Allow the tab row to scroll horizontally when it overflows
+     (e.g. 5 creator tabs on a narrow screen) instead of clipping. */
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 @media (max-width: 700px) { .tabs { padding: 0 18px; } }
 .tab {
   display: flex; align-items: center; gap: 7px; padding: 15px 18px;
   border: none; background: transparent; color: var(--gray2);
   font-family: var(--font-body); font-size: 13px; font-weight: 600;
   cursor: pointer; position: relative; white-space: nowrap; transition: color 0.15s;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; flex-shrink: 0;
 }
 .tab:hover { color: var(--gray); }
 .tab.active { color: var(--white); }
