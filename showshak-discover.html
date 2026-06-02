@@ -410,6 +410,48 @@ html, body { overflow: hidden; }
   font-size: 11px; font-weight: 600; color: var(--gray2); margin-top: 5px;
 }
 
+/* Section labels inside results (Curators / Clips) */
+.results-section-label {
+  font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 10px;
+}
+.results-section-label.clips { margin-top: 22px; }
+
+/* Curator result row */
+.result-curator {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: opacity 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.result-curator:hover  { opacity: 0.8; }
+.result-curator:active { opacity: 0.6; }
+.result-curator-av {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 20px; color: #fff;
+  border: 2px solid var(--bg3);
+}
+.result-curator-info { flex: 1; min-width: 0; }
+.result-curator-name {
+  font-size: 14px; font-weight: 700; color: var(--white);
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+}
+.result-curator-verified {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--red);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 7px; flex-shrink: 0;
+}
+.result-curator-handle { font-size: 12px; color: var(--gray2); font-weight: 500; margin-bottom: 3px; }
+.result-curator-meta   { font-size: 11px; color: var(--gray2); }
+.result-curator-follow {
+  padding: 7px 16px; border-radius: 100px; flex-shrink: 0;
+  background: rgba(234,59,50,0.1); border: 1.5px solid var(--border2);
+  color: var(--red); font-family: var(--font-body);
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+.result-curator-follow:hover { background: rgba(234,59,50,0.18); }
+
 .no-results { text-align: center; padding: 60px 24px; display: none; }
 .no-results.visible { display: block; }
 .no-results-icon  { font-size: 36px; margin-bottom: 14px; }
@@ -612,6 +654,43 @@ const PLATFORMS = [
 let recentSearches = ['thriller clips','feel good','kdrama'];
 let activeMood = null, activePlatform = null;
 
+/* ── CURATOR DIRECTORY ──────────────────────────────
+   Curators are searchable by real NAME or @username.
+   Derived once from CLIPS so it always stays in sync,
+   then enriched with display name + verified + bio. */
+const CURATOR_META = {
+  cinephile_arj:     { name:'Arjun Mehta',      verified:true,  bio:'World cinema & Indian streaming' },
+  streamjunkie_sk:   { name:'Sahil Kapoor',     verified:true,  bio:'Prestige drama obsessive' },
+  binge_with_priya:  { name:'Priya Nair',       verified:false, bio:'Crime & thriller binges' },
+  netflixnerd_rv:    { name:'Rohan Verma',      verified:false, bio:'Sci-fi, horror & the weird' },
+  desi_binge:        { name:'Desi Binge',       verified:true,  bio:'Feel-good desi picks' },
+  kdrama_world:      { name:'Kim Da-eun',       verified:true,  bio:'Your K-drama plug' },
+  hbo_stan_official: { name:'HBO Stan',         verified:true,  bio:'Prestige TV, no compromises' },
+};
+
+const CURATORS = (() => {
+  const map = {};
+  CLIPS.forEach(c => {
+    const u = c.creator.name;
+    if (!map[u]) {
+      const meta = CURATOR_META[u] || {};
+      map[u] = {
+        username: u,
+        name: meta.name || u,
+        letter: c.creator.letter,
+        bg: c.creator.bg,
+        verified: !!meta.verified,
+        bio: meta.bio || 'Curator on ShowShak',
+        clipCount: 0,
+        totalFires: 0,
+      };
+    }
+    map[u].clipCount += 1;
+    map[u].totalFires += c.fires;
+  });
+  return Object.values(map);
+})();
+
 /* Fire SVG for inline use */
 const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
 const PLAY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
@@ -677,6 +756,7 @@ function toggleMood(i, el, mood) {
   if (activeMood === i) {
     activeMood = null;
     document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
+    _ssClearResultsHistory();
     showDefaultView();
   } else {
     activeMood = i;
@@ -715,6 +795,7 @@ function togglePlatform(i, el, plat) {
   if (activePlatform === i) {
     activePlatform = null;
     document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
+    _ssClearResultsHistory();
     showDefaultView();
   } else {
     activePlatform = i;
@@ -780,6 +861,12 @@ function handleSearch(query) {
       recentSearches.unshift(query.trim());
       if (recentSearches.length > 5) recentSearches.pop();
     }
+    // Match curators by display name OR @username
+    const curators = CURATORS.filter(cu =>
+      cu.name.toLowerCase().includes(q) ||
+      cu.username.toLowerCase().includes(q)
+    );
+    // Match clips
     const filtered = CLIPS.filter(c =>
       c.caption.replace(/<[^>]+>/g,'').toLowerCase().includes(q) ||
       c.genre.some(g => g.toLowerCase().includes(q)) ||
@@ -788,23 +875,57 @@ function handleSearch(query) {
       c.creator.name.toLowerCase().includes(q) ||
       c.mood.some(m => m.toLowerCase().includes(q))
     );
-    showResultsView(filtered, query);
+    showResultsView(filtered, query, curators);
   } else {
     clearBtn.classList.remove('visible');
+    _ssClearResultsHistory();
     showDefaultView();
     openRecent();
   }
 }
 
-function showResultsView(clips, label) {
+function showResultsView(clips, label, curators) {
+  curators = curators || [];
   document.getElementById('default-view').classList.add('hidden');
   document.getElementById('results-view').classList.add('visible');
-  document.getElementById('results-heading').innerHTML = `<em>${clips.length}</em> clip${clips.length !== 1 ? 's' : ''} for "${label}"`;
+
+  // Push a history entry the FIRST time we enter results, so the browser
+  // back button / swipe returns to the Discover default view instead of
+  // leaving the page entirely. (Bug fix: back used to jump straight to Feed.)
+  _ssEnterResults();
+
+  const totalCur = curators.length, totalClip = clips.length;
+  document.getElementById('results-heading').innerHTML =
+    `<em>${totalCur + totalClip}</em> result${(totalCur+totalClip)!==1?'s':''} for "${label}"`;
+
   const list  = document.getElementById('results-list');
   const noRes = document.getElementById('no-results');
-  if (!clips.length) { list.innerHTML = ''; noRes.classList.add('visible'); return; }
+
+  if (!totalCur && !totalClip) { list.innerHTML = ''; noRes.classList.add('visible'); return; }
   noRes.classList.remove('visible');
-  list.innerHTML = clips.map(clip => `
+
+  let html = '';
+
+  // ── Curators section ──
+  if (totalCur) {
+    html += `<div class="results-section-label">Curators</div>`;
+    html += curators.map(cu => `
+      <div class="result-curator" onclick="ssToast('▶ @${cu.username} — profiles coming soon')">
+        <div class="result-curator-av" style="background:${cu.bg}">${cu.letter}</div>
+        <div class="result-curator-info">
+          <div class="result-curator-name">${cu.name}${cu.verified?'<span class="result-curator-verified">🔥</span>':''}</div>
+          <div class="result-curator-handle">@${cu.username}</div>
+          <div class="result-curator-meta">${cu.clipCount} clip${cu.clipCount!==1?'s':''} · ${fmtFires(cu.totalFires)} fires</div>
+        </div>
+        <button class="result-curator-follow" onclick="event.stopPropagation(); this.textContent = this.textContent==='Following'?'+ Follow':'Following'; ssToast('Followed @${cu.username}')">+ Follow</button>
+      </div>
+    `).join('');
+  }
+
+  // ── Clips section ──
+  if (totalClip) {
+    if (totalCur) html += `<div class="results-section-label clips">Clips</div>`;
+    html += clips.map(clip => `
     <div class="result-clip" onclick="ssOpenClip(${clip.id}, CLIPS)">
       <div class="result-clip-thumb">
         <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
@@ -820,6 +941,9 @@ function showResultsView(clips, label) {
       </div>
     </div>
   `).join('');
+  }
+
+  list.innerHTML = html;
 }
 
 function showDefaultView() {
@@ -831,12 +955,51 @@ function showDefaultView() {
   document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
 }
 
+/* ── RESULTS BACK-NAVIGATION ────────────────────────
+   Entering search/mood/platform results pushes one history
+   entry. The browser back button / mobile back-swipe then
+   returns to the Discover default view instead of leaving
+   the page (which previously jumped straight back to Feed). */
+let _ssResultsHistory = false;
+
+function _ssEnterResults() {
+  if (!_ssResultsHistory) {
+    history.pushState({ ssDiscoverResults: true }, '');
+    _ssResultsHistory = true;
+  }
+}
+
+/* Manual dismissal (clear search, toggle off mood/platform) — pop our
+   own history entry so the user doesn't need an extra back press later. */
+function _ssClearResultsHistory() {
+  if (_ssResultsHistory) {
+    _ssResultsHistory = false;
+    history.back();   // consumes the entry we pushed; popstate guard ignores it
+  }
+}
+
+function _ssExitResultsToDefault() {
+  const input = document.getElementById('search-input');
+  if (input) input.value = '';
+  document.getElementById('search-clear')?.classList.remove('visible');
+  showDefaultView();
+}
+
+window.addEventListener('popstate', () => {
+  // Back press while results are showing → collapse to the default view.
+  if (_ssResultsHistory && document.getElementById('results-view').classList.contains('visible')) {
+    _ssResultsHistory = false;
+    _ssExitResultsToDefault();
+  }
+});
+
 function clearSearch(e) {
   e.stopPropagation();
   const input = document.getElementById('search-input');
   input.value = '';
   input.focus();
   document.getElementById('search-clear').classList.remove('visible');
+  _ssClearResultsHistory();
   showDefaultView();
   openRecent();
 }
