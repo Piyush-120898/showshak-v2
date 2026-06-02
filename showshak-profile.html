@@ -190,9 +190,13 @@ html, body { overflow: hidden; }
   padding: 18px 40px; gap: 0;
   border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
   background: rgba(255,255,255,0.012);
+  /* Scroll horizontally if the stats (up to 5 in creator view) overflow,
+     so none get clipped on narrow screens. */
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
+.creds::-webkit-scrollbar { display: none; }
 @media (max-width: 700px) { .creds { padding: 16px 18px; } }
-.cred { display: flex; flex-direction: column; gap: 3px; padding-right: 30px; margin-right: 30px; position: relative; }
+.cred { display: flex; flex-direction: column; gap: 3px; padding-right: 30px; margin-right: 30px; position: relative; flex-shrink: 0; }
 .cred + .cred::before {
   content: ''; position: absolute; left: -30px; top: 8%; bottom: 8%; width: 1px; background: var(--border);
 }
@@ -200,9 +204,8 @@ html, body { overflow: hidden; }
 .cred-num em { color: var(--red); font-style: normal; }
 .cred-label { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gray2); }
 @media (max-width: 480px) {
-  .creds { justify-content: space-between; }
-  .cred { padding-right: 0; margin-right: 0; }
-  .cred + .cred::before { display: none; }
+  .cred { padding-right: 22px; margin-right: 22px; }
+  .cred + .cred::before { left: -22px; }
   .cred-num { font-size: 24px; }
 }
 
@@ -596,7 +599,7 @@ html, body { overflow: hidden; }
 const PROFILE = {
   name:'ARJUN MEHTA', handle:'@cinephile_arj', letter:'A', color:'#E8373E',
   bio:'Curating the best of world cinema and Indian streaming. If it is fire, you will find it here first — no algorithm, just taste.',
-  firesGiven:847, stacks:6, following:23, clipsPosted:42, firesReceived:18400, watchItTaps:3200,
+  firesGiven:847, stacks:6, following:23, clipsPosted:42, firesReceived:18400, watchItTaps:3200, followers:12600,
 };
 const MOCK_CLIPS = [
   { id:1, bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'This is how you open a series. Zero warning.' },
@@ -688,7 +691,7 @@ function renderHeader() {
 function renderCreds() {
   const el = document.getElementById('creds');
   const data = isCreator
-    ? [['clipsPosted','Clips',false],['firesReceived','Fires Received',true],['watchItTaps','Watch Its',false],['following','Following',false]]
+    ? [['followers','Followers',true],['clipsPosted','Clips',false],['firesReceived','Fires Received',true],['watchItTaps','Watch Its',false],['following','Following',false]]
     : [['firesGiven','Fires Given',true],['stacks','Stacks',false],['following','Following',false]];
   el.innerHTML = data.map(([k,label,accent]) => `
     <div class="cred">
@@ -858,6 +861,7 @@ function renderAnalytics() {
   const max = Math.max(...CHART), days=['M','T','W','T','F','S','S'], peak=CHART.indexOf(max);
   document.getElementById('analytics').innerHTML = `
     <div class="an-grid">
+      <div class="an-card"><div class="an-icon">👥</div><div class="an-val"><em>${fmtFires(PROFILE.followers)}</em></div><div class="an-label">Followers</div><div class="an-trend">↑ 6% this week</div></div>
       <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(PROFILE.firesReceived)}</em></div><div class="an-label">Total Fires</div><div class="an-trend">↑ 12% this week</div></div>
       <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(PROFILE.watchItTaps)}</div><div class="an-label">Watch It Taps</div><div class="an-trend">↑ 8% this week</div></div>
       <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(PROFILE.clipsPosted*820)}</div><div class="an-label">Total Reach</div><div class="an-trend">↑ 21% this week</div></div>
