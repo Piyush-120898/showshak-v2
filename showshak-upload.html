@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Post a Clip</title>
+<style>body{opacity:0}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; height: 100%; }
+body { background: var(--bg); }
+
+/* ════════════════════════════════════════════════
+   SHELL — single column, focused (no nav: this is a flow)
+════════════════════════════════════════════════ */
+.up-shell {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  width: min(560px, 100vw); margin: 0 auto;
+  background: var(--bg);
+}
+.up-shell::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 70% 40% at 50% 0%, rgba(234,59,50,0.06) 0%, transparent 70%);
+}
+
+/* ── Top bar: close + step progress ── */
+.up-top {
+  position: relative; z-index: 5; flex-shrink: 0;
+  padding: 16px 20px 12px;
+  display: flex; align-items: center; gap: 14px;
+}
+.up-close {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--white); cursor: pointer; transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.up-close:hover { background: rgba(255,255,255,0.12); }
+.up-close:active { transform: scale(0.92); }
+
+.up-progress { flex: 1; display: flex; align-items: center; gap: 6px; }
+.up-pip {
+  flex: 1; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.1); overflow: hidden; position: relative;
+}
+.up-pip-fill {
+  position: absolute; inset: 0; width: 0%;
+  background: var(--red); border-radius: 2px;
+  transition: width 0.35s var(--ease-smooth);
+}
+.up-pip.done .up-pip-fill { width: 100%; }
+.up-pip.current .up-pip-fill { width: 100%; }
+
+.up-stepcount { font-size: 11px; font-weight: 700; color: var(--gray2); letter-spacing: 0.5px; flex-shrink: 0; }
+
+/* ── Scrollable step body ── */
+.up-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 8px 22px 20px; position: relative; z-index: 2;
+  scrollbar-width: none;
+}
+.up-body::-webkit-scrollbar { display: none; }
+
+.up-step { display: none; animation: ss-fadeUp 0.35s ease both; }
+.up-step.active { display: block; }
+
+.up-eyebrow {
+  font-size: 11px; font-weight: 700; color: var(--red);
+  letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 8px;
+}
+.up-title {
+  font-family: var(--font-display); font-size: clamp(26px, 5vw, 34px);
+  letter-spacing: 1px; color: var(--white); line-height: 1.02; margin-bottom: 8px;
+}
+.up-title em { color: var(--red); font-style: normal; }
+.up-sub { font-size: 13.5px; color: var(--gray); line-height: 1.55; margin-bottom: 22px; font-weight: 300; }
+.up-sub strong { color: var(--white); font-weight: 600; }
+
+/* ════════════════════════════════════════════════
+   STEP 1 — Upload clip
+════════════════════════════════════════════════ */
+.up-drop {
+  border: 1.5px dashed rgba(234,59,50,0.4); border-radius: 22px;
+  aspect-ratio: 9/16; max-height: 50vh; margin: 0 auto;
+  width: 100%; max-width: 280px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; cursor: pointer; text-align: center; padding: 24px;
+  background: rgba(234,59,50,0.03); transition: border-color 0.2s, background 0.2s;
+  -webkit-tap-highlight-color: transparent; position: relative; overflow: hidden;
+}
+.up-drop:hover { border-color: rgba(234,59,50,0.7); background: rgba(234,59,50,0.06); }
+.up-drop-icon {
+  width: 56px; height: 56px; border-radius: 18px;
+  background: rgba(234,59,50,0.12); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; color: var(--red);
+}
+.up-drop-main { font-size: 15px; font-weight: 700; color: var(--white); }
+.up-drop-sub { font-size: 12px; color: var(--gray2); line-height: 1.5; }
+.up-drop-formats { font-size: 11px; color: var(--gray2); margin-top: 2px; }
+
+/* Preview state */
+.up-preview { position: absolute; inset: 0; display: none; }
+.up-preview.show { display: block; }
+.up-preview video { width: 100%; height: 100%; object-fit: cover; background: #000; }
+.up-preview-overlay {
+  position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  padding: 14px; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent 40%);
+}
+.up-preview-replace {
+  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.25);
+  color: #fff; font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 100px;
+  backdrop-filter: blur(8px); cursor: pointer;
+}
+.up-hint-row {
+  display: flex; align-items: flex-start; gap: 10px; margin-top: 20px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+}
+.up-hint-icon { font-size: 16px; flex-shrink: 0; }
+.up-hint-text { font-size: 12.5px; color: var(--gray); line-height: 1.5; }
+.up-hint-text strong { color: var(--white); font-weight: 600; }
+
+/* ════════════════════════════════════════════════
+   STEP 2 — Pick the show
+════════════════════════════════════════════════ */
+.up-search-bar {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 14px;
+  padding: 0 16px; height: 52px; margin-bottom: 16px; transition: border-color 0.2s;
+}
+.up-search-bar.focused { border-color: rgba(234,59,50,0.45); }
+.up-search-bar input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-family: var(--font-body); font-size: 15px; color: var(--white); caret-color: var(--red);
+}
+.up-search-bar input::placeholder { color: var(--gray2); }
+.up-show-list { display: flex; flex-direction: column; gap: 8px; }
+.up-show-row {
+  display: flex; align-items: center; gap: 13px; cursor: pointer;
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 14px;
+  padding: 10px 12px; transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.up-show-row:hover { background: var(--bg3); }
+.up-show-row.selected { border-color: var(--red); background: rgba(234,59,50,0.08); }
+.up-show-poster {
+  width: 44px; height: 62px; border-radius: 8px; flex-shrink: 0;
+  background-size: cover; background-position: center; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 16px; color: rgba(255,255,255,0.5);
+}
+.up-show-info { flex: 1; min-width: 0; }
+.up-show-name { font-size: 15px; font-weight: 700; color: var(--white); margin-bottom: 3px; }
+.up-show-meta { font-size: 11.5px; color: var(--gray2); }
+.up-show-check {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s var(--ease-spring);
+}
+.up-show-row.selected .up-show-check { background: var(--red); border-color: var(--red); }
+.up-show-empty { text-align: center; padding: 30px 20px; color: var(--gray2); font-size: 13px; }
+.up-title-note {
+  display: flex; align-items: flex-start; gap: 10px; margin-top: 18px;
+  font-size: 12px; color: var(--gray2); line-height: 1.5;
+}
+.up-title-note span:first-child { color: var(--red); flex-shrink: 0; }
+
+/* ════════════════════════════════════════════════
+   STEP 3 — Write the pitch
+════════════════════════════════════════════════ */
+.up-textarea-wrap {
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 16px;
+  padding: 16px; transition: border-color 0.2s;
+}
+.up-textarea-wrap.focused { border-color: rgba(234,59,50,0.45); }
+.up-textarea {
+  width: 100%; min-height: 150px; resize: none; background: transparent; border: none; outline: none;
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6; color: var(--white);
+  caret-color: var(--red);
+}
+.up-textarea::placeholder { color: var(--gray2); }
+.up-count-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+.up-count { font-size: 12px; font-weight: 600; color: var(--gray2); }
+.up-count.good { color: #6FD08C; }
+.up-count.over { color: var(--red); }
+.up-count-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; margin: 0 14px; overflow: hidden; }
+.up-count-bar-fill { height: 100%; width: 0%; background: var(--gray2); border-radius: 2px; transition: width 0.2s, background 0.2s; }
+.up-count-bar-fill.good { background: #6FD08C; }
+.up-count-bar-fill.over { background: var(--red); }
+.up-prompts { margin-top: 18px; }
+.up-prompts-label { font-size: 11px; font-weight: 700; color: var(--gray2); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; }
+.up-prompt-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.up-prompt-chip {
+  font-size: 12px; font-weight: 500; color: var(--gray);
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 100px;
+  padding: 7px 13px; cursor: pointer; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.up-prompt-chip:hover { border-color: var(--border2); color: var(--white); }
+
+/* ════════════════════════════════════════════════
+   STEP 4 — Vibe
+════════════════════════════════════════════════ */
+.up-vibe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.up-vibe {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 14px;
+  padding: 14px 14px; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.up-vibe:hover { border-color: rgba(255,255,255,0.18); }
+.up-vibe.on { border-color: var(--red); background: rgba(234,59,50,0.08); }
+.up-vibe-emoji { font-size: 18px; flex-shrink: 0; }
+.up-vibe-label { font-size: 13px; font-weight: 600; color: var(--white); }
+.up-vibe-note { font-size: 12px; color: var(--gray2); margin-top: 16px; text-align: center; }
+
+/* ════════════════════════════════════════════════
+   STEP 5 — Review & publish
+════════════════════════════════════════════════ */
+.up-review-card {
+  display: flex; gap: 16px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 18px; padding: 16px; margin-bottom: 18px;
+}
+.up-review-thumb {
+  width: 92px; height: 128px; border-radius: 12px; flex-shrink: 0; overflow: hidden;
+  background: #000; position: relative; border: 1px solid var(--border);
+}
+.up-review-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.up-review-thumb-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.up-review-info { flex: 1; min-width: 0; }
+.up-review-show { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.5px; color: var(--white); margin-bottom: 4px; }
+.up-review-meta { font-size: 11.5px; color: var(--gray2); margin-bottom: 10px; }
+.up-review-pitch { font-size: 13px; color: var(--gray); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.up-review-vibes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.up-review-vibe { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.85); background: rgba(234,59,50,0.15); border: 1px solid var(--border2); border-radius: 100px; padding: 3px 9px; }
+
+.up-reveal-note {
+  display: flex; align-items: flex-start; gap: 11px;
+  background: rgba(234,59,50,0.06); border: 1px solid var(--border2); border-radius: 14px;
+  padding: 14px 16px; margin-bottom: 8px;
+}
+.up-reveal-note-icon { font-size: 16px; flex-shrink: 0; }
+.up-reveal-note-text { font-size: 12.5px; color: var(--gray); line-height: 1.55; }
+.up-reveal-note-text strong { color: var(--white); font-weight: 600; }
+
+/* ════════════════════════════════════════════════
+   FOOTER — back / next / publish
+════════════════════════════════════════════════ */
+.up-foot {
+  flex-shrink: 0; position: relative; z-index: 5;
+  padding: 14px 22px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(11,11,15,0.9); backdrop-filter: blur(12px);
+}
+.up-foot-fb { flex: 1; font-size: 12px; color: var(--gray2); font-weight: 500; }
+.up-foot-fb em { color: var(--red); font-style: normal; font-weight: 700; }
+.up-btn {
+  display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  padding: 13px 24px; border-radius: 100px; cursor: pointer;
+  font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  border: 1.5px solid transparent; transition: transform 0.12s, background 0.15s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+.up-btn:active { transform: scale(0.97); }
+.up-btn-ghost { background: transparent; border-color: rgba(255,255,255,0.14); color: var(--white); }
+.up-btn-ghost:hover { border-color: rgba(255,255,255,0.3); }
+.up-btn-primary { background: var(--red); color: #fff; }
+.up-btn-primary:hover { background: var(--red2); }
+.up-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.up-btn-primary:disabled:active { transform: none; }
+
+/* ════════════════════════════════════════════════
+   PUBLISH SUCCESS
+════════════════════════════════════════════════ */
+#up-success {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 40px; gap: 6px;
+}
+#up-success.show { display: flex; }
+.up-success-burst {
+  width: 96px; height: 96px; border-radius: 50%; margin-bottom: 12px;
+  background: rgba(234,59,50,0.12); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  animation: upPop 0.6s var(--ease-spring) both;
+}
+@keyframes upPop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+.up-success-title { font-family: var(--font-display); font-size: 38px; letter-spacing: 1px; color: var(--white); }
+.up-success-title em { color: var(--red); font-style: normal; }
+.up-success-sub { font-size: 14px; color: var(--gray); line-height: 1.6; max-width: 300px; margin-bottom: 18px; }
+.up-success-actions { display: flex; gap: 10px; }
+</style>
+</head>
+<body>
+
+<div class="up-shell">
+
+  <!-- TOP BAR -->
+  <div class="up-top">
+    <div class="up-close" onclick="upExit()" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>
+    <div class="up-progress" id="up-progress"></div>
+    <div class="up-stepcount" id="up-stepcount">1 / 5</div>
+  </div>
+
+  <!-- BODY -->
+  <div class="up-body" id="up-body">
+
+    <!-- STEP 1 — CLIP -->
+    <div class="up-step active" id="step-1">
+      <div class="up-eyebrow">Step 1 · Your clip</div>
+      <div class="up-title">Drop your <em>clip</em></div>
+      <p class="up-sub">This is <strong>your</strong> content — the hook that makes someone stop and trust your taste. Keep it short and punchy.</p>
+
+      <div class="up-drop" id="up-drop" onclick="document.getElementById('up-file').click()">
+        <div class="up-preview" id="up-preview">
+          <video id="up-video" muted loop playsinline></video>
+          <div class="up-preview-overlay"><div class="up-preview-replace">Replace clip</div></div>
+        </div>
+        <div class="up-drop-icon" id="up-drop-placeholder-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </div>
+        <div class="up-drop-main" id="up-drop-main">Tap to upload</div>
+        <div class="up-drop-sub" id="up-drop-sub">Record in the app, or pick a video from your device</div>
+        <div class="up-drop-formats" id="up-drop-formats">MP4 · MOV · up to 90 seconds</div>
+      </div>
+      <input type="file" id="up-file" accept="video/*" style="display:none" onchange="upHandleFile(event)">
+
+      <div class="up-hint-row">
+        <span class="up-hint-icon">💡</span>
+        <span class="up-hint-text"><strong>Curator tip:</strong> the best clips tease the feeling, not the plot. Make them <em>need</em> to know what it is.</span>
+      </div>
+    </div>
+
+    <!-- STEP 2 — PICK SHOW -->
+    <div class="up-step" id="step-2">
+      <div class="up-eyebrow">Step 2 · The show</div>
+      <div class="up-title">What are you <em>recommending?</em></div>
+      <p class="up-sub">Pick the show or movie. We use this to power the <strong>Watch It</strong> button — viewers won't see the title until they tap it.</p>
+
+      <div class="up-search-bar" id="up-show-search-bar">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gray2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="up-show-input" type="text" placeholder="Search a show or movie…" autocomplete="off">
+      </div>
+      <div class="up-show-list" id="up-show-list"></div>
+
+      <div class="up-title-note">
+        <span>🔒</span>
+        <span>The title stays hidden on your clip. That's the ShowShak way — viewers connect with <em>you</em> first, then discover what it is at the Watch It moment.</span>
+      </div>
+    </div>
+
+    <!-- STEP 3 — PITCH -->
+    <div class="up-step" id="step-3">
+      <div class="up-eyebrow">Step 3 · Your pitch</div>
+      <div class="up-title">Why should they <em>watch it?</em></div>
+      <p class="up-sub">This is your voice — the reason someone trusts your rec. Tell the story, set the mood. Aim for <strong>70–90 words</strong>.</p>
+
+      <div class="up-textarea-wrap" id="up-pitch-wrap">
+        <textarea class="up-textarea" id="up-pitch" placeholder="No spoilers — just the feeling. What did it do to you? Why can't they miss it?"></textarea>
+        <div class="up-count-row">
+          <div class="up-count-bar"><div class="up-count-bar-fill" id="up-count-fill"></div></div>
+          <div class="up-count" id="up-count">0 words</div>
+        </div>
+      </div>
+
+      <div class="up-prompts">
+        <div class="up-prompts-label">Need a spark?</div>
+        <div class="up-prompt-chips" id="up-prompt-chips"></div>
+      </div>
+    </div>
+
+    <!-- STEP 4 — VIBE -->
+    <div class="up-step" id="step-4">
+      <div class="up-eyebrow">Step 4 · The vibe</div>
+      <div class="up-title">Set the <em>mood</em></div>
+      <p class="up-sub">Pick up to <strong>3</strong> vibes. This helps the right people find your clip — and keeps discovery clean (no spammy hashtags here).</p>
+      <div class="up-vibe-grid" id="up-vibe-grid"></div>
+      <div class="up-vibe-note" id="up-vibe-note">Optional, but it really helps your clip travel.</div>
+    </div>
+
+    <!-- STEP 5 — REVIEW -->
+    <div class="up-step" id="step-5">
+      <div class="up-eyebrow">Step 5 · Review</div>
+      <div class="up-title">Ready to <em>post?</em></div>
+      <p class="up-sub">Here's how your recommendation will go out. Looks good?</p>
+
+      <div class="up-review-card">
+        <div class="up-review-thumb" id="up-review-thumb">
+          <div class="up-review-thumb-fallback" id="up-review-thumb-fallback">🎬</div>
+        </div>
+        <div class="up-review-info">
+          <div class="up-review-show" id="up-review-show">—</div>
+          <div class="up-review-meta" id="up-review-meta">—</div>
+          <div class="up-review-pitch" id="up-review-pitch">—</div>
+          <div class="up-review-vibes" id="up-review-vibes"></div>
+        </div>
+      </div>
+
+      <div class="up-reveal-note">
+        <span class="up-reveal-note-icon">🔥</span>
+        <span class="up-reveal-note-text">Your clip posts with the <strong>title hidden</strong>. Viewers fire it, save it, and tap <strong>Watch It</strong> to discover what it is — and you get the credit for the find.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="up-foot">
+    <div class="up-foot-fb" id="up-foot-fb"></div>
+    <button class="up-btn up-btn-ghost" id="up-back" onclick="upBack()" style="display:none">Back</button>
+    <button class="up-btn up-btn-primary" id="up-next" onclick="upNext()" disabled>Next</button>
+  </div>
+</div>
+
+<!-- SUCCESS -->
+<div id="up-success">
+  <div class="up-success-burst">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+  </div>
+  <div class="up-success-title">YOU'RE <em>LIVE</em></div>
+  <p class="up-success-sub">Your recommendation is posted. The right people are about to discover it.</p>
+  <div class="up-success-actions">
+    <button class="up-btn up-btn-ghost" onclick="upPostAnother()">Post another</button>
+    <button class="up-btn up-btn-primary" onclick="upGoProfile()">View my clips</button>
+  </div>
+</div>
+
+<script src="showshak-shared.js"></script>
+<script>
+/* ════════════════════════════════════════════════
+   CURATOR UPLOAD FLOW
+   Prototype: persists published clips to sessionStorage
+   key 'ss_my_clips_v1' so they appear in the profile's
+   "My Clips" tab. No backend yet.
+════════════════════════════════════════════════ */
+
+const TOTAL_STEPS = 5;
+let step = 1;
+
+const draft = {
+  videoUrl: null,     // object URL (session only)
+  fileName: null,
+  show: null,         // { name, year, genre[], platLabel, platColor, platAbbr, platRgb, bg }
+  pitch: '',
+  vibes: [],
+};
+
+/* ── Mock show catalog (stands in for the TMDB search) ── */
+const SHOW_CATALOG = [
+  { name:'Sacred Games',    year:2018, genre:['Crime','Thriller'], platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)' },
+  { name:'The Bear',        year:2022, genre:['Drama','Comedy'],   platLabel:'Disney+',     platColor:'#0E3BD4', platAbbr:'D+', platRgb:'14,59,212', bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)' },
+  { name:'Mirzapur',        year:2018, genre:['Action','Crime'],   platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#0a0510,#150820,#0a0505,#000)' },
+  { name:'Stranger Things', year:2016, genre:['Sci-Fi','Horror'],  platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#020510,#050a1a,#050205,#000)' },
+  { name:'Squid Game',      year:2021, genre:['Thriller','Drama'], platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)' },
+  { name:'Panchayat',       year:2020, genre:['Comedy','Drama'],   platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#021005,#041a08,#020802,#000)' },
+  { name:'Scam 1992',       year:2020, genre:['Crime','Drama'],    platLabel:'SonyLIV',     platColor:'#002868', platAbbr:'S',  platRgb:'0,40,104',  bg:'linear-gradient(160deg,#080500,#140c00,#050300,#000)' },
+  { name:'Breaking Bad',    year:2008, genre:['Crime','Drama'],    platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#02100a,#041a10,#020805,#000)' },
+  { name:'The Last of Us',  year:2023, genre:['Drama','Horror'],   platLabel:'JioHotstar',  platColor:'#FF6A00', platAbbr:'JH', platRgb:'255,106,0', bg:'linear-gradient(160deg,#0a0803,#161005,#050300,#000)' },
+  { name:'Dahaad',          year:2023, genre:['Crime','Thriller'], platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#10040a,#1a0610,#080205,#000)' },
+];
+
+const VIBES = [
+  ['🍿','Edge of My Seat'], ['☀️','Feel Good'], ['😭','Want to Cry'], ['❤️','Date Night'],
+  ['🤯','Mind-Bending'], ['👨‍👩‍👧','Family Night'], ['🌙','Late Night'], ['😂','Laugh Out Loud'],
+];
+
+const PITCH_PROMPTS = [
+  'The scene that wrecked me was…',
+  'I went in expecting nothing and…',
+  'You will not be able to stop after episode…',
+  'This is the one I force everyone to watch because…',
+];
+
+/* ════════════════════════════════════════════════
+   PROGRESS BAR
+════════════════════════════════════════════════ */
+function buildProgress() {
+  const wrap = document.getElementById('up-progress');
+  wrap.innerHTML = Array.from({length: TOTAL_STEPS}, (_, i) =>
+    `<div class="up-pip" id="pip-${i+1}"><div class="up-pip-fill"></div></div>`).join('');
+}
+function syncProgress() {
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const pip = document.getElementById(`pip-${i}`);
+    pip.classList.toggle('done', i < step);
+    pip.classList.toggle('current', i === step);
+  }
+  document.getElementById('up-stepcount').textContent = `${step} / ${TOTAL_STEPS}`;
+}
+
+/* ════════════════════════════════════════════════
+   STEP NAVIGATION
+════════════════════════════════════════════════ */
+function showStep(n) {
+  step = n;
+  document.querySelectorAll('.up-step').forEach(s => s.classList.remove('active'));
+  document.getElementById(`step-${n}`).classList.add('active');
+  document.getElementById('up-body').scrollTop = 0;
+  document.getElementById('up-back').style.display = n > 1 ? 'inline-flex' : 'none';
+  syncProgress();
+  syncFooter();
+  if (n === 5) buildReview();
+}
+
+function upNext() {
+  if (!canAdvance()) return;
+  if (step < TOTAL_STEPS) showStep(step + 1);
+  else publish();
+}
+function upBack() { if (step > 1) showStep(step - 1); }
+
+/* ════════════════════════════════════════════════
+   FOOTER STATE (button label + validation message)
+════════════════════════════════════════════════ */
+function canAdvance() {
+  if (step === 1) return !!draft.videoUrl;
+  if (step === 2) return !!draft.show;
+  if (step === 3) return wordCount(draft.pitch) >= 15;
+  return true; // steps 4 & 5
+}
+
+function syncFooter() {
+  const next = document.getElementById('up-next');
+  const fb   = document.getElementById('up-foot-fb');
+  next.disabled = !canAdvance();
+  next.textContent = step === TOTAL_STEPS ? 'Post Clip 🔥' : 'Next';
+
+  if (step === 1)      fb.innerHTML = draft.videoUrl ? 'Clip added ✓' : 'Add a clip to continue';
+  else if (step === 2) fb.innerHTML = draft.show ? `Selected: <em>${draft.show.name}</em>` : 'Pick the show to continue';
+  else if (step === 3) {
+    const w = wordCount(draft.pitch);
+    fb.innerHTML = w < 15 ? `Write a little more — <em>${Math.max(0,15-w)}</em> words to go`
+      : (w >= 70 && w <= 90 ? 'Perfect length ✓' : `<em>${w}</em> words`);
+  }
+  else if (step === 4) fb.innerHTML = draft.vibes.length ? `<em>${draft.vibes.length}</em> vibe${draft.vibes.length>1?'s':''} selected` : 'Optional — pick up to 3';
+  else                 fb.innerHTML = 'One tap and you\'re live';
+}
+
+/* ════════════════════════════════════════════════
+   STEP 1 — FILE
+════════════════════════════════════════════════ */
+function upHandleFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (draft.videoUrl) URL.revokeObjectURL(draft.videoUrl);
+  draft.videoUrl = URL.createObjectURL(file);
+  draft.fileName = file.name;
+
+  const vid = document.getElementById('up-video');
+  vid.src = draft.videoUrl;
+  vid.play().catch(()=>{});
+  document.getElementById('up-preview').classList.add('show');
+  ['up-drop-placeholder-icon','up-drop-main','up-drop-sub','up-drop-formats']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  syncFooter();
+  ssToast('🎬 Clip added');
+}
+
+/* ════════════════════════════════════════════════
+   STEP 2 — SHOW SEARCH
+════════════════════════════════════════════════ */
+function renderShowList(filter = '') {
+  const q = filter.trim().toLowerCase();
+  const list = document.getElementById('up-show-list');
+  const shows = q ? SHOW_CATALOG.filter(s => s.name.toLowerCase().includes(q)) : SHOW_CATALOG;
+  if (!shows.length) {
+    list.innerHTML = `<div class="up-show-empty">No match in our catalog yet — in the real app this searches every title via TMDB.</div>`;
+    return;
+  }
+  const check = `<svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>`;
+  list.innerHTML = shows.map(s => {
+    const sel = draft.show && draft.show.name === s.name;
+    return `
+      <div class="up-show-row ${sel?'selected':''}" onclick='upPickShow(${JSON.stringify(s).replace(/'/g,"&#39;")})'>
+        <div class="up-show-poster" style="background:${s.bg}">${s.name.charAt(0)}</div>
+        <div class="up-show-info">
+          <div class="up-show-name">${s.name}</div>
+          <div class="up-show-meta">${s.year} · ${s.genre.join(', ')} · ${s.platLabel}</div>
+        </div>
+        <div class="up-show-check">${sel?check:''}</div>
+      </div>`;
+  }).join('');
+}
+function upPickShow(s) {
+  draft.show = s;
+  renderShowList(document.getElementById('up-show-input').value);
+  syncFooter();
+}
+
+/* ════════════════════════════════════════════════
+   STEP 3 — PITCH
+════════════════════════════════════════════════ */
+function wordCount(str) {
+  const t = (str || '').trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+function syncPitch() {
+  const w = wordCount(draft.pitch);
+  const countEl = document.getElementById('up-count');
+  const fill = document.getElementById('up-count-fill');
+  countEl.textContent = `${w} word${w!==1?'s':''}`;
+  const pct = Math.min(100, (w / 90) * 100);
+  fill.style.width = pct + '%';
+  const good = w >= 70 && w <= 90;
+  const over = w > 90;
+  countEl.classList.toggle('good', good);
+  countEl.classList.toggle('over', over);
+  fill.classList.toggle('good', good);
+  fill.classList.toggle('over', over);
+  syncFooter();
+}
+function buildPrompts() {
+  document.getElementById('up-prompt-chips').innerHTML =
+    PITCH_PROMPTS.map(p => `<div class="up-prompt-chip" onclick="usePrompt(this)">${p}</div>`).join('');
+}
+function usePrompt(el) {
+  const ta = document.getElementById('up-pitch');
+  const txt = el.textContent;
+  ta.value = ta.value ? ta.value.replace(/\s*$/,' ') + txt + ' ' : txt + ' ';
+  draft.pitch = ta.value;
+  ta.focus();
+  syncPitch();
+}
+
+/* ════════════════════════════════════════════════
+   STEP 4 — VIBES
+════════════════════════════════════════════════ */
+function buildVibes() {
+  document.getElementById('up-vibe-grid').innerHTML = VIBES.map(([e,l]) =>
+    `<div class="up-vibe" data-vibe="${l}" onclick="toggleVibe(this,'${l}')"><span class="up-vibe-emoji">${e}</span><span class="up-vibe-label">${l}</span></div>`).join('');
+}
+function toggleVibe(el, label) {
+  const i = draft.vibes.indexOf(label);
+  if (i >= 0) { draft.vibes.splice(i,1); el.classList.remove('on'); }
+  else {
+    if (draft.vibes.length >= 3) { ssToast('Pick up to 3 vibes'); return; }
+    draft.vibes.push(label); el.classList.add('on');
+  }
+  document.getElementById('up-vibe-note').textContent =
+    draft.vibes.length ? `${draft.vibes.length} of 3 selected` : 'Optional, but it really helps your clip travel.';
+  syncFooter();
+}
+
+/* ════════════════════════════════════════════════
+   STEP 5 — REVIEW
+════════════════════════════════════════════════ */
+function buildReview() {
+  const s = draft.show || {};
+  const thumb = document.getElementById('up-review-thumb');
+  const fallback = document.getElementById('up-review-thumb-fallback');
+  // Show the actual uploaded video as the thumbnail preview
+  thumb.querySelectorAll('video').forEach(v => v.remove());
+  if (draft.videoUrl) {
+    const v = document.createElement('video');
+    v.src = draft.videoUrl; v.muted = true; v.loop = true; v.playsInline = true;
+    v.play().catch(()=>{});
+    thumb.insertBefore(v, fallback);
+    fallback.style.display = 'none';
+  } else {
+    thumb.style.background = s.bg || '#000';
+    fallback.style.display = 'flex';
+  }
+  document.getElementById('up-review-show').textContent = s.name || 'Your pick';
+  document.getElementById('up-review-meta').textContent =
+    s.name ? `${s.year} · ${(s.genre||[]).join(', ')} · ${s.platLabel}` : '';
+  document.getElementById('up-review-pitch').textContent = draft.pitch || 'No pitch written';
+  document.getElementById('up-review-vibes').innerHTML =
+    draft.vibes.map(v => `<span class="up-review-vibe">${v}</span>`).join('');
+}
+
+/* ════════════════════════════════════════════════
+   PUBLISH → persist to sessionStorage
+════════════════════════════════════════════════ */
+function publish() {
+  const s = draft.show || {};
+  const clip = {
+    id: 'my_' + Date.now(),
+    bg: s.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+    videoUrl: draft.videoUrl || null,           // session-only object URL
+    title: s.name || '',
+    year: s.year || '',
+    genre: s.genre || [],
+    lang: s.lang || '',
+    platLabel: s.platLabel || 'Streaming',
+    platColor: s.platColor || '#EA3B32',
+    platAbbr: s.platAbbr || '▶',
+    platRgb: s.platRgb || '234,59,50',
+    platforms: [{ name: s.platLabel || 'Streaming', color: s.platColor || '#EA3B32', label: s.platAbbr || '▶', sub: 'Available to stream', included: true }],
+    caption: draft.pitch || '',
+    vibes: draft.vibes.slice(),
+    fires: 0,
+    mine: true,
+    createdAt: Date.now(),
+  };
+  try {
+    const arr = JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]');
+    arr.unshift(clip);
+    sessionStorage.setItem('ss_my_clips_v1', JSON.stringify(arr));
+  } catch (e) { console.warn('ShowShak: could not save clip', e); }
+
+  document.getElementById('up-success').classList.add('show');
+}
+
+/* ════════════════════════════════════════════════
+   EXIT / NAVIGATION
+════════════════════════════════════════════════ */
+function upExit() {
+  // If they've started, confirm. Otherwise just leave.
+  const started = draft.videoUrl || draft.show || draft.pitch;
+  if (started && !confirm('Discard this clip? Your progress will be lost.')) return;
+  goProfile();
+}
+function goProfile() {
+  if (typeof ssNavigate === 'function') ssNavigate('showshak-profile.html?creator=1');
+  else window.location.href = 'showshak-profile.html?creator=1';
+}
+function upGoProfile() { goProfile(); }
+function upPostAnother() {
+  // Reset the whole flow
+  if (draft.videoUrl) URL.revokeObjectURL(draft.videoUrl);
+  draft.videoUrl = draft.fileName = draft.show = null;
+  draft.pitch = ''; draft.vibes = [];
+  document.getElementById('up-success').classList.remove('show');
+  document.getElementById('up-preview').classList.remove('show');
+  ['up-drop-placeholder-icon','up-drop-main','up-drop-sub','up-drop-formats']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+  document.getElementById('up-pitch').value = '';
+  document.getElementById('up-show-input').value = '';
+  document.querySelectorAll('.up-vibe.on').forEach(v => v.classList.remove('on'));
+  syncPitch(); renderShowList();
+  showStep(1);
+}
+
+/* ════════════════════════════════════════════════
+   INIT + LISTENERS
+════════════════════════════════════════════════ */
+buildProgress();
+buildVibes();
+buildPrompts();
+renderShowList();
+showStep(1);
+
+// Show search wiring
+const showInput = document.getElementById('up-show-input');
+const showBar = document.getElementById('up-show-search-bar');
+showInput.addEventListener('input', e => renderShowList(e.target.value));
+showInput.addEventListener('focus', () => showBar.classList.add('focused'));
+showInput.addEventListener('blur',  () => showBar.classList.remove('focused'));
+
+// Pitch wiring
+const pitchTa = document.getElementById('up-pitch');
+const pitchWrap = document.getElementById('up-pitch-wrap');
+pitchTa.addEventListener('input', e => { draft.pitch = e.target.value; syncPitch(); });
+pitchTa.addEventListener('focus', () => pitchWrap.classList.add('focused'));
+pitchTa.addEventListener('blur',  () => pitchWrap.classList.remove('focused'));
+</script>
+</body>
+</html>

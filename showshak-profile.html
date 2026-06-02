@@ -319,6 +319,69 @@ html, body { overflow: hidden; }
 .panel.active { display: block; }
 @media (max-width: 700px) { .panel { padding: 20px 18px 36px; } }
 
+/* Create tab — accented so it reads as the primary curator action */
+.tab.tab-create { color: var(--red); font-weight: 700; }
+.tab.tab-create.active { color: var(--red); }
+.tab.tab-create svg { display: block; }
+
+/* ════════════════════════════════════════════════
+   CREATE LAUNCHPAD (owner-only first tab)
+════════════════════════════════════════════════ */
+.create-hero {
+  position: relative; border-radius: 22px; overflow: hidden;
+  border: 1.5px dashed rgba(234,59,50,0.4);
+  padding: 40px 28px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent; margin-bottom: 26px;
+}
+.create-hero:hover { border-color: rgba(234,59,50,0.75); }
+.create-hero:active { transform: scale(0.99); }
+.create-hero-bg {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 70% 70% at 50% 0%, rgba(234,59,50,0.12) 0%, transparent 65%);
+  pointer-events: none;
+}
+.create-hero-in { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.create-plus {
+  width: 72px; height: 72px; border-radius: 24px;
+  background: var(--red); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 12px 36px rgba(234,59,50,0.4);
+  animation: createPulse 2.8s ease-in-out infinite;
+}
+@keyframes createPulse {
+  0%,100% { box-shadow: 0 12px 36px rgba(234,59,50,0.32); transform: scale(1); }
+  50%      { box-shadow: 0 16px 48px rgba(234,59,50,0.5); transform: scale(1.04); }
+}
+.create-title { font-family: var(--font-display); font-size: 30px; letter-spacing: 1px; color: var(--white); line-height: 1.05; }
+.create-title em { color: var(--red); font-style: normal; }
+.create-sub { font-size: 13.5px; color: var(--gray); line-height: 1.6; max-width: 340px; font-weight: 300; }
+.create-cta-btn {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 4px;
+  padding: 12px 24px; border-radius: 100px; background: var(--red); color: #fff;
+  font-family: var(--font-body); font-size: 14px; font-weight: 700; border: none;
+  pointer-events: none;
+}
+
+/* Quick steps strip under the launchpad */
+.create-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 560px) { .create-steps { grid-template-columns: 1fr 1fr; } }
+.create-step {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 12px; text-align: center;
+}
+.create-step-num { font-family: var(--font-display); font-size: 16px; color: var(--red); letter-spacing: 1px; margin-bottom: 6px; }
+.create-step-label { font-size: 11.5px; color: var(--gray); font-weight: 500; line-height: 1.4; }
+.create-steps-title { font-size: 11px; font-weight: 700; color: var(--gray2); letter-spacing: 2px; text-transform: uppercase; margin: 4px 0 12px; }
+
+/* Mine badge on a freshly-posted clip */
+.g-mine-badge {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+  border: 1px solid var(--border2); border-radius: 5px;
+  padding: 2px 7px; font-size: 8px; font-weight: 800; color: var(--red); letter-spacing: 0.5px;
+}
+
 /* Clips / Fires grid */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 @media (max-width: 560px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 9px; } }
@@ -482,6 +545,7 @@ html, body { overflow: hidden; }
 
     <!-- PANELS -->
     <div id="panels">
+      <div class="panel" id="panel-create"><div id="create"></div></div>
       <div class="panel active" id="panel-primary"><div id="primary"></div></div>
       <div class="panel" id="panel-stacks"><div id="stacks"></div></div>
       <div class="panel" id="panel-analytics"><div id="analytics"></div></div>
@@ -663,7 +727,8 @@ function renderShelf() {
 function renderTabs() {
   const bar = document.getElementById('tabs');
   bar.innerHTML = isCreator ? `
-    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${MOCK_CLIPS.length}</span></button>
+    <button class="tab tab-create ${activeTab==='create'?'active':''}" onclick="switchTab('create')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create</button>
+    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${myClipsCount()}</span></button>
     <button class="tab ${activeTab==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
     <button class="tab ${activeTab==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
     <button class="tab ${activeTab==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>
@@ -675,26 +740,81 @@ function renderTabs() {
 }
 function switchTab(t) {
   activeTab = t;
-  ['primary','stacks','analytics','following'].forEach(id =>
+  ['create','primary','stacks','analytics','following'].forEach(id =>
     document.getElementById('panel-'+id).classList.toggle('active', id===t));
   renderTabs();
+}
+
+/* ── PUBLISHED CLIPS (from the upload flow, sessionStorage) ── */
+function getMyClips() {
+  try { return JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]'); }
+  catch { return []; }
+}
+function myClipsCount() { return getMyClips().length + MOCK_CLIPS.length; }
+
+/* ── CREATE LAUNCHPAD (owner-only) ── */
+function renderCreate() {
+  const posted = getMyClips().length;
+  document.getElementById('create').innerHTML = `
+    <div class="create-hero" onclick="goUpload()">
+      <div class="create-hero-bg"></div>
+      <div class="create-hero-in">
+        <div class="create-plus">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div class="create-title">Post a new <em>recommendation</em></div>
+        <div class="create-sub">${posted
+          ? `You've posted <strong style="color:var(--white)">${posted}</strong> this session. Found something else worth sharing? Drop a clip and put it in front of the right people.`
+          : `Found something worth sharing? Drop a clip, pick the show, and tell people why they need to watch it. Takes about a minute.`}</div>
+        <span class="create-cta-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          Start a clip
+        </span>
+      </div>
+    </div>
+    <div class="create-steps-title">How it works</div>
+    <div class="create-steps">
+      <div class="create-step"><div class="create-step-num">1</div><div class="create-step-label">Drop your clip</div></div>
+      <div class="create-step"><div class="create-step-num">2</div><div class="create-step-label">Pick the show</div></div>
+      <div class="create-step"><div class="create-step-num">3</div><div class="create-step-label">Write your pitch</div></div>
+      <div class="create-step"><div class="create-step-num">4</div><div class="create-step-label">Post it 🔥</div></div>
+    </div>`;
+}
+function goUpload() {
+  if (typeof ssNavigate === 'function') ssNavigate('showshak-upload.html');
+  else window.location.href = 'showshak-upload.html';
 }
 
 /* ── PRIMARY (clips / fires) ── */
 function renderPrimary() {
   const el = document.getElementById('primary');
-  const list = isCreator ? MOCK_CLIPS : MOCK_FIRES;
-  const arrName = isCreator ? 'MOCK_CLIPS' : 'MOCK_FIRES';
-  el.innerHTML = `<div class="grid">${list.map((c,i)=>`
-    <div class="g-card ${isCreator&&i===0?'top':''}" onclick="ssOpenClip(${c.id}, ${arrName})">
-      ${isCreator&&i===0?'<div class="g-top-badge">🔥 TOP</div>':''}
-      <div class="g-thumb">
-        <div class="g-bg" style="background:${c.bg}"></div>
-        <div class="g-vig"></div>
-        <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires)}</div>
-      </div>
-      <div class="g-cap">${c.caption}</div>
-    </div>`).join('')}</div>`;
+  if (isCreator) {
+    // Merge freshly-published clips (newest first) ahead of the mock clips
+    const mine = getMyClips();
+    const list = [...mine, ...MOCK_CLIPS];
+    window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the merged array
+    el.innerHTML = list.length ? `<div class="grid">${list.map((c,i)=>`
+      <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
+        ${c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':'')}
+        <div class="g-thumb">
+          <div class="g-bg" style="background:${c.bg}"></div>
+          <div class="g-vig"></div>
+          <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
+        </div>
+        <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Your recommendation'}</div>
+      </div>`).join('')}</div>` : '';
+  } else {
+    window._PROFILE_PRIMARY = MOCK_FIRES;
+    el.innerHTML = `<div class="grid">${MOCK_FIRES.map((c,i)=>`
+      <div class="g-card" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
+        <div class="g-thumb">
+          <div class="g-bg" style="background:${c.bg}"></div>
+          <div class="g-vig"></div>
+          <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
+        </div>
+        <div class="g-cap">${c.caption}</div>
+      </div>`).join('')}</div>`;
+  }
 }
 
 /* ── STACKS / COLLECTIONS tab (full list with manage) ── */
@@ -756,23 +876,34 @@ function renderAnalytics() {
 /* ── MODE TOGGLE ── */
 function toggleMode() {
   isCreator = !isCreator;
-  activeTab = 'primary';
+  activeTab = isCreator ? 'create' : 'primary';
   document.getElementById('profile-scroll').scrollTo({ top:0, behavior:'smooth' });
   document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
-  renderHeader(); renderShelf(); renderTabs(); renderPrimary(); renderStacks();
+  renderHeader(); renderShelf(); renderTabs(); renderCreate(); renderPrimary(); renderStacks();
+  // sync which panel is visible
+  ['create','primary','stacks','analytics','following'].forEach(id =>
+    document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
   ssToast(isCreator ? '✨ Viewing as Creator' : '👤 Viewing as User');
 }
 
 /* ── INIT ── */
+// If we arrived back from the upload flow (?creator=1), open in creator view
+const _params = new URLSearchParams(location.search);
+if (_params.get('creator') === '1') { isCreator = true; activeTab = 'primary'; }
+
 renderWall();
 renderHeader();
 renderShelf();
 renderTabs();
+renderCreate();
 renderPrimary();
 renderStacks();
 renderFollowing();
 renderAnalytics();
 document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
+// reflect initial active panel (handles the ?creator=1 deep-link landing on My Clips)
+['create','primary','stacks','analytics','following'].forEach(id =>
+  document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
 </script>
 </body>
 </html>
