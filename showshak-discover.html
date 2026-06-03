@@ -896,6 +896,19 @@ function handleSearch(query) {
   }
 }
 
+/* Open a curator's PUBLIC profile from a search result. We pass the
+   curator's identity in the URL so the profile page renders that specific
+   curator in its 'public' face (trust surface — no scoreboard). */
+function openCuratorProfile(username) {
+  const cu = CURATORS.find(c => c.username === username);
+  const url = 'showshak-profile.html?face=public&curator=' + encodeURIComponent(username);
+  // Stash the full curator object so the profile can render real data
+  // even though there's no backend yet (sessionStorage = same-tab handoff).
+  if (cu) { try { sessionStorage.setItem('ss_view_curator_v1', JSON.stringify(cu)); } catch (e) {} }
+  if (typeof ssNavigate === 'function') ssNavigate(url);
+  else window.location.href = url;
+}
+
 function showResultsView(clips, label, curators) {
   curators = curators || [];
   document.getElementById('default-view').classList.add('hidden');
@@ -922,7 +935,7 @@ function showResultsView(clips, label, curators) {
   if (totalCur) {
     html += `<div class="results-section-label">Curators</div>`;
     html += curators.map(cu => `
-      <div class="result-curator" onclick="ssToast('▶ @${cu.username} — profiles coming soon')">
+      <div class="result-curator" onclick="openCuratorProfile('${cu.username}')">
         <div class="result-curator-av" style="background:${cu.bg}">${cu.letter}</div>
         <div class="result-curator-info">
           <div class="result-curator-name">${cu.name}${cu.verified?'<span class="result-curator-verified">🔥</span>':''}</div>

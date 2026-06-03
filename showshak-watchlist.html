@@ -558,6 +558,25 @@ html, body { overflow: hidden; }
 }
 .ns-cancel-lnk:hover { color: var(--white); }
 
+/* Rename sheet — mirrors the new-stack sheet (.ns- classes reused) */
+#rename-overlay {
+  position: fixed; inset: 0; z-index: 302;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+#rename-overlay.open { opacity: 1; pointer-events: all; }
+#rename-sheet {
+  position: fixed; left: 50%; bottom: 0;
+  transform: translateX(-50%) translateY(102%);
+  z-index: 303; background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  padding: 0 24px 44px;
+  transition: transform 0.42s var(--ease-smooth);
+  width: min(480px, 100vw);
+}
+#rename-sheet.open { transform: translateX(-50%) translateY(0); }
+
 /* ════════════════════════════════════════════════
    STACK OPTIONS MENU
 ════════════════════════════════════════════════ */
@@ -719,6 +738,19 @@ html, body { overflow: hidden; }
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
     Delete Stack
   </div>
+</div>
+
+<!-- RENAME STACK SHEET (reuses .ns- styling from the new-stack sheet) -->
+<div id="rename-overlay" onclick="closeRename()"></div>
+<div id="rename-sheet">
+  <div class="ns-title">Rename <em>Stack</em></div>
+  <div class="ns-label">Stack name</div>
+  <div class="ns-input-wrap">
+    <input class="ns-input" id="rename-input" type="text" maxlength="40" autocomplete="off"
+           placeholder="e.g. Watch Tonight" oninput="renameOnInput()" onkeydown="renameOnKey(event)">
+    <span class="ns-char" id="rename-char">0/40</span>
+  </div>
+  <button class="ns-create" id="rename-save" onclick="confirmRename()" disabled>Save name</button>
 </div>
 
 <!-- SHARED JS -->
@@ -896,10 +928,41 @@ document.addEventListener('click', e => {
   }
 });
 
+let _renameId = null;
 function renameActiveStack() {
   document.getElementById('opts-menu').classList.remove('show');
-  ssToast('Rename coming in next build');
+  const stack = ssGetStacks().find(s => s.id === activeStackId);
   activeStackId = null;
+  if (!stack) return;
+  _renameId = stack.id;
+  const input = document.getElementById('rename-input');
+  input.value = stack.name || '';
+  renameOnInput();
+  document.getElementById('rename-overlay').classList.add('open');
+  document.getElementById('rename-sheet').classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 300);
+}
+function renameOnInput() {
+  const v = document.getElementById('rename-input').value;
+  document.getElementById('rename-char').textContent = `${v.length}/40`;
+  document.getElementById('rename-save').disabled = !v.trim();
+}
+function renameOnKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); confirmRename(); }
+  if (e.key === 'Escape') closeRename();
+}
+function confirmRename() {
+  const name = document.getElementById('rename-input').value.trim();
+  if (!name || !_renameId) return;
+  ssRenameStack(_renameId, name);   // shared.js → persists + live re-render
+  closeRename();
+  render();
+  ssToast('✓ Stack renamed');
+}
+function closeRename() {
+  document.getElementById('rename-overlay').classList.remove('open');
+  document.getElementById('rename-sheet').classList.remove('open');
+  _renameId = null;
 }
 
 function shareStack(e, stackId) {

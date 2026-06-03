@@ -1595,7 +1595,35 @@ function goSettings() {
 const _params = new URLSearchParams(location.search);
 if (_params.get('creator') === '1') face = 'owner';
 else if (['user','owner','public'].includes(_params.get('face'))) face = _params.get('face');
+
+// Viewing a SPECIFIC curator from search (?curator=<username>) — hydrate
+// PROFILE from the curator object stashed by Discover, and force public face.
+if (_params.get('curator')) {
+  face = 'public';
+  try {
+    const cu = JSON.parse(sessionStorage.getItem('ss_view_curator_v1') || 'null');
+    if (cu && cu.username) {
+      PROFILE.name       = (cu.name || cu.username).toUpperCase();
+      PROFILE.handle     = '@' + cu.username;
+      PROFILE.letter     = (cu.letter || cu.username.charAt(0)).toUpperCase();
+      PROFILE.color      = cu.bg || PROFILE.color;
+      PROFILE.photo      = null;
+      PROFILE.bio        = cu.bio || PROFILE.bio;
+      PROFILE.clipsPosted= cu.clipCount != null ? cu.clipCount : PROFILE.clipsPosted;
+      // Followers aren't a search field; approximate from reach so the bar
+      // isn't empty. Real value arrives with the backend.
+      if (cu.totalFires != null) PROFILE.followers = Math.max(1, Math.round(cu.totalFires / 1.5));
+    }
+  } catch (e) { /* fall back to default mock curator */ }
+}
 activeTab = defaultTabFor(face);
+
+// When viewing ANOTHER curator (from search), hide the "Preview as" dev
+// switcher — it only makes sense on your own profile.
+if (_params.get('curator')) {
+  const pv = document.getElementById('pv-switch');
+  if (pv) pv.style.display = 'none';
+}
 
 renderWall();
 renderAll();

@@ -559,28 +559,50 @@ Closest references for mental model:
 ── KNOWN ISSUES / DEFERRED FIXES ───────────────────────────────
 
   1. Mobile Watch It button alignment — position/layout issue on
-     some mobile viewports. Fix deferred.
+     some mobile viewports. Fix deferred (needs verification on a
+     real mobile viewport).
 
-  2. Feed/Discover saved clips not landing in Watchlist — no shared
-     state layer across pages yet. Deferred ON PURPOSE: real
-     cross-page/persistent state comes WITH the backend, not before.
-     (Also note: Watchlist stacks use sessionStorage BY DESIGN for
-     fresh-start dev testing on the live page — see Watchlist STATE
-     NOTE. That is intentional, not a bug.)
+  2. index.html not refactored to use shared CSS/JS files yet — it
+     still defines its own inline :root tokens (note: --border is
+     0.08 vs the shared 0.07) and a simpler font import. Minor drift.
+     (index.html DOES persist onboarding to localStorage
+     'ss_user_profile_v1' — our first real funnel state.)
 
-  3. index.html not refactored to use shared CSS/JS files yet.
-     (Note: index.html now persists the onboarding selection to
-     localStorage key 'ss_user_profile_v1' — our first real funnel
-     state, written after the user finishes onboarding.)
+  3. Auth is fully mocked (Google/Apple/Email/Guest just proceed) —
+     real auth arrives with the backend.
 
-  4. Rename stack — shows toast "coming soon", not yet implemented.
+  4. Settings sub-items are display-only stubs (change email/password,
+     deactivate/delete, payouts, etc.) — they need the backend. By
+     design for now. Settings is reachable ONLY from the Profile page
+     (intentional — it is profile-adjacent, not global).
+
+  STATE NOTE: Watchlist stacks use sessionStorage BY DESIGN for
+  fresh-start dev testing on the live page (see Watchlist STATE NOTE).
+  Intentional, not a bug. Persistent/real state comes with the backend.
 
   ── RESOLVED ──────────────────────────────────────────────────
 
-  [FIXED 2026] Feed page active-nav bug: the Profile nav item no
-  longer carries class="active" on the sidebar or the mobile nav.
-  Feed is correctly the only active item on showshak-feed.html.
-  (Was previously listed here AND under "SIDEBAR — KNOWN BUG".)
+  [FIXED 2026] Feed active-nav bug: Feed is correctly the only active
+  nav item on showshak-feed.html (sidebar + mobile).
+
+  [DONE 2026] Save → Watchlist integration: there IS a shared save
+  system in shared.js (ssToggleSave → stack picker → 'ss_stacks_v1');
+  Watchlist subscribes live via ssOnStacksChange. Saving on Feed/
+  Discover DOES reach Watchlist. (The old brief wrongly listed this
+  as an unfixed known issue.)
+
+  [DONE 2026] Rename stack: implemented. The ⋮ → Rename option on a
+  stack opens a rename sheet (reuses .ns- styling); ssRenameStack()
+  in shared.js persists it and live-re-renders. No longer a stub.
+
+  [DONE 2026] Clickable curator profiles from search: a curator result
+  in Discover now opens showshak-profile.html?face=public&curator=<u>,
+  which hydrates PROFILE from the stashed curator object
+  ('ss_view_curator_v1') and renders the public (trust-surface) face.
+  The "Preview as" dev switcher is hidden when viewing another curator.
+
+  [REMOVED 2026] profile-redesign-preview.html — orphaned old mockup,
+  linked nowhere. Deleted.
 
 
 ── WHAT MAKES SHOWSHAK DIFFERENT ───────────────────────────────

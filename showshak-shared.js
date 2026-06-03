@@ -322,6 +322,17 @@ function ssCreateStack(name) {
   return stack;
 }
 
+function ssRenameStack(stackId, name) {
+  const clean = (name || '').trim();
+  if (!clean) return false;
+  const stacks = ssGetStacks();
+  const stack  = stacks.find(s => s.id === stackId);
+  if (!stack) return false;
+  stack.name = clean;
+  _ss_writeStacks(stacks);   // fires listeners → live re-render
+  return true;
+}
+
 function ssAddClipToStack(stackId, clip) {
   const stacks = ssGetStacks();
   const stack  = stacks.find(s => s.id === stackId);
