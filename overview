@@ -157,7 +157,8 @@ Closest references for mental model:
   ├── showshak-feed.html          ← DONE ✓ vertical clip feed
   ├── showshak-discover.html      ← DONE ✓ search + mood + platform browse
   ├── showshak-watchlist.html     ← DONE ✓ stacks + recommended clips
-  └── showshak-profile.html       ← DONE ✓ user + creator mode profile
+  ├── showshak-profile.html       ← DONE ✓ 3-face profile (user/owner/public)
+  └── showshak-settings.html      ← DONE ✓ settings (shared + creator block)
 
   Every page (except index.html) must link in <head>:
     <style>body{opacity:0}</style>          ← prevents FOUC before fade-in
@@ -406,48 +407,115 @@ Closest references for mental model:
 
 ── PROFILE PAGE (showshak-profile.html) ────────────────────────
 
-  Two modes toggled by a button (prototype only):
-    - User mode:  shows Fires tab, Stacks tab, Following tab
-    - Creator mode: shows Clips tab, Analytics tab, Following tab
-    Toggle button: .btn-mode-toggle (red pill, top-right of profile actions)
+  THREE FACES, ONE PAGE (philosophy: "show identity & taste,
+  hide the scoreboard"). A prototype "Preview as" switcher in the
+  hero stands in for real auth and lets you demo all three:
+    - face='user'   → a normal user viewing THEIR OWN profile
+    - face='owner'  → a curator viewing THEIR OWN profile (cockpit)
+    - face='public' → ANYONE viewing a curator (trust surface)
+  Legacy `isCreator` is kept, DERIVED from face (= owner||public),
+  so the existing .is-creator CSS keeps working. setFace(f) re-renders
+  everything via renderAll(). toggleMode() is a back-compat alias.
 
-  Profile header:
-    - .profile-cover: gradient cover with animated orb
-    - .profile-avatar: large circle, letter avatar, red glow ring
-    - Creator badge (🔥) on avatar: shown only in creator mode (.is-creator)
-    - .curator-verified-pill: shown only in creator mode
-    - .profile-bio: short bio text
-    - .profile-plat-row: platform subscription chips
-    - Actions: Edit Profile button + Mode Toggle button
+  THE METRICS RULE (deliberate, do not "simplify" away):
+    - NEVER show a user their "fires given" — fire is a free reflex;
+      counting it back makes users ration it. Removed from the page.
+    - User has NO "liked/fired clips" archive for the same reason.
+      Instead the user gets HISTORY (recently watched), a neutral
+      WATCH log (not a like log) that solves "I lost a clip and the
+      algorithm won't resurface it" — 7-day, clearable.
+    - PUBLIC curator profile shows ONLY Followers + Clips (standing +
+      substance). NEVER fires-received or Watch-It taps (those are the
+      reflex + the money → popularity contest). Those live ONLY in the
+      owner's private cockpit.
+    - OWNER curator: Followers + Following + Clips in the bar, PLUS a
+      private cockpit (Fires · Watch-Its · Reach) shown ABOVE the clips
+      (#cockpit) so it's the first thing the curator sees, marked
+      "Only you can see this".
 
-  Stats bar:
-    - Shows different stats per mode
-    - User: Shows Watched, Fires Given, Stacks
-    - Creator: Clips Posted, Total Fires, Followers, Watch Its
+  Header (cinematic hero, no plain cover — built from the curator's
+  own clip gradients, blurred):
+    - avatar (#av), letter or uploaded photo; 🔥 flame badge via .is-creator
+    - name, @handle, "Curating since 2023"
+    - bio + taste tags (PROFILE.genres)
+    - .socials — curator faces only (Instagram / X) — trust + cross-promo
+    - hero actions per face:
+        user   → Edit Profile + Share
+        owner  → Edit Profile + Share + "View as public"
+        public → Follow + Share  (togglePublicFollow)
 
-  Tabs:
-    - User mode:    Fires | Stacks | Following
-    - Creator mode: Clips | Analytics | Following
-    - Active tab: red bottom border
+  Credentials bar (#creds): face-aware via renderCreds() per rule above.
 
-  Tab content:
-    - Fires/Clips: 9:16 portrait grid cards (clips)
-    - Stacks: list of stack preview cards → links to Watchlist
-    - Analytics: overview cards (Fires, Watch It taps, Reach) +
-      bar chart (fires this week) + top performing clips list
-    - Following: list of followed curators with unfollow button
+  Highlights shelf (#shelf): fanned "stack spine" cards (NOT IG circles).
+    - public face → ONLY public collections, no share/new buttons, empty
+      state if none. owner/user → all, with visibility chips + share + new.
+
+  Tabs (renderTabs, face-aware; panels: create/primary/stacks/history/
+  analytics/following):
+    - user   → History | Following
+    - public → Clips | Shared Stacks
+    - owner  → Create | My Clips | Collections | Analytics | Following
+
+  Modals (unchanged, still excellent):
+    - Become a Curator (#bc-overlay): 3-step flow; on activate →
+      face='owner', lands on Create tab.
+    - Edit Profile (#ep-overlay): identity only (photo, name, bio,
+      + specialties for curators). Stays IN the profile page.
+
+  Settings: the ⚙ (hero top-right AND sidebar) now navigates to the
+  separate showshak-settings.html (NOT a modal). goSettings().
 
   All data is MOCK (hardcoded) — no real auth yet.
 
   Key functions:
-    renderHeader()       rebuild profile identity section
-    renderTabs()         rebuild tab buttons
-    switchTab(tab)       switch active panel
-    renderPrimaryTab()   clips grid (creator) or fires grid (user)
-    renderStacksTab()    stack preview cards
-    renderFollowingTab() following list
-    renderAnalyticsTab() analytics cards + chart + top clips
-    toggleMode()         flip isCreator bool + re-render everything
+    setFace(f) / renderAll()  switch face + full re-render
+    renderHeader()            identity + socials + actions + cockpit + creds
+    renderCockpit()           owner-only private metrics, above clips
+    renderCreds()             face-aware stats bar (the metrics rule)
+    renderTabs()/switchTab()  face-aware tabs + panel switching
+    renderPrimary()           curator clips grid (owner + public)
+    renderHistory()           user 7-day recently-watched (clearHistory)
+    renderShelf()             highlights; public-only filter on public face
+    renderFollowing()         followed curators (clip count only, no fires)
+    renderAnalytics()         full creator dashboard (Analytics tab)
+    togglePublicFollow()      follow/unfollow on the public face
+    goSettings()              → showshak-settings.html
+
+
+── SETTINGS PAGE (showshak-settings.html) ──────────────────────
+
+  Separate page (NOT a modal) — uses the shared CSS/JS contract.
+  Single page with drill-in sub-screens (acts like a page within a
+  page): a nav `stack[]` + go()/settingsBack(); browser/hardware back
+  pops a sub-screen before leaving to the profile.
+
+  Two scopes (the creator block appears only when SET_IS_CREATOR;
+  toggled by a prototype switch on the home screen, persisted in
+  sessionStorage 'ss_is_creator_v1' — fresh-start by design like the
+  rest of the app; body.is-creator gates .creator-only):
+
+    SHARED (everyone):
+      Account (email, password, logins, deactivate/delete)
+      My Platforms — subscription data lives HERE, framed as Watch It
+        routing ("so we send you to the right place"), never a profile
+        badge. (Resolves the no-vanity-subscriptions decision.)
+      Region & Language — region drives Watch It availability
+      Notifications — DIGEST by default; fires are a weekly summary,
+        NEVER a per-fire ping (avoids the influencer-metrics treadmill)
+      Privacy — shared-stack visibility, clear history, personalization
+      Playback — autoplay, start muted, data saver
+      Support & About — help, feedback, report, Terms, Privacy, DMCA
+
+    CREATOR ONLY:
+      Creator Profile (public bio, handle, verification, social links)
+      Creator Tools (upload defaults, manage clips, drafts)
+      Payouts & Monetization (payout account, earnings, promoted clips)
+      Analytics (quick this-week numbers → link to full dashboard)
+
+  Distinction from Edit Profile: Edit Profile = identity shown ON the
+  profile (photo/name/bio/taste), stays in profile.html. Settings =
+  account, app behavior, money, legal — everything else.
+
 
 
 ── INDEX PAGE (index.html) ─────────────────────────────────────

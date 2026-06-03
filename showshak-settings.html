@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ShowShak — Settings</title>
+<style>body{opacity:0}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; }
+
+.layout {
+  position: fixed; inset: 0; left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column; background: var(--bg); overflow: hidden;
+  transition: left 0.3s var(--ease-smooth);
+}
+@media (max-width: 700px) { .layout { left: 0; } }
+
+.set-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.set-scroll::-webkit-scrollbar { width: 3px; }
+.set-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+@media (max-width: 700px) { .set-scroll { padding-bottom: calc(var(--mobile-nav-h) + 8px); } }
+
+.wrap { max-width: 640px; margin: 0 auto; padding: 0 24px 60px; }
+@media (max-width: 700px) { .wrap { padding: 0 16px 40px; } }
+
+/* Sticky header with back */
+.set-head {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(11,11,15,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 14px; padding: 16px 24px;
+}
+@media (max-width: 700px) { .set-head { padding: 14px 16px; } }
+.set-back {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--white); cursor: pointer; transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.set-back:hover { background: rgba(255,255,255,0.1); }
+.set-back:active { transform: scale(0.92); }
+.set-head-title { font-family: var(--font-display); font-size: 26px; letter-spacing: 1.5px; color: var(--white); }
+.set-head-title em { color: var(--red); font-style: normal; }
+
+/* Screens */
+.screen { display: none; animation: ss-fadeUp 0.28s ease both; padding-top: 22px; }
+.screen.active { display: block; }
+
+/* Section + rows */
+.sec-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gray2); margin: 26px 4px 11px; }
+.sec-label:first-child { margin-top: 6px; }
+.group { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+
+.row {
+  display: flex; align-items: center; gap: 14px; padding: 15px 16px;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+  transition: background 0.13s; -webkit-tap-highlight-color: transparent;
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: rgba(255,255,255,0.025); }
+.row.static { cursor: default; }
+.row.static:hover { background: transparent; }
+.row-ic {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05); color: var(--gray); border: 1px solid var(--border);
+}
+.row-ic.red { background: rgba(234,59,50,0.1); border-color: var(--border2); color: var(--red); }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; font-weight: 600; color: var(--white); margin-bottom: 2px; }
+.row-sub { font-size: 12px; color: var(--gray2); line-height: 1.4; }
+.row-val { font-size: 13px; color: var(--gray); font-weight: 500; flex-shrink: 0; }
+.row-arrow { color: var(--gray2); flex-shrink: 0; display: flex; }
+.row-danger .row-title { color: var(--red2); }
+
+/* Toggle switch */
+.tog {
+  position: relative; width: 44px; height: 26px; border-radius: 100px; flex-shrink: 0;
+  background: var(--bg4); border: 1px solid var(--border); cursor: pointer;
+  transition: background 0.2s; -webkit-tap-highlight-color: transparent;
+}
+.tog::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; border-radius: 50%; background: var(--gray);
+  transition: transform 0.2s var(--ease-spring), background 0.2s;
+}
+.tog.on { background: var(--red); border-color: var(--red); }
+.tog.on::after { transform: translateX(18px); background: #fff; }
+
+/* Choice rows (radio-style) */
+.choice { display: flex; align-items: center; gap: 12px; }
+.choice-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--gray2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: border-color 0.15s; }
+.choice.on .choice-dot { border-color: var(--red); }
+.choice.on .choice-dot::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+
+/* Creator block marker */
+.creator-only { display: none; }
+body.is-creator .creator-only { display: block; }
+
+.set-foot-note { font-size: 11px; color: var(--gray2); text-align: center; margin-top: 30px; line-height: 1.6; }
+.set-foot-note a { color: var(--gray); cursor: pointer; }
+
+/* Prototype face switch (stands in for auth: am I a curator?) */
+.pv-switch { display: inline-flex; align-items: center; gap: 2px; background: var(--bg2); border: 1px solid var(--border); border-radius: 100px; padding: 3px 4px; }
+.pv-label { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gray2); margin: 0 5px 0 7px; }
+.pv-opt { padding: 6px 12px; border-radius: 100px; font-size: 11px; font-weight: 700; color: var(--gray); cursor: pointer; border: none; background: transparent; -webkit-tap-highlight-color: transparent; }
+.pv-opt.on { background: var(--red); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item" data-nav="feed" href="showshak-feed.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="nav-item-label">Feed</span></a>
+    <a class="nav-item" data-nav="discover" href="showshak-discover.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="nav-item-label">Discover</span></a>
+    <a class="nav-item" data-nav="watchlist" href="showshak-watchlist.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="nav-item-label">Watchlist</span></a>
+    <a class="nav-item" data-nav="profile" href="showshak-profile.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="nav-item-label">Profile</span></a>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="nav-item-settings active"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="layout">
+  <div class="set-head">
+    <div class="set-back" id="back-btn" onclick="settingsBack()" aria-label="Back">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="set-head-title" id="head-title">Settings</div>
+  </div>
+
+  <div class="set-scroll">
+    <div class="wrap" id="screens"></div>
+  </div>
+</div>
+
+<!-- MOBILE NAV -->
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item" data-mob-nav="feed" href="showshak-feed.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="mob-nav-label">Feed</span></a>
+  <a class="mob-nav-item" data-mob-nav="discover" href="showshak-discover.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="mob-nav-label">Discover</span></a>
+  <a class="mob-nav-item" data-mob-nav="watchlist" href="showshak-watchlist.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="mob-nav-label">Watchlist</span></a>
+  <a class="mob-nav-item" data-mob-nav="profile" href="showshak-profile.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="mob-nav-label">Profile</span></a>
+</nav>
+
+<script src="showshak-shared.js"></script>
+<script>
+/* ════════════════════════════════════════════════
+   SETTINGS — single page, drill-in sub-screens.
+   Two scopes:
+     · SHARED — every account (account, platforms, region,
+       notifications, privacy, playback, support).
+     · CREATOR — extra block shown only when the account is a
+       curator (creator profile, tools, payouts, analytics).
+   "My Platforms" is where subscription data lives — functional,
+   never a vanity badge. Notifications are DIGEST by default
+   (never per-fire) to avoid the influencer-metrics treadmill.
+════════════════════════════════════════════════ */
+
+/* Prototype creator state (real app: from auth). Persisted for the session
+   only, matching the rest of the app's fresh-start-on-the-live-page choice. */
+let SET_IS_CREATOR = false;
+try { SET_IS_CREATOR = sessionStorage.getItem('ss_is_creator_v1') === '1'; } catch (e) {}
+document.body.classList.toggle('is-creator', SET_IS_CREATOR);
+
+/* Toggle state store (prototype) */
+const TOG = {
+  notif_follow:true, notif_stack:true, notif_product:false,
+  notif_fire_digest:true, notif_milestone:true,
+  autoplay:true, muted:true, datasaver:false,
+  personalize:true,
+};
+const PLATFORMS = [
+  { name:'Netflix', on:true }, { name:'Prime Video', on:true },
+  { name:'Disney+', on:false }, { name:'JioHotstar', on:true },
+  { name:'Apple TV+', on:false }, { name:'SonyLIV', on:false },
+  { name:'HBO Max', on:false }, { name:'Zee5', on:false },
+];
+const REGION = { region:'India', lang:'English' };
+const STACK_PRIVACY = 'friends'; // public | friends | nobody
+
+const ARROW = `<div class="row-arrow"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>`;
+
+function ic(path, red) {
+  return `<div class="row-ic ${red?'red':''}">${path}</div>`;
+}
+const ICONS = {
+  account:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  platforms:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  region:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>`,
+  notif:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  privacy:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  playback:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+  support:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>`,
+  cprofile:`<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`,
+  ctools:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
+  payouts:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+  analytics:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+};
+
+/* ── Navigation stack between screens ── */
+let stack = ['home'];
+function go(screen) { stack.push(screen); render(); }
+function settingsBack() {
+  if (stack.length > 1) { stack.pop(); render(); }
+  else { if (typeof ssNavigate==='function') ssNavigate('showshak-profile.html'); else location.href='showshak-profile.html'; }
+}
+
+const TITLES = {
+  home:'Settings', account:'Account', platforms:'My Platforms', region:'Region & Language',
+  notif:'Notifications', privacy:'Privacy', playback:'Playback', support:'Support & About',
+  cprofile:'Creator Profile', ctools:'Creator Tools', payouts:'Payouts', canalytics:'Analytics',
+};
+
+/* ── Screen builders ── */
+function homeScreen() {
+  return `
+    <div class="sec-label">Account</div>
+    <div class="group">
+      <div class="row" onclick="go('account')">${ic(ICONS.account)}<div class="row-main"><div class="row-title">Account</div><div class="row-sub">Email, password, sign-in methods</div></div>${ARROW}</div>
+      <div class="row" onclick="go('platforms')">${ic(ICONS.platforms)}<div class="row-main"><div class="row-title">My Platforms</div><div class="row-sub">So we send you to the right place to watch</div></div>${ARROW}</div>
+      <div class="row" onclick="go('region')">${ic(ICONS.region)}<div class="row-main"><div class="row-title">Region &amp; Language</div><div class="row-sub">${REGION.region} · ${REGION.lang}</div></div>${ARROW}</div>
+    </div>
+
+    <div class="sec-label">Preferences</div>
+    <div class="group">
+      <div class="row" onclick="go('notif')">${ic(ICONS.notif)}<div class="row-main"><div class="row-title">Notifications</div><div class="row-sub">New clips, stacks, announcements</div></div>${ARROW}</div>
+      <div class="row" onclick="go('privacy')">${ic(ICONS.privacy)}<div class="row-main"><div class="row-title">Privacy</div><div class="row-sub">Shared stacks, history, personalization</div></div>${ARROW}</div>
+      <div class="row" onclick="go('playback')">${ic(ICONS.playback)}<div class="row-main"><div class="row-title">Playback</div><div class="row-sub">Autoplay, sound, data saver</div></div>${ARROW}</div>
+    </div>
+
+    <div class="creator-only">
+      <div class="sec-label">Creator</div>
+      <div class="group">
+        <div class="row" onclick="go('cprofile')">${ic(ICONS.cprofile,true)}<div class="row-main"><div class="row-title">Creator Profile</div><div class="row-sub">Public bio, handle, verification</div></div>${ARROW}</div>
+        <div class="row" onclick="go('ctools')">${ic(ICONS.ctools,true)}<div class="row-main"><div class="row-title">Creator Tools</div><div class="row-sub">Upload defaults, manage your clips</div></div>${ARROW}</div>
+        <div class="row" onclick="go('payouts')">${ic(ICONS.payouts,true)}<div class="row-main"><div class="row-title">Payouts &amp; Monetization</div><div class="row-sub">Earnings from the Watch Its you drive</div></div>${ARROW}</div>
+        <div class="row" onclick="go('canalytics')">${ic(ICONS.analytics,true)}<div class="row-main"><div class="row-title">Analytics</div><div class="row-sub">Your private performance dashboard</div></div>${ARROW}</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Support</div>
+    <div class="group">
+      <div class="row" onclick="go('support')">${ic(ICONS.support)}<div class="row-main"><div class="row-title">Support &amp; About</div><div class="row-sub">Help, report content, terms, version</div></div>${ARROW}</div>
+    </div>
+
+    <div class="sec-label">Curator mode <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:500">(prototype)</span></div>
+    <div class="group">
+      <div class="row static">${ic(ICONS.cprofile, SET_IS_CREATOR)}<div class="row-main"><div class="row-title">${SET_IS_CREATOR?'You are a curator':'Preview as a curator'}</div><div class="row-sub">Reveals the creator-only settings block</div></div>
+        <div class="tog ${SET_IS_CREATOR?'on':''}" onclick="toggleCreator(this)"></div></div>
+    </div>
+
+    <div class="group" style="margin-top:18px">
+      <div class="row row-danger" onclick="ssToast('Logged out (prototype)')">${ic('<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>')}<div class="row-main"><div class="row-title">Log out</div></div></div>
+    </div>
+
+    <div class="set-foot-note">ShowShak · v0.9.0 (prototype)<br><a onclick="ssToast('Terms')">Terms</a> · <a onclick="ssToast('Privacy Policy')">Privacy</a> · <a onclick="ssToast('DMCA / report content')">DMCA</a></div>
+  `;
+}
+
+function accountScreen() {
+  return `
+    <div class="sec-label">Login &amp; identity</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Change email — coming soon')">${ic(ICONS.account)}<div class="row-main"><div class="row-title">Email</div><div class="row-sub">arjun@example.com</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Change password — coming soon')"><div class="row-main" style="padding-left:48px"><div class="row-title">Change password</div></div>${ARROW}</div>
+      <div class="row static"><div class="row-main" style="padding-left:48px"><div class="row-title">Connected logins</div><div class="row-sub">Google · Apple</div></div></div>
+    </div>
+    <div class="sec-label">Danger zone</div>
+    <div class="group">
+      <div class="row row-danger" onclick="ssToast('Deactivate — coming soon')"><div class="row-main"><div class="row-title">Deactivate account</div><div class="row-sub">Temporarily hide your profile</div></div>${ARROW}</div>
+      <div class="row row-danger" onclick="ssToast('Delete account — coming soon')"><div class="row-main"><div class="row-title">Delete account</div><div class="row-sub">Permanently remove your data</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+
+function platformsScreen() {
+  return `
+    <div class="set-foot-note" style="margin:0 4px 14px;text-align:left">Tell us what you're subscribed to and we'll route every <strong style="color:var(--white)">Watch It</strong> to a service you already have. This is never shown on your profile.</div>
+    <div class="group">
+      ${PLATFORMS.map((p,i)=>`
+        <div class="row static"><div class="row-ic" style="font-weight:800;font-size:11px;color:var(--white)">${p.name.slice(0,2).toUpperCase()}</div>
+          <div class="row-main"><div class="row-title">${p.name}</div></div>
+          <div class="tog ${p.on?'on':''}" onclick="togglePlatform(${i}, this)"></div></div>`).join('')}
+    </div>
+  `;
+}
+
+function regionScreen() {
+  const regions = ['India','United States','United Kingdom','Canada','Australia','UAE'];
+  const langs = ['English','Hindi','Tamil','Telugu','Spanish','Korean'];
+  return `
+    <div class="sec-label">Region <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:500">— controls where Watch It links go</span></div>
+    <div class="group">
+      ${regions.map(r=>`<div class="row" onclick="setRegion('${r}')"><div class="choice ${REGION.region===r?'on':''}"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">${r}</div></div></div>`).join('')}
+    </div>
+    <div class="sec-label">App language</div>
+    <div class="group">
+      ${langs.map(l=>`<div class="row" onclick="setLang('${l}')"><div class="choice ${REGION.lang===l?'on':''}"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">${l}</div></div></div>`).join('')}
+    </div>
+  `;
+}
+
+function togRow(key, title, sub) {
+  return `<div class="row static"><div class="row-main"><div class="row-title">${title}</div>${sub?`<div class="row-sub">${sub}</div>`:''}</div><div class="tog ${TOG[key]?'on':''}" onclick="toggleKey('${key}', this)"></div></div>`;
+}
+
+function notifScreen() {
+  return `
+    <div class="sec-label">From curators you follow</div>
+    <div class="group">
+      ${togRow('notif_follow','New clips','When a curator you follow posts')}
+      ${togRow('notif_stack','New shared stacks','When someone you follow shares a collection')}
+    </div>
+    <div class="creator-only">
+      <div class="sec-label">Your clips</div>
+      <div class="group">
+        ${togRow('notif_fire_digest','Fire summary','A weekly digest — never a ping per fire')}
+        ${togRow('notif_milestone','Milestones','When a clip hits a big moment')}
+      </div>
+    </div>
+    <div class="sec-label">From ShowShak</div>
+    <div class="group">
+      ${togRow('notif_product','Product &amp; announcements','Occasional news about new features')}
+    </div>
+    <div class="set-foot-note" style="text-align:left;margin:14px 4px 0">We keep fire notifications as a calm weekly digest on purpose — discovery should feel good, not like chasing numbers.</div>
+  `;
+}
+
+function privacyScreen() {
+  const opts = [['public','Public','Anyone on ShowShak'],['friends','Friends &amp; Family','Only people you approve'],['nobody','Only me','Keep them private']];
+  return `
+    <div class="sec-label">Who can see my shared stacks</div>
+    <div class="group" id="stack-priv">
+      ${opts.map(([v,t,s])=>`<div class="row" onclick="setStackPrivacy('${v}')"><div class="choice ${stackPriv===v?'on':''}"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">${t}</div><div class="row-sub">${s}</div></div></div>`).join('')}
+    </div>
+    <div class="sec-label">Data</div>
+    <div class="group">
+      ${togRow('personalize','Personalized recommendations','Use my taste &amp; activity to tailor the feed')}
+      <div class="row" onclick="ssToast('History cleared')"><div class="row-main"><div class="row-title">Clear watch history</div><div class="row-sub">Remove your recently-watched list</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Download requested')"><div class="row-main"><div class="row-title">Download my data</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+
+function playbackScreen() {
+  return `
+    <div class="group">
+      ${togRow('autoplay','Autoplay clips','Play the next clip automatically')}
+      ${togRow('muted','Start muted','New clips begin without sound')}
+      ${togRow('datasaver','Data saver','Lower quality on mobile data')}
+    </div>
+  `;
+}
+
+function supportScreen() {
+  return `
+    <div class="group">
+      <div class="row" onclick="ssToast('Help center')"><div class="row-main"><div class="row-title">Help center / FAQ</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Send feedback')"><div class="row-main"><div class="row-title">Send feedback</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Report a problem')"><div class="row-main"><div class="row-title">Report a problem</div></div>${ARROW}</div>
+    </div>
+    <div class="sec-label">Legal</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Terms of Service')"><div class="row-main"><div class="row-title">Terms of Service</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Privacy Policy')"><div class="row-main"><div class="row-title">Privacy Policy</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Report copyrighted content')"><div class="row-main"><div class="row-title">DMCA / report content</div><div class="row-sub">Report a copyright concern</div></div>${ARROW}</div>
+    </div>
+    <div class="set-foot-note">ShowShak · v0.9.0 (prototype)</div>
+  `;
+}
+
+/* Creator sub-screens */
+function cprofileScreen() {
+  return `
+    <div class="group">
+      <div class="row" onclick="ssToast('Edit curator bio — opens on profile')"><div class="row-main"><div class="row-title">Curator bio</div><div class="row-sub">Your public taste statement</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Change handle — coming soon')"><div class="row-main"><div class="row-title">Curator handle</div><div class="row-sub">@cinephile_arj</div></div>${ARROW}</div>
+      <div class="row static"><div class="row-main"><div class="row-title">Verification</div><div class="row-sub">Trusted Curator · verified</div></div><div class="row-val" style="color:var(--red)">🔥 Verified</div></div>
+    </div>
+    <div class="sec-label">Social links</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Link Instagram')"><div class="row-main"><div class="row-title">Instagram</div><div class="row-sub">cinephile.arj</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Link X')"><div class="row-main"><div class="row-title">X (Twitter)</div><div class="row-sub">cinephile_arj</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+function ctoolsScreen() {
+  return `
+    <div class="sec-label">Upload defaults</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Default vibe tags — coming soon')"><div class="row-main"><div class="row-title">Default vibe tags</div><div class="row-sub">Pre-select vibes when posting</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Default language — coming soon')"><div class="row-main"><div class="row-title">Default language</div><div class="row-sub">English</div></div>${ARROW}</div>
+    </div>
+    <div class="sec-label">Manage</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Manage clips — opens profile')"><div class="row-main"><div class="row-title">My clips</div><div class="row-sub">Edit or delete posted clips</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Drafts — coming soon')"><div class="row-main"><div class="row-title">Drafts</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+function payoutsScreen() {
+  return `
+    <div class="set-foot-note" style="text-align:left;margin:0 4px 14px">Earn a share of the Watch Its you drive. Monetization rolls out as ShowShak grows — set up early so you're ready.</div>
+    <div class="group">
+      <div class="row" onclick="ssToast('Connect payout account — coming soon')"><div class="row-main"><div class="row-title">Payout account</div><div class="row-sub">Not connected</div></div>${ARROW}</div>
+      <div class="row static"><div class="row-main"><div class="row-title">Pending earnings</div></div><div class="row-val">₹0.00</div></div>
+      <div class="row" onclick="ssToast('Promoted clips — coming soon')"><div class="row-main"><div class="row-title">Promoted clips</div><div class="row-sub">Boost a clip to more people</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+function canalyticsScreen() {
+  return `
+    <div class="set-foot-note" style="text-align:left;margin:0 4px 14px">Your full dashboard lives on your profile. These are quick this-week numbers — visible only to you.</div>
+    <div class="group">
+      <div class="row static"><div class="row-ic red">🔥</div><div class="row-main"><div class="row-title">Fires</div><div class="row-sub">↑ 12% this week</div></div><div class="row-val">18.4k</div></div>
+      <div class="row static"><div class="row-ic red">▶</div><div class="row-main"><div class="row-title">Watch Its</div><div class="row-sub">↑ 8% this week</div></div><div class="row-val">3.2k</div></div>
+      <div class="row static"><div class="row-ic red">📡</div><div class="row-main"><div class="row-title">Reach</div><div class="row-sub">↑ 21% this week</div></div><div class="row-val">34.4k</div></div>
+      <div class="row" onclick="if(typeof ssNavigate==='function')ssNavigate('showshak-profile.html?creator=1');else location.href='showshak-profile.html?creator=1'"><div class="row-main"><div class="row-title">Open full dashboard</div></div>${ARROW}</div>
+    </div>
+  `;
+}
+
+const BUILDERS = {
+  home:homeScreen, account:accountScreen, platforms:platformsScreen, region:regionScreen,
+  notif:notifScreen, privacy:privacyScreen, playback:playbackScreen, support:supportScreen,
+  cprofile:cprofileScreen, ctools:ctoolsScreen, payouts:payoutsScreen, canalytics:canalyticsScreen,
+};
+
+let stackPriv = STACK_PRIVACY;
+
+function render() {
+  const cur = stack[stack.length - 1];
+  document.getElementById('head-title').textContent = TITLES[cur] || 'Settings';
+  document.getElementById('screens').innerHTML = `<div class="screen active">${(BUILDERS[cur]||homeScreen)()}</div>`;
+  document.getElementById('back-btn').setAttribute('aria-label', stack.length>1 ? 'Back' : 'Back to profile');
+}
+
+/* ── Interactions ── */
+function toggleKey(key, el) { TOG[key] = !TOG[key]; el.classList.toggle('on', TOG[key]); }
+function togglePlatform(i, el) { PLATFORMS[i].on = !PLATFORMS[i].on; el.classList.toggle('on', PLATFORMS[i].on); }
+function setRegion(r) { REGION.region = r; render(); ssToast('Region: ' + r); }
+function setLang(l) { REGION.lang = l; render(); ssToast('Language: ' + l); }
+function setStackPrivacy(v) { stackPriv = v; render(); }
+function toggleCreator(el) {
+  SET_IS_CREATOR = !SET_IS_CREATOR;
+  el.classList.toggle('on', SET_IS_CREATOR);
+  document.body.classList.toggle('is-creator', SET_IS_CREATOR);
+  try { sessionStorage.setItem('ss_is_creator_v1', SET_IS_CREATOR ? '1' : '0'); } catch (e) {}
+  setTimeout(render, 120);
+}
+
+/* Hardware/browser back closes a sub-screen before leaving the page */
+history.pushState({ ss:'settings' }, '');
+window.addEventListener('popstate', () => {
+  if (stack.length > 1) { history.pushState({ ss:'settings' }, ''); stack.pop(); render(); }
+  else { if (typeof ssNavigate==='function') ssNavigate('showshak-profile.html'); else location.href='showshak-profile.html'; }
+});
+
+render();
+</script>
+</body>
+</html>

@@ -599,6 +599,69 @@ html, body { overflow: hidden; }
 .ep-cancel:hover { border-color: rgba(255,255,255,0.3); color: var(--white); }
 .ep-creator-only { display: none; }
 .ep-card.is-creator .ep-creator-only { display: block; }
+
+/* ════════════════════════════════════════════════
+   PROFILE V2 — three-face additions
+   (user · curator-owner · curator-public)
+════════════════════════════════════════════════ */
+
+/* Social links — curator trust + cross-promo (hidden for plain users) */
+.socials { position: relative; z-index: 3; display: none; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
+.social-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 100px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--white); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.social-link:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.08); }
+.social-link svg { opacity: 0.85; }
+
+/* Private cockpit — owner curator only, surfaced ABOVE clips */
+.cockpit { display: none; padding: 24px 40px 6px; }
+.cockpit.show { display: block; animation: ss-fadeUp 0.35s ease both; }
+@media (max-width: 700px) { .cockpit { padding: 20px 18px 4px; } }
+.cockpit-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; gap: 12px; }
+.cockpit-title {
+  font-family: var(--font-display); font-size: 21px; letter-spacing: 1.2px; color: var(--white);
+  display: flex; align-items: center; gap: 9px;
+}
+.cockpit-title em { color: var(--red); font-style: normal; }
+.cockpit-private {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--gray2); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 100px; padding: 5px 11px;
+}
+
+/* Preview-as switcher — PROTOTYPE scaffolding only (stands in for real auth) */
+.pv-switch {
+  position: relative; z-index: 3; display: inline-flex; align-items: center; gap: 2px;
+  background: rgba(0,0,0,0.42); border: 1px solid var(--border);
+  border-radius: 100px; padding: 3px 4px; backdrop-filter: blur(10px);
+}
+.pv-label { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gray2); margin: 0 5px 0 7px; }
+.pv-opt {
+  padding: 6px 12px; border-radius: 100px; font-size: 11px; font-weight: 700;
+  color: var(--gray); cursor: pointer; white-space: nowrap; transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent; border: none; background: transparent;
+}
+.pv-opt:hover { color: var(--white); }
+.pv-opt.on { background: var(--red); color: #fff; }
+@media (max-width: 560px) { .pv-label { display: none; } .pv-opt { padding: 6px 9px; font-size: 10px; } }
+
+/* History (recently watched) + generic empty state */
+.hist-clear { font-size: 11px; font-weight: 600; color: var(--gray2); cursor: pointer; background: none; border: none; -webkit-tap-highlight-color: transparent; }
+.hist-clear:hover { color: var(--red2); }
+.hist-note { font-size: 11px; color: var(--gray2); margin: -6px 0 15px; }
+.g-when { position: absolute; bottom: 8px; left: 9px; font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.78); text-shadow: 0 1px 4px rgba(0,0,0,0.85); }
+.empty-state {
+  text-align: center; padding: 44px 22px; border: 1.5px dashed var(--border);
+  border-radius: 18px;
+}
+.empty-ic { font-size: 32px; margin-bottom: 12px; }
+.empty-t { font-family: var(--font-display); font-size: 22px; letter-spacing: 1px; color: var(--white); margin-bottom: 8px; }
+.empty-d { font-size: 13px; color: var(--gray2); line-height: 1.55; max-width: 330px; margin: 0 auto 18px; }
 </style>
 </head>
 <body>
@@ -617,7 +680,7 @@ html, body { overflow: hidden; }
     <a class="nav-item active" data-nav="profile" href="showshak-profile.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="nav-item-label">Profile</span></a>
   </div>
   <div class="sidebar-bottom">
-    <div class="nav-item-settings" onclick="ssToast('⚙ Settings coming soon')"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></div>
+    <div class="nav-item-settings" onclick="goSettings()"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></div>
   </div>
 </nav>
 
@@ -632,10 +695,17 @@ html, body { overflow: hidden; }
       <div class="hero-grain"></div>
 
       <div class="hero-top">
+        <div class="pv-switch" id="pv-switch">
+          <span class="pv-label">Preview as</span>
+          <button class="pv-opt" data-pv="user" onclick="setFace('user')">User</button>
+          <button class="pv-opt" data-pv="owner" onclick="setFace('owner')">Curator</button>
+          <button class="pv-opt" data-pv="public" onclick="setFace('public')">Public</button>
+        </div>
+        <div style="flex:1"></div>
         <div class="hero-icon-btn" onclick="ssToast('🔗 Profile link copied')" title="Share profile">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </div>
-        <div class="hero-icon-btn" onclick="ssToast('⚙ Settings coming soon')" title="Settings">
+        <div class="hero-icon-btn" onclick="goSettings()" title="Settings">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </div>
       </div>
@@ -663,8 +733,13 @@ html, body { overflow: hidden; }
         <span class="taste-label">Tastes in</span>
       </div>
 
+      <div class="socials" id="socials"></div>
+
       <div class="hero-actions" id="hero-actions"></div>
     </section>
+
+    <!-- PRIVATE COCKPIT (curator-owner only) — sits ABOVE the tabs/clips -->
+    <section class="cockpit" id="cockpit"></section>
 
     <!-- CREDENTIALS -->
     <div class="creds" id="creds"></div>
@@ -686,6 +761,7 @@ html, body { overflow: hidden; }
       <div class="panel" id="panel-create"><div id="create"></div></div>
       <div class="panel active" id="panel-primary"><div id="primary"></div></div>
       <div class="panel" id="panel-stacks"><div id="stacks"></div></div>
+      <div class="panel" id="panel-history"><div id="history"></div></div>
       <div class="panel" id="panel-analytics"><div id="analytics"></div></div>
       <div class="panel" id="panel-following"><div class="follow-list" id="following"></div></div>
     </div>
@@ -926,6 +1002,35 @@ const VIS_LABEL = { public:'Public', friends:'Friends & Family', private:'Only m
 let isCreator = false;  // a normal visitor lands as a user; toggle reveals creator view
 let activeTab = 'primary';
 
+/* ── THREE-FACE MODEL ───────────────────────────────
+   face = 'user'   → a normal user viewing THEIR OWN profile
+        = 'owner'  → a curator viewing THEIR OWN profile (private cockpit)
+        = 'public' → ANYONE viewing a curator (trust surface, no scoreboard)
+   isCreator stays derived so all existing creator-styled code keeps working. */
+let face = 'user';
+const isOwner   = () => face === 'owner';
+const isPublic  = () => face === 'public';
+const isCurator = () => face === 'owner' || face === 'public';
+const isUserOwn = () => face === 'user';
+
+/* Curator social links (public trust signal) + 7-day watch history (user utility) */
+const SOCIALS = [
+  { net:'Instagram', handle:'cinephile.arj' },
+  { net:'X',         handle:'cinephile_arj' },
+];
+const SOCIAL_SVG = {
+  Instagram:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><line x1="17.5" y1="6.5" x2="17.5" y2="6.5"/></svg>`,
+  X:`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>`,
+};
+const MOCK_HISTORY = [
+  { id:1, bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'Front Man reveal. You will not be okay.', when:'2h ago' },
+  { id:2, bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)', platColor:'#0E3BD4', platAbbr:'D+', fires:2100, caption:'Episode 7 will genuinely destroy you.', when:'Today' },
+  { id:3, bg:'linear-gradient(160deg,#021005,#041a08,#020802,#000)', platColor:'#00A8E0', platAbbr:'P', fires:5200, caption:'Quit your job, move to a village. Not joking.', when:'Yesterday' },
+  { id:4, bg:'linear-gradient(160deg,#080500,#140c00,#050300,#000)', platColor:'#002868', platAbbr:'S', fires:1240, caption:'9.3 on IMDb. One verdict. Watch it.', when:'2 days ago' },
+  { id:5, bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', platColor:'#E50914', platAbbr:'N', fires:890, caption:'Zero warning. Zero mercy. Just watch.', when:'4 days ago' },
+  { id:6, bg:'linear-gradient(160deg,#030805,#050e08,#020503,#000)', platColor:'#FF6A00', platAbbr:'JH', fires:760, caption:'Episode 3 broke the internet. Broke me.', when:'6 days ago' },
+];
+
 /* ── HERO WALL (built from the curator's own clips) ── */
 function renderWall() {
   const wall = document.getElementById('hero-wall');
@@ -948,6 +1053,7 @@ function applyAvatar(el) {
 }
 
 function renderHeader() {
+  isCreator = isCurator();   // keep legacy creator-styled CSS/logic in sync with face
   applyAvatar(document.getElementById('av'));
   document.getElementById('id-name').textContent = PROFILE.name;
   document.getElementById('id-handle').textContent = PROFILE.handle;
@@ -958,32 +1064,71 @@ function renderHeader() {
   taste.innerHTML = `<span class="taste-label">Tastes in</span>` +
     (PROFILE.genres || []).map(g => `<span class="taste-tag">${g}</span>`).join('');
 
-  document.getElementById('identity').classList.toggle('is-creator', isCreator);
+  document.getElementById('identity').classList.toggle('is-creator', isCurator());
+
+  // reflect active preview-as button
+  document.querySelectorAll('.pv-opt').forEach(b => b.classList.toggle('on', b.dataset.pv === face));
+
+  renderSocials();
 
   const actions = document.getElementById('hero-actions');
-  actions.innerHTML = `
+  const editBtn = `
     <button class="btn btn-ghost" onclick="openEditProfile()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       Edit Profile
-    </button>
+    </button>`;
+  const shareBtn = `
     <button class="btn btn-ghost" onclick="ssToast('🔗 Profile link copied')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
       Share
-    </button>
-    <button class="btn btn-accent" onclick="toggleMode()">${isCreator ? '👤 User View' : '✨ Creator View'}</button>
-  `;
+    </button>`;
+  const followBtn = `
+    <button class="btn btn-primary" id="pub-follow" onclick="togglePublicFollow(this)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Follow
+    </button>`;
+  const viewPublicBtn = `
+    <button class="btn btn-accent" onclick="setFace('public')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      View as public
+    </button>`;
+
+  if (isPublic()) {
+    // A stranger viewing a curator → Follow + Share. No edit, no scoreboard.
+    actions.innerHTML = followBtn + shareBtn;
+  } else if (isOwner()) {
+    // Curator viewing their own profile → manage + preview public.
+    actions.innerHTML = editBtn + shareBtn + viewPublicBtn;
+  } else {
+    // Normal user, own profile → edit + share only.
+    actions.innerHTML = editBtn + shareBtn;
+  }
+  renderCockpit();
   renderCreds();
-  document.getElementById('shelf-word').textContent = isCreator ? 'Highlights' : 'My Collections';
-  document.getElementById('shelf-sub').textContent = isCreator
-    ? 'Shared collections shown on your profile · tap to open, share to send'
+  document.getElementById('shelf-word').textContent = isPublic() ? 'Shared Stacks' : (isOwner() ? 'Highlights' : 'My Collections');
+  document.getElementById('shelf-sub').textContent =
+    isPublic() ? 'Collections this curator shares publicly · tap to open'
+    : isOwner() ? 'Shared collections shown on your profile · tap to open, share to send'
     : 'Your Stacks as shareable collections · public, friends, or private';
 }
 
+/* ── CREDENTIALS / STATS BAR ──────────────────────────
+   PHILOSOPHY: show standing & substance, hide the reflex & the money.
+     · NEVER show "fires given" to a user (turns a free reflex into a
+       rationed currency → users stop firing freely).
+     · NEVER show fires-received or Watch-It taps on a PUBLIC curator
+       profile (those are business/conversion metrics → popularity
+       contest). They live ONLY in the owner's private cockpit.
+   Public curator: Followers + Clips (standing + substance) only.
+   Owner curator : Followers + Following + Clips.
+   User (own)    : Stacks + Following (functional doors, no vanity #). */
 function renderCreds() {
   const el = document.getElementById('creds');
-  const data = isCreator
-    ? [['followers','Followers',true],['clipsPosted','Clips',false],['firesReceived','Fires Received',true],['watchItTaps','Watch Its',false],['following','Following',false]]
-    : [['firesGiven','Fires Given',true],['stacks','Stacks',false],['following','Following',false]];
+  const data = isPublic()
+    ? [['followers','Followers',true],['clipsPosted','Clips',false]]
+    : isOwner()
+    ? [['followers','Followers',true],['following','Following',false],['clipsPosted','Clips',false]]
+    : [['stacks','Stacks',true],['following','Following',false]];
   el.innerHTML = data.map(([k,label,accent]) => `
     <div class="cred">
       <div class="cred-num">${accent?'<em>':''}${fmtFires(PROFILE[k])}${accent?'</em>':''}</div>
@@ -991,10 +1136,21 @@ function renderCreds() {
     </div>`).join('');
 }
 
-/* ── HIGHLIGHTS / COLLECTIONS shelf ── */
+/* ── HIGHLIGHTS / COLLECTIONS shelf ──────────────────
+   Public face: ONLY public collections, no share/new buttons.
+   Owner/User : everything, with visibility chips + share + "new". */
+function publicCollectionCount() { return MOCK_COLLECTIONS.filter(c => c.vis === 'public').length; }
 function renderShelf() {
   const el = document.getElementById('shelf');
-  const cards = MOCK_COLLECTIONS.map(c => {
+  const pub = isPublic();
+  const list = pub ? MOCK_COLLECTIONS.filter(c => c.vis === 'public') : MOCK_COLLECTIONS;
+
+  if (pub && !list.length) {
+    el.innerHTML = `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No shared stacks yet</div><div class="empty-d">When this curator shares a collection, it shows up here.</div></div>`;
+    return;
+  }
+
+  const cards = list.map(c => {
     const t = c.thumbs;
     return `
     <div class="coll" onclick="ssToast('▶ Opening “${c.name}” collection')">
@@ -1005,16 +1161,16 @@ function renderShelf() {
           <div class="coll-vig"></div>
         </div>
         <div class="coll-count">${FIRE_SVG.replace('11','10').replace('11','10')}${c.count}</div>
-        <div class="coll-vis ${c.vis}" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>
+        ${pub ? '' : `<div class="coll-vis ${c.vis}" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>`}
         <button class="coll-share" title="Share collection" onclick="event.stopPropagation(); ssToast('🔗 Share “${c.name}” — link copied')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </button>
       </div>
       <div class="coll-name">${c.name}</div>
-      <div class="coll-meta">${VIS_ICON[c.vis]} ${VIS_LABEL[c.vis]}</div>
+      <div class="coll-meta">${pub ? `${c.count} clips` : `${VIS_ICON[c.vis]} ${VIS_LABEL[c.vis]}`}</div>
     </div>`;
   }).join('');
-  const addCard = `
+  const addCard = pub ? '' : `
     <div class="coll coll-new" onclick="ssToast('➕ New collection — coming soon')">
       <div class="coll-stack"><div class="coll-plus">+</div><div class="coll-new-label">New collection</div></div>
       <div class="coll-name" style="opacity:0">.</div>
@@ -1022,24 +1178,59 @@ function renderShelf() {
   el.innerHTML = cards + addCard;
 }
 
-/* ── TABS ── */
+/* ── PRIVATE COCKPIT (owner only, ABOVE the clips) ───
+   This is where the numbers we HIDE from everyone else finally appear —
+   because only the curator can act on them. Fires · Watch-Its · Reach. */
+function renderCockpit() {
+  const el = document.getElementById('cockpit');
+  if (!isOwner()) { el.classList.remove('show'); el.innerHTML = ''; return; }
+  const reach = PROFILE.clipsPosted * 820;
+  el.classList.add('show');
+  el.innerHTML = `
+    <div class="cockpit-head">
+      <div class="cockpit-title">📊 This <em>Week</em></div>
+      <span class="cockpit-private">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Only you can see this
+      </span>
+    </div>
+    <div class="an-grid" style="margin-bottom:0">
+      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(PROFILE.firesReceived)}</em></div><div class="an-label">Fires</div><div class="an-trend">↑ 12% this week</div></div>
+      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(PROFILE.watchItTaps)}</div><div class="an-label">Watch Its</div><div class="an-trend">↑ 8% this week</div></div>
+      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(reach)}</div><div class="an-label">Reach</div><div class="an-trend">↑ 21% this week</div></div>
+    </div>`;
+}
+
+/* ── TABS (face-aware) ──────────────────────────────
+   User  : History (recently watched) + Following. NO "fires" archive —
+           a list of fired clips would re-ration the fire reflex.
+   Public: Clips + Shared Stacks. No following, no analytics.
+   Owner : Create · My Clips · Collections · Analytics · Following.
+           (Analytics summary also sits in the cockpit above.) */
+const ALL_PANEL_IDS = ['create','primary','stacks','history','analytics','following'];
 function renderTabs() {
   const bar = document.getElementById('tabs');
-  bar.innerHTML = isCreator ? `
-    <button class="tab tab-create ${activeTab==='create'?'active':''}" onclick="switchTab('create')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create</button>
-    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${myClipsCount()}</span></button>
-    <button class="tab ${activeTab==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
-    <button class="tab ${activeTab==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
-    <button class="tab ${activeTab==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>
-  ` : `
-    <button class="tab ${activeTab==='primary'?'active':''}" onclick="switchTab('primary')">Fires <span class="tab-c">${MOCK_FIRES.length}</span></button>
-    <button class="tab ${activeTab==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
-    <button class="tab ${activeTab==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>
-  `;
+  const t = activeTab;
+  if (isOwner()) {
+    bar.innerHTML = `
+      <button class="tab tab-create ${t==='create'?'active':''}" onclick="switchTab('create')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create</button>
+      <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${myClipsCount()}</span></button>
+      <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
+      <button class="tab ${t==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
+      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>`;
+  } else if (isPublic()) {
+    bar.innerHTML = `
+      <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">Clips <span class="tab-c">${myClipsCount()}</span></button>
+      <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Shared Stacks <span class="tab-c">${publicCollectionCount()}</span></button>`;
+  } else {
+    bar.innerHTML = `
+      <button class="tab ${t==='history'?'active':''}" onclick="switchTab('history')">History</button>
+      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>`;
+  }
 }
 function switchTab(t) {
   activeTab = t;
-  ['create','primary','stacks','analytics','following'].forEach(id =>
+  ALL_PANEL_IDS.forEach(id =>
     document.getElementById('panel-'+id).classList.toggle('active', id===t));
   renderTabs();
 }
@@ -1084,36 +1275,57 @@ function goUpload() {
   else window.location.href = 'showshak-upload.html';
 }
 
-/* ── PRIMARY (clips / fires) ── */
+/* ── PRIMARY grid ───────────────────────────────────
+   Owner & Public curator → the curator's CLIPS (the work speaks).
+   (User has no primary grid — their tabs are History + Following.) */
 function renderPrimary() {
   const el = document.getElementById('primary');
-  if (isCreator) {
-    // Merge freshly-published clips (newest first) ahead of the mock clips
-    const mine = getMyClips();
-    const list = [...mine, ...MOCK_CLIPS];
-    window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the merged array
-    el.innerHTML = list.length ? `<div class="grid">${list.map((c,i)=>`
-      <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
-        ${c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':'')}
-        <div class="g-thumb">
-          <div class="g-bg" style="background:${c.bg}"></div>
-          <div class="g-vig"></div>
-          <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
-        </div>
-        <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Your recommendation'}</div>
-      </div>`).join('')}</div>` : '';
-  } else {
-    window._PROFILE_PRIMARY = MOCK_FIRES;
-    el.innerHTML = `<div class="grid">${MOCK_FIRES.map((c,i)=>`
-      <div class="g-card" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
-        <div class="g-thumb">
-          <div class="g-bg" style="background:${c.bg}"></div>
-          <div class="g-vig"></div>
-          <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
-        </div>
-        <div class="g-cap">${c.caption}</div>
-      </div>`).join('')}</div>`;
+  const mine = getMyClips();
+  const list = [...mine, ...MOCK_CLIPS];
+  window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the merged array
+  const owner = isOwner();
+  el.innerHTML = list.length ? `<div class="grid">${list.map((c,i)=>`
+    <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
+      ${owner && c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':'')}
+      <div class="g-thumb">
+        <div class="g-bg" style="background:${c.bg}"></div>
+        <div class="g-vig"></div>
+        <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
+      </div>
+      <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Recommendation'}</div>
+    </div>`).join('')}</div>` : '';
+}
+
+/* ── HISTORY (user only) — 7-day recently watched, re-find utility ──
+   This is a WATCH log, not a fire/like archive: it solves "I lost a clip
+   and the algorithm won't show it again", without re-rationing fire. */
+function renderHistory() {
+  const el = document.getElementById('history');
+  window._PROFILE_HISTORY = MOCK_HISTORY;
+  if (!MOCK_HISTORY.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-ic">🕑</div><div class="empty-t">Nothing here yet</div><div class="empty-d">Clips you watch show up here for 7 days, so you can always find your way back.</div></div>`;
+    return;
   }
+  el.innerHTML = `
+    <div class="shelf-head" style="margin-bottom:6px">
+      <div class="sec-t" style="margin:0">Recently <em>Watched</em></div>
+      <button class="hist-clear" onclick="clearHistory()">Clear history</button>
+    </div>
+    <div class="hist-note">Last 7 days · so you can pick up where you left off</div>
+    <div class="grid">${MOCK_HISTORY.map((c,i)=>`
+      <div class="g-card" onclick="ssOpenClip(_PROFILE_HISTORY[${i}], _PROFILE_HISTORY)">
+        <div class="g-thumb">
+          <div class="g-bg" style="background:${c.bg}"></div>
+          <div class="g-vig"></div>
+          <div class="g-when">${c.when}</div>
+        </div>
+        <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'')}</div>
+      </div>`).join('')}</div>`;
+}
+function clearHistory() {
+  MOCK_HISTORY.length = 0;
+  renderHistory();
+  ssToast('History cleared');
 }
 
 /* ── STACKS / COLLECTIONS tab (full list with manage) ── */
@@ -1141,7 +1353,7 @@ function renderFollowing() {
       <div class="follow-av" style="background:${f.color}">${f.letter}</div>
       <div class="follow-info">
         <div class="follow-handle">@${f.handle}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
-        <div class="follow-meta">${f.clips} clips · ${fmtFires(f.fires)} fires received</div>
+        <div class="follow-meta">${f.clips} clips</div>
       </div>
       <button class="btn-following" onclick="ssToast('Unfollowed @${f.handle}')">Following</button>
     </div>`).join('');
@@ -1269,14 +1481,13 @@ function bcActivate() {
   if (bcPhoto) PROFILE.photo = bcPhoto;
   if (bcGenres.length) PROFILE.genres = bcGenres.slice();
   closeBecomeCurator();
-  // Become a creator (without re-toggling) and land on the Create tab
-  isCreator = true;
+  // Become a creator (owner face) and land on the Create tab
+  face = 'owner';
   activeTab = 'create';
   document.getElementById('profile-scroll').scrollTo({ top: 0, behavior: 'smooth' });
   document.getElementById('cta-wrap').style.display = 'none';
-  renderHeader(); renderShelf(); renderTabs(); renderCreate(); renderPrimary(); renderStacks();
-  ['create','primary','stacks','analytics','following'].forEach(id =>
-    document.getElementById('panel-'+id).classList.toggle('active', id === 'create'));
+  renderAll();
+  switchTab('create');
   setTimeout(() => ssToast('🔥 Welcome, curator! Post your first clip.'), 400);
 }
 
@@ -1336,43 +1547,83 @@ function saveEditProfile() {
   PROFILE.bio = bio;
   if (epPhoto === '') PROFILE.photo = null;        // removed
   else if (epPhoto) PROFILE.photo = epPhoto;       // changed
-  if (isCreator) PROFILE.genres = epGenres.slice();
+  if (isCurator()) PROFILE.genres = epGenres.slice();
   closeEditProfile();
   renderHeader();
   ssToast('✓ Profile updated');
 }
 
-/* ── MODE TOGGLE ── */
-function toggleMode() {
-  isCreator = !isCreator;
-  activeTab = isCreator ? 'create' : 'primary';
-  document.getElementById('profile-scroll').scrollTo({ top:0, behavior:'smooth' });
-  document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
-  renderHeader(); renderShelf(); renderTabs(); renderCreate(); renderPrimary(); renderStacks();
-  // sync which panel is visible
-  ['create','primary','stacks','analytics','following'].forEach(id =>
+/* ── FACE SWITCHING (prototype: stands in for real auth) ──
+   setFace('user'|'owner'|'public') re-renders the whole profile into the
+   chosen face. In production the face is decided by auth (am I a curator?
+   am I looking at my own profile or someone else's?) — here a switcher in
+   the hero lets us demo all three. */
+function defaultTabFor(f) {
+  if (f === 'owner')  return 'create';
+  if (f === 'public') return 'primary';
+  return 'history';                    // user
+}
+function renderAll() {
+  renderHeader();      // also calls renderCockpit + renderCreds
+  renderShelf();
+  renderTabs();
+  renderCreate();
+  renderPrimary();
+  renderHistory();
+  renderStacks();
+  renderFollowing();
+  renderAnalytics();
+  document.getElementById('cta-wrap').style.display = isUserOwn() ? 'block' : 'none';
+  ALL_PANEL_IDS.forEach(id =>
     document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
-  ssToast(isCreator ? '✨ Viewing as Creator' : '👤 Viewing as User');
+}
+function setFace(f) {
+  if (!['user','owner','public'].includes(f)) f = 'user';
+  face = f;
+  activeTab = defaultTabFor(f);
+  document.getElementById('profile-scroll').scrollTo({ top:0, behavior:'smooth' });
+  renderAll();
+  ssToast(f==='owner' ? '✨ Your curator profile' : f==='public' ? '👁 How others see you' : '👤 Your profile');
+}
+/* Legacy alias — older calls / upload flow may still call toggleMode() */
+function toggleMode() { setFace(isUserOwn() ? 'owner' : 'user'); }
+
+function togglePublicFollow(btn) {
+  const on = btn.classList.toggle('following');
+  btn.classList.toggle('btn-primary', !on);
+  btn.classList.toggle('btn-ghost', on);
+  btn.innerHTML = on
+    ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Following`
+    : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Follow`;
+  ssToast(on ? `Following ${PROFILE.handle}` : `Unfollowed ${PROFILE.handle}`);
+}
+
+/* ── SOCIAL LINKS (curator faces only) ── */
+function renderSocials() {
+  const el = document.getElementById('socials');
+  if (!isCurator() || !SOCIALS.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  el.innerHTML = SOCIALS.map(s => `
+    <span class="social-link" onclick="ssToast('↗ Opening ${s.net}')">
+      ${SOCIAL_SVG[s.net] || ''}<span>${s.handle}</span>
+    </span>`).join('');
+}
+
+/* ── SETTINGS (separate page) ── */
+function goSettings() {
+  if (typeof ssNavigate === 'function') ssNavigate('showshak-settings.html');
+  else window.location.href = 'showshak-settings.html';
 }
 
 /* ── INIT ── */
-// If we arrived back from the upload flow (?creator=1), open in creator view
+// Deep-links: ?creator=1 (back from upload) → owner view; ?face=public for sharing
 const _params = new URLSearchParams(location.search);
-if (_params.get('creator') === '1') { isCreator = true; activeTab = 'primary'; }
+if (_params.get('creator') === '1') face = 'owner';
+else if (['user','owner','public'].includes(_params.get('face'))) face = _params.get('face');
+activeTab = defaultTabFor(face);
 
 renderWall();
-renderHeader();
-renderShelf();
-renderTabs();
-renderCreate();
-renderPrimary();
-renderStacks();
-renderFollowing();
-renderAnalytics();
-document.getElementById('cta-wrap').style.display = isCreator ? 'none' : 'block';
-// reflect initial active panel (handles the ?creator=1 deep-link landing on My Clips)
-['create','primary','stacks','analytics','following'].forEach(id =>
-  document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
+renderAll();
 
 // Become-a-curator: live handle validation + focus styling
 (function bcWire() {
