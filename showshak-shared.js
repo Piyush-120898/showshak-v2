@@ -1185,6 +1185,18 @@ function _ssvOnPopState() {
   const viewer = document.getElementById('ss-clip-viewer');
   if (viewer && viewer.classList.contains('open')) {
     _ssvHistoryActive = false;   // our entry is already gone (it was popped)
+
+    // Tell any PAGE-LEVEL popstate handler (e.g. Discover's search-results
+    // view) that THIS back press was already consumed by closing the clip
+    // viewer — so it must NOT also act on the same event. Without this,
+    // one back press both closes the viewer AND collapses the results view,
+    // dumping the user on the default Discover page instead of the results
+    // list. We register first (shared.js loads before page scripts), so the
+    // flag is set before the page handler reads it; clear it next tick so a
+    // SUBSEQUENT back (results → default) still works normally.
+    window._ssvHandledPop = true;
+    setTimeout(() => { window._ssvHandledPop = false; }, 0);
+
     _ssvTeardownViewer();
   }
 }
