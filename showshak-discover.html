@@ -986,8 +986,20 @@ function _ssExitResultsToDefault() {
 }
 
 window.addEventListener('popstate', () => {
-  // Back press while results are showing → collapse to the default view.
-  if (_ssResultsHistory && document.getElementById('results-view').classList.contains('visible')) {
+  // If this back press was consumed by closing the clip viewer, shared.js
+  // already handled it (and flagged it). Don't collapse results too —
+  // closing the viewer must return to the results list, not default view.
+  if (window._ssvHandledPop) return;
+
+  // If the clip viewer is open, that popstate belongs to the viewer —
+  // shared.js handles it. Don't touch results state.
+  const viewerOpen = document.getElementById('ss-clip-viewer')
+                       ?.classList.contains('open');
+  if (viewerOpen) return;
+
+  // Back press while results are showing → collapse to default view.
+  if (_ssResultsHistory && document.getElementById('results-view')
+        .classList.contains('visible')) {
     _ssResultsHistory = false;
     _ssExitResultsToDefault();
   }
@@ -1024,4 +1036,4 @@ buildForYou();
 ssSyncAllSaveBtns();
 </script>
 </body>
-</html>
+</html>
