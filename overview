@@ -201,11 +201,13 @@ Closest references for mental model:
       .mobile-bottom-nav, .sidebar-logo only
 
 
-── SIDEBAR — KNOWN BUG ─────────────────────────────────────────
+── SIDEBAR — RESOLVED (2026) ───────────────────────────────────
 
-  In showshak-feed.html the Profile nav-item has class="nav-item active"
-  which should be class="nav-item" (no active). Feed should be the only
-  active item. Same issue exists in mobile nav. Fix when touching the file.
+  [FIXED] showshak-feed.html previously had the Profile nav-item as
+  class="nav-item active" (sidebar + mobile) while Feed should be the
+  only active item. Now corrected: Feed carries "active", Profile does
+  not, on BOTH the desktop sidebar and the mobile bottom nav. Active
+  highlighting is otherwise handled automatically by highlightActiveNav().
 
 
 ── SHARED CSS CLASSES TO REUSE ─────────────────────────────────
@@ -355,6 +357,7 @@ Closest references for mental model:
   Stacks system:
     - Stacks are named collections of saved clips
     - Persisted via sessionStorage key 'ss_stacks_v1'
+      (sessionStorage is INTENTIONAL — see STATE NOTE below)
     - Empty state: animated orb + CTA to go to Feed
     - Filled state: .stacks-wrap with .stack-block per stack
     - Each stack: blurred gradient header + horizontal clip scroll
@@ -386,9 +389,19 @@ Closest references for mental model:
     id, creator, creatorLetter, creatorBg, genre[], lang,
     fires, platColor, platAbbr, bg
 
-  KNOWN ISSUE: Clips saved on Feed/Discover do NOT yet land in
-  Watchlist. This is because there is no shared state between pages
-  (no localStorage/database yet). Fix deferred.
+  STATE NOTE (INTENTIONAL — do NOT "fix"): Watchlist stacks persist via
+  sessionStorage, NOT localStorage, on purpose. The site runs on a LIVE
+  page that auto-refreshes on every pushed commit; sessionStorage gives a
+  clean fresh start each visit so the full flow can be re-tested from zero
+  every time during active development. This is a deliberate dev choice,
+  not a bug. Do NOT migrate it to localStorage/DB until we intentionally
+  move to persistent/real state (i.e. with the backend).
+
+  KNOWN ISSUE (deferred on purpose): Clips saved on Feed/Discover do NOT
+  yet land in Watchlist — there is no shared state layer across pages yet.
+  This is intentionally deferred: real cross-page/persistent state arrives
+  WITH the backend, not before (and the fresh-start sessionStorage choice
+  above is exactly why this is fine for now).
 
 
 ── PROFILE PAGE (showshak-profile.html) ────────────────────────
@@ -478,14 +491,25 @@ Closest references for mental model:
      some mobile viewports. Fix deferred.
 
   2. Feed/Discover saved clips not landing in Watchlist — no shared
-     state between pages yet (no localStorage/Supabase). Fix deferred.
+     state layer across pages yet. Deferred ON PURPOSE: real
+     cross-page/persistent state comes WITH the backend, not before.
+     (Also note: Watchlist stacks use sessionStorage BY DESIGN for
+     fresh-start dev testing on the live page — see Watchlist STATE
+     NOTE. That is intentional, not a bug.)
 
   3. index.html not refactored to use shared CSS/JS files yet.
+     (Note: index.html now persists the onboarding selection to
+     localStorage key 'ss_user_profile_v1' — our first real funnel
+     state, written after the user finishes onboarding.)
 
-  4. Feed page: Profile nav item incorrectly has class="active"
-     on both sidebar and mobile nav. Should only be Feed.
+  4. Rename stack — shows toast "coming soon", not yet implemented.
 
-  5. Rename stack — shows toast "coming soon", not yet implemented.
+  ── RESOLVED ──────────────────────────────────────────────────
+
+  [FIXED 2026] Feed page active-nav bug: the Profile nav item no
+  longer carries class="active" on the sidebar or the mobile nav.
+  Feed is correctly the only active item on showshak-feed.html.
+  (Was previously listed here AND under "SIDEBAR — KNOWN BUG".)
 
 
 ── WHAT MAKES SHOWSHAK DIFFERENT ───────────────────────────────
