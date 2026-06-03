@@ -861,6 +861,23 @@ function _ssvBuildList(clicked, list) {
       background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.35) 100%);
     }
 
+    /* Double-tap-to-fire: a full-area tap zone that sits ABOVE the bg/vig
+       but BELOW the rail/bottom/watch (z 20-40), so those stay clickable.
+       Double tap anywhere on the clip body fires it (Instagram-style). */
+    .ssv-tap { position: absolute; inset: 0; z-index: 10; -webkit-tap-highlight-color: transparent; }
+    .ssv-burst {
+      position: absolute; z-index: 25; pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.3); opacity: 0;
+      filter: drop-shadow(0 4px 16px rgba(234,59,50,0.6));
+    }
+    .ssv-burst.go { animation: ssvBurst 0.62s cubic-bezier(.17,.89,.32,1.28) forwards; }
+    @keyframes ssvBurst {
+      0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.3) rotate(-12deg); }
+      15%  { opacity: 1; }
+      45%  { opacity: 1; transform: translate(-50%,-50%) scale(1.15) rotate(6deg); }
+      100% { opacity: 0; transform: translate(-50%,-50%) scale(1.5) rotate(0deg); }
+    }
+
     /* Close button */
     .ssv-close {
       position: absolute; top: 14px; left: 14px; z-index: 40;
@@ -1016,6 +1033,11 @@ function _ssvClipHTML(c, i) {
       <div class="ssv-bg" style="background:${c.bg}"></div>
       <div class="ssv-vig"></div>
 
+      <div class="ssv-tap" id="ssv-tap-${i}"></div>
+      <div class="ssv-burst" id="ssv-burst-${i}">
+        <svg width="110" height="110" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+      </div>
+
       <div class="ssv-rail">
         <div class="ssv-act ssv-fire ${fired ? 'lit' : ''}" id="ssv-fire-${i}" onclick="_ssvToggleFire(${i})">
           <div class="ssv-ico">${_SSV_FIRE_OUT}${_SSV_FIRE_FILL}</div>
@@ -1096,6 +1118,65 @@ function ssOpenClip(clipOrId, list) {
 
   document.addEventListener('keydown', _ssvKeydown);
   _ssvAttachSwipe(feed);
+  _ssvAttachDoubleTap(feed);
+}
+
+/* ── Double-tap / double-click to fire (Instagram-style) ──────────
+   Works inside the universal viewer, so it behaves identically on
+   Discover, Watchlist and Profile clips — not just the Feed. The tap
+   zone (.ssv-tap) sits below the rail/Watch It, so those still work.
+   Double tap fires (never un-fires) and plays a heart-style burst at
+   the tap point. A single tap is left alone (no pause UI here). */
+function _ssvAttachDoubleTap(feed) {
+  let lastTap = 0, lastX = 0, lastY = 0;
+
+  const onZone = (e) => {
+    const zone = e.target.closest && e.target.closest('.ssv-tap');
+    if (!zone) return null;
+    const clipEl = zone.closest('.ssv-clip');
+    return clipEl ? { idx: parseInt(clipEl.dataset.ssvIdx, 10), zone } : null;
+  };
+
+  // Touch: detect two quick taps near the same point.
+  feed.addEventListener('touchend', (e) => {
+    const hit = onZone(e);
+    if (!hit) return;
+    const t = e.changedTouches[0];
+    const now = Date.now();
+    const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
+    if (now - lastTap < 300 && near) {
+      e.preventDefault();
+      _ssvFireOn(hit.idx, t.clientX, t.clientY, hit.zone);
+      lastTap = 0;
+    } else {
+      lastTap = now; lastX = t.clientX; lastY = t.clientY;
+    }
+  }, { passive: false });
+
+  // Desktop: native double-click.
+  feed.addEventListener('dblclick', (e) => {
+    const hit = onZone(e);
+    if (!hit) return;
+    _ssvFireOn(hit.idx, e.clientX, e.clientY, hit.zone);
+  });
+}
+
+/* Fire a clip via double-tap: only turns fire ON (never off), syncs the
+   rail button, flashes the Watch It CTA, and bursts a flame at (x,y). */
+function _ssvFireOn(i, x, y, zone) {
+  if (!_ssvFired.has(i)) _ssvToggleFire(i);   // toggle on (no-op visual if already lit)
+
+  // Burst at the tap point, positioned relative to the clip.
+  const burst = document.getElementById(`ssv-burst-${i}`);
+  if (burst && zone) {
+    const r = zone.getBoundingClientRect();
+    burst.style.left = (x - r.left) + 'px';
+    burst.style.top  = (y - r.top)  + 'px';
+    burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
+  }
+  // Fire energy → flash the Watch It CTA on this clip.
+  const watch = document.querySelector(`#ssv-clip-${i} .ssv-watch`);
+  if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => watch.style.filter = '', 360); }
 }
 
 /* ── Swipe-anywhere to go back (Instagram-style) ──────────────────
