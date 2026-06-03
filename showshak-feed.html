@@ -184,6 +184,7 @@ html, body { overflow: hidden; }
   transition: background 0.15s;
 }
 .creator-follow:hover { background: rgba(234,59,50,0.15); }
+.creator-follow.is-following { background: var(--red); color: #fff; }
 
 .show-title {
   font-family: var(--font-display);
@@ -860,7 +861,7 @@ function buildFeed() {
         <div class="creator-row">
           <div class="creator-avatar" style="background:${show.creator.bg}">${show.creator.letter}</div>
           <span class="creator-name">@${show.creator.name}</span>
-          <span class="creator-follow">+ Follow</span>
+          <span class="creator-follow" data-follow="${show.creator.name}" data-follow-plus data-follow-name="${show.creator.name}" data-follow-letter="${show.creator.letter}" data-follow-bg="${show.creator.bg}">+ Follow</span>
         </div>
         <div class="tag-row">
           ${show.genre.map(g => `<span class="tag">${g}</span>`).join('')}
@@ -887,6 +888,7 @@ function buildFeed() {
     <button class="btn-refresh" onclick="ssScrollToTop('feed')">Back to Top</button>
   `;
   feed.appendChild(end);
+  if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(feed);
 }
 
 function attachDoubleTap(el, idx) {

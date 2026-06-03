@@ -591,6 +591,14 @@ Closest references for mental model:
   Discover DOES reach Watchlist. (The old brief wrongly listed this
   as an unfixed known issue.)
 
+  [DONE 2026] Universal Following: Follow buttons everywhere (Feed,
+  clip viewer, Discover search, public curator profile) now write to a
+  shared store ('ss_following_v1') via data-follow attrs +
+  ssWireFollowButtons/ssToggleFollow. Following a curator anywhere adds
+  them to Profile → Following (which now reads ssGetFollowing, merged
+  with seed mocks) and syncs every Follow button live. Previously all
+  Follow buttons were cosmetic and the Following list was hardcoded.
+
   [DONE 2026] Rename stack: implemented. The ⋮ → Rename option on a
   stack opens a rename sheet (reuses .ns- styling); ssRenameStack()
   in shared.js persists it and live-re-renders. No longer a stub.

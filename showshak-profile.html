@@ -1089,6 +1089,8 @@ function renderHeader() {
   // Hide the hero-top Share icon on the user face for the same reason.
   const heroShare = document.getElementById('hero-share-btn');
   if (heroShare) heroShare.style.display = isUserOwn() ? 'none' : 'flex';
+  // Reflect real follow state on the public Follow button.
+  if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
   renderCockpit();
   renderCreds();
   document.getElementById('shelf-word').textContent = isPublic() ? 'Shared Stacks' : (isOwner() ? 'Highlights' : 'My Collections');
@@ -1332,17 +1334,37 @@ function renderStacks() {
     </div>`;
 }
 
-/* ── FOLLOWING ── */
+/* ── FOLLOWING ──────────────────────────────────────
+   Reads the REAL followed curators from the shared store
+   (ssGetFollowing) and merges them with the seed mock list,
+   so anyone you follow anywhere in the app shows up here. */
 function renderFollowing() {
-  document.getElementById('following').innerHTML = MOCK_FOLLOWING.map(f=>`
+  const real = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
+  // Merge: real follows first, then seed mocks not already followed.
+  const seen = new Set(real.map(c => c.username));
+  const merged = [
+    ...real.map(c => ({ handle:c.username, letter:c.letter, color:c.bg, clips:c.clips||0, verified:!!c.verified, real:true })),
+    ...MOCK_FOLLOWING.filter(f => !seen.has(f.handle)),
+  ];
+  const el = document.getElementById('following');
+  if (!merged.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-ic">👀</div><div class="empty-t">Not following anyone yet</div><div class="empty-d">Find curators whose taste you trust — tap Follow on any clip or profile and they'll show up here.</div></div>`;
+    return;
+  }
+  el.innerHTML = merged.map(f=>`
     <div class="follow-row">
       <div class="follow-av" style="background:${f.color}">${f.letter}</div>
       <div class="follow-info">
         <div class="follow-handle">@${f.handle}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
         <div class="follow-meta">${f.clips} clips</div>
       </div>
-      <button class="btn-following" onclick="ssToast('Unfollowed @${f.handle}')">Following</button>
+      <button class="btn-following" onclick="unfollowFromList('${f.handle}', this)">Following</button>
     </div>`).join('');
+}
+function unfollowFromList(handle, btn) {
+  if (typeof ssUnfollow === 'function') ssUnfollow(handle);
+  renderFollowing();   // re-render the list
+  ssToast(`Unfollowed @${handle}`);
 }
 
 /* ── ANALYTICS ── */
@@ -1575,13 +1597,24 @@ function setFace(f) {
 function toggleMode() { setFace(isUserOwn() ? 'owner' : 'user'); }
 
 function togglePublicFollow(btn) {
-  const on = btn.classList.toggle('following');
+  // Build the curator record for the profile currently being viewed.
+  const cu = {
+    username: (PROFILE.handle || '').replace(/^@/, ''),
+    name: PROFILE.name, letter: PROFILE.letter, bg: PROFILE.color,
+    verified: true, clips: PROFILE.clipsPosted,
+  };
+  const nowFollowing = ssToggleFollow(cu);   // shared store → Following list stays in sync
+  paintPublicFollow(btn, nowFollowing);
+  ssToast(nowFollowing ? `Following ${PROFILE.handle}` : `Unfollowed ${PROFILE.handle}`);
+}
+function paintPublicFollow(btn, following) {
+  if (!btn) return;
+  const on = (following != null) ? following : ssIsFollowing((PROFILE.handle||'').replace(/^@/,''));
   btn.classList.toggle('btn-primary', !on);
   btn.classList.toggle('btn-ghost', on);
   btn.innerHTML = on
     ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Following`
     : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Follow`;
-  ssToast(on ? `Following ${PROFILE.handle}` : `Unfollowed ${PROFILE.handle}`);
 }
 
 /* ── SETTINGS (separate page) ── */
@@ -1627,6 +1660,15 @@ if (_params.get('curator')) {
 
 renderWall();
 renderAll();
+
+// Keep the Following list + public Follow button live if following changes
+// from anywhere (e.g. a clip viewer opened from this page).
+if (typeof ssOnFollowingChange === 'function') {
+  ssOnFollowingChange(() => {
+    renderFollowing();
+    if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
+  });
+}
 
 // Become-a-curator: live handle validation + focus styling
 (function bcWire() {

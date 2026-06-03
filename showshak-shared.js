@@ -314,6 +314,125 @@ function _ssNotifyStacksChange() {
   _ssStacksListeners.forEach(fn => { try { fn(); } catch (e) { console.warn('ShowShak: stacks listener failed', e); } });
 }
 
+
+/* ════════════════════════════════════════════════
+   UNIVERSAL FOLLOWING SYSTEM
+   Single source of truth for which curators the user follows.
+   Mirrors the Save/Stacks system: any page can follow/unfollow a
+   curator and the Profile → Following list (and every Follow button)
+   stays in sync. sessionStorage by design (fresh-start on the live
+   page, like Stacks) — real persistence arrives with the backend.
+
+   A "followed curator" record:
+     { username, name, letter, bg, verified, clips }
+   Only `username` is required; the rest hydrates the Following list.
+
+   API (used across Feed, clip viewer, Discover, public profile):
+     ssGetFollowing()            → array of followed curator records
+     ssIsFollowing(username)     → bool
+     ssToggleFollow(curator)     → flips; returns true if now following
+     ssFollow(curator) / ssUnfollow(username)
+     ssOnFollowingChange(fn)     → live re-render subscription
+   ════════════════════════════════════════════════ */
+const SS_FOLLOWING_KEY = 'ss_following_v1';
+const _ssFollowListeners = [];
+
+function ssGetFollowing() {
+  try { return JSON.parse(sessionStorage.getItem(SS_FOLLOWING_KEY) || '[]'); }
+  catch { return []; }
+}
+function _ss_writeFollowing(list) {
+  try { sessionStorage.setItem(SS_FOLLOWING_KEY, JSON.stringify(list)); }
+  catch (e) { console.warn('ShowShak: following write failed', e); }
+  _ssFollowListeners.forEach(fn => { try { fn(); } catch (e) { console.warn('ShowShak: following listener failed', e); } });
+}
+function ssOnFollowingChange(fn) {
+  if (typeof fn === 'function') _ssFollowListeners.push(fn);
+}
+function ssIsFollowing(username) {
+  if (!username) return false;
+  const u = String(username).replace(/^@/, '');
+  return ssGetFollowing().some(c => c.username === u);
+}
+function ssFollow(curator) {
+  const c = _ssNormalizeCurator(curator);
+  if (!c) return false;
+  const list = ssGetFollowing();
+  if (!list.some(x => x.username === c.username)) { list.push(c); _ss_writeFollowing(list); }
+  return true;
+}
+function ssUnfollow(username) {
+  if (!username) return false;
+  const u = String(username).replace(/^@/, '');
+  const list = ssGetFollowing().filter(c => c.username !== u);
+  _ss_writeFollowing(list);
+  return false;
+}
+function ssToggleFollow(curator) {
+  const c = _ssNormalizeCurator(curator);
+  if (!c) return false;
+  return ssIsFollowing(c.username) ? ssUnfollow(c.username) : ssFollow(c);
+}
+/* Accepts a username string OR a partial curator object from any page. */
+function _ssNormalizeCurator(curator) {
+  if (!curator) return null;
+  if (typeof curator === 'string') {
+    const u = curator.replace(/^@/, '');
+    return u ? { username: u, name: u, letter: u.charAt(0).toUpperCase(), bg: '#EA3B32', verified: false, clips: 0 } : null;
+  }
+  const u = String(curator.username || curator.name || '').replace(/^@/, '');
+  if (!u) return null;
+  return {
+    username: u,
+    name:     curator.name || u,
+    letter:   (curator.letter || u.charAt(0)).toUpperCase(),
+    bg:       curator.bg || curator.color || '#EA3B32',
+    verified: !!curator.verified,
+    clips:    curator.clips != null ? curator.clips : (curator.clipCount != null ? curator.clipCount : 0),
+  };
+}
+
+/* Wire any Follow button declaratively. Give the button:
+     data-follow="<username>"  (+ optional data-follow-* attrs for the
+     name/letter/bg/verified/clips so the Following list shows real info).
+   This sets initial label and toggles on click, app-wide. Pages call
+   ssWireFollowButtons() after they render clip/curator markup. */
+function ssWireFollowButtons(root) {
+  const scope = root || document;
+  scope.querySelectorAll('[data-follow]').forEach(btn => {
+    if (btn._ssFollowWired) { _ssPaintFollowBtn(btn); return; }
+    btn._ssFollowWired = true;
+    _ssPaintFollowBtn(btn);
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      ssToggleFollow({
+        username: btn.getAttribute('data-follow'),
+        name:     btn.getAttribute('data-follow-name'),
+        letter:   btn.getAttribute('data-follow-letter'),
+        bg:       btn.getAttribute('data-follow-bg'),
+        verified: btn.getAttribute('data-follow-verified') === '1',
+        clips:    parseInt(btn.getAttribute('data-follow-clips') || '0', 10),
+      });
+      // Repaint every button for this curator everywhere on the page.
+      _ssRepaintAllFollowButtons();
+      const u = btn.getAttribute('data-follow').replace(/^@/, '');
+      ssToast(ssIsFollowing(u) ? `Following @${u}` : `Unfollowed @${u}`);
+    });
+  });
+}
+function _ssPaintFollowBtn(btn) {
+  const following = ssIsFollowing(btn.getAttribute('data-follow'));
+  btn.classList.toggle('is-following', following);
+  // Respect a compact style (just "Follow"/"Following") vs "+ Follow".
+  const plus = btn.hasAttribute('data-follow-plus');
+  btn.textContent = following ? 'Following' : (plus ? '+ Follow' : 'Follow');
+}
+function _ssRepaintAllFollowButtons() {
+  document.querySelectorAll('[data-follow]').forEach(_ssPaintFollowBtn);
+}
+// Keep buttons in sync if following changes from elsewhere (e.g. viewer).
+ssOnFollowingChange(_ssRepaintAllFollowButtons);
+
 function ssCreateStack(name) {
   const stacks = ssGetStacks();
   const stack  = { id: 'stack_' + Date.now(), name: name.trim(), createdAt: Date.now(), clips: [] };
@@ -954,6 +1073,7 @@ function _ssvBuildList(clicked, list) {
       transition: background 0.15s;
     }
     .ssv-follow:hover { background: rgba(234,59,50,0.15); }
+    .ssv-follow.is-following { background: var(--red); color: #fff; border-color: var(--red); }
     .ssv-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
     .ssv-caption {
       font-size: 13px; color: rgba(255,255,255,0.78); line-height: 1.45;
@@ -1057,7 +1177,7 @@ function _ssvClipHTML(c, i) {
         <div class="ssv-creator-row">
           <div class="ssv-avatar" style="background:${c.creator.bg}">${c.creator.letter}</div>
           <span class="ssv-handle">@${c.creator.name}</span>
-          <span class="ssv-follow">+ Follow</span>
+          <span class="ssv-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
         <div class="ssv-tags">${tags}</div>
         <div class="ssv-caption">${caption}</div>
@@ -1107,6 +1227,7 @@ function ssOpenClip(clipOrId, list) {
   _ssvSetupObserver(feed);
   document.getElementById('ssv-clip-0')?.classList.add('active');
   ssSyncAllSaveBtns();
+  ssWireFollowButtons(feed);   // make in-viewer Follow buttons real + synced
 
   // Push a history entry so the mobile back-swipe (and the browser/
   // Android back button) CLOSES the viewer instead of navigating away

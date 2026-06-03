@@ -451,6 +451,7 @@ html, body { overflow: hidden; }
   -webkit-tap-highlight-color: transparent; white-space: nowrap;
 }
 .result-curator-follow:hover { background: rgba(234,59,50,0.18); }
+.result-curator-follow.is-following { background: var(--red); color: #fff; border-color: var(--red); }
 
 .no-results { text-align: center; padding: 60px 24px; display: none; }
 .no-results.visible { display: block; }
@@ -942,7 +943,7 @@ function showResultsView(clips, label, curators) {
           <div class="result-curator-handle">@${cu.username}</div>
           <div class="result-curator-meta">${cu.clipCount} clip${cu.clipCount!==1?'s':''} · ${fmtFires(cu.totalFires)} fires</div>
         </div>
-        <button class="result-curator-follow" onclick="event.stopPropagation(); this.textContent = this.textContent==='Following'?'+ Follow':'Following'; ssToast('Followed @${cu.username}')">+ Follow</button>
+        <button class="result-curator-follow" data-follow="${cu.username}" data-follow-plus data-follow-name="${cu.name}" data-follow-letter="${cu.letter}" data-follow-bg="${cu.bg}" data-follow-verified="${cu.verified?1:0}" data-follow-clips="${cu.clipCount}" onclick="event.stopPropagation()">+ Follow</button>
       </div>
     `).join('');
   }
@@ -969,6 +970,7 @@ function showResultsView(clips, label, curators) {
   }
 
   list.innerHTML = html;
+  if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(list);
 }
 
 function showDefaultView() {
