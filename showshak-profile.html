@@ -86,7 +86,13 @@ html, body { overflow: hidden; }
   display: flex; align-items: flex-end; gap: 22px;
   padding-top: 30px;
 }
-@media (max-width: 560px) { .hero-identity { flex-direction: column; align-items: flex-start; gap: 16px; padding-top: 22px; } }
+/* Mobile: keep the avatar and name/handle on the SAME row (side by side),
+   rather than stacking the text under the photo. */
+@media (max-width: 560px) {
+  .hero-identity { gap: 15px; padding-top: 22px; align-items: center; }
+  .id-name { font-size: clamp(26px, 8vw, 38px); letter-spacing: 1px; }
+  .id-sub { margin-top: 5px; font-size: 12px; gap: 7px; }
+}
 
 .av-wrap { position: relative; flex-shrink: 0; }
 .av-ring {
@@ -605,18 +611,6 @@ html, body { overflow: hidden; }
    (user · curator-owner · curator-public)
 ════════════════════════════════════════════════ */
 
-/* Social links — curator trust + cross-promo (hidden for plain users) */
-.socials { position: relative; z-index: 3; display: none; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
-.social-link {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 13px; border-radius: 100px;
-  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-  color: var(--white); font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: border-color 0.15s, background 0.15s; -webkit-tap-highlight-color: transparent;
-}
-.social-link:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.08); }
-.social-link svg { opacity: 0.85; }
-
 /* Private cockpit — owner curator only, surfaced ABOVE clips */
 .cockpit { display: none; padding: 24px 40px 6px; }
 .cockpit.show { display: block; animation: ss-fadeUp 0.35s ease both; }
@@ -702,7 +696,7 @@ html, body { overflow: hidden; }
           <button class="pv-opt" data-pv="public" onclick="setFace('public')">Public</button>
         </div>
         <div style="flex:1"></div>
-        <div class="hero-icon-btn" onclick="ssToast('🔗 Profile link copied')" title="Share profile">
+        <div class="hero-icon-btn" id="hero-share-btn" onclick="ssToast('🔗 Profile link copied')" title="Share profile">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </div>
         <div class="hero-icon-btn" onclick="goSettings()" title="Settings">
@@ -732,8 +726,6 @@ html, body { overflow: hidden; }
       <div class="taste" id="taste">
         <span class="taste-label">Tastes in</span>
       </div>
-
-      <div class="socials" id="socials"></div>
 
       <div class="hero-actions" id="hero-actions"></div>
     </section>
@@ -1013,15 +1005,7 @@ const isPublic  = () => face === 'public';
 const isCurator = () => face === 'owner' || face === 'public';
 const isUserOwn = () => face === 'user';
 
-/* Curator social links (public trust signal) + 7-day watch history (user utility) */
-const SOCIALS = [
-  { net:'Instagram', handle:'cinephile.arj' },
-  { net:'X',         handle:'cinephile_arj' },
-];
-const SOCIAL_SVG = {
-  Instagram:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><line x1="17.5" y1="6.5" x2="17.5" y2="6.5"/></svg>`,
-  X:`<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>`,
-};
+/* Curator 7-day watch history (user utility) */
 const MOCK_HISTORY = [
   { id:1, bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'Front Man reveal. You will not be okay.', when:'2h ago' },
   { id:2, bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)', platColor:'#0E3BD4', platAbbr:'D+', fires:2100, caption:'Episode 7 will genuinely destroy you.', when:'Today' },
@@ -1069,8 +1053,6 @@ function renderHeader() {
   // reflect active preview-as button
   document.querySelectorAll('.pv-opt').forEach(b => b.classList.toggle('on', b.dataset.pv === face));
 
-  renderSocials();
-
   const actions = document.getElementById('hero-actions');
   const editBtn = `
     <button class="btn btn-ghost" onclick="openEditProfile()">
@@ -1097,12 +1079,16 @@ function renderHeader() {
     // A stranger viewing a curator → Follow + Share. No edit, no scoreboard.
     actions.innerHTML = followBtn + shareBtn;
   } else if (isOwner()) {
-    // Curator viewing their own profile → manage + preview public.
+    // Curator viewing their own profile → manage + share + preview public.
     actions.innerHTML = editBtn + shareBtn + viewPublicBtn;
   } else {
-    // Normal user, own profile → edit + share only.
-    actions.innerHTML = editBtn + shareBtn;
+    // Normal user, own profile → edit only. A user profile is private:
+    // no one else sees it, so there is nothing to share.
+    actions.innerHTML = editBtn;
   }
+  // Hide the hero-top Share icon on the user face for the same reason.
+  const heroShare = document.getElementById('hero-share-btn');
+  if (heroShare) heroShare.style.display = isUserOwn() ? 'none' : 'flex';
   renderCockpit();
   renderCreds();
   document.getElementById('shelf-word').textContent = isPublic() ? 'Shared Stacks' : (isOwner() ? 'Highlights' : 'My Collections');
@@ -1596,17 +1582,6 @@ function togglePublicFollow(btn) {
     ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Following`
     : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Follow`;
   ssToast(on ? `Following ${PROFILE.handle}` : `Unfollowed ${PROFILE.handle}`);
-}
-
-/* ── SOCIAL LINKS (curator faces only) ── */
-function renderSocials() {
-  const el = document.getElementById('socials');
-  if (!isCurator() || !SOCIALS.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  el.style.display = 'flex';
-  el.innerHTML = SOCIALS.map(s => `
-    <span class="social-link" onclick="ssToast('↗ Opening ${s.net}')">
-      ${SOCIAL_SVG[s.net] || ''}<span>${s.handle}</span>
-    </span>`).join('');
 }
 
 /* ── SETTINGS (separate page) ── */

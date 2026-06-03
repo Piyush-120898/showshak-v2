@@ -438,9 +438,12 @@ Closest references for mental model:
     - avatar (#av), letter or uploaded photo; 🔥 flame badge via .is-creator
     - name, @handle, "Curating since 2023"
     - bio + taste tags (PROFILE.genres)
-    - .socials — curator faces only (Instagram / X) — trust + cross-promo
+    - NO social media links — by design. We keep people ON ShowShak,
+      not bouncing out to Instagram/X. (Removed 2026.)
     - hero actions per face:
-        user   → Edit Profile + Share
+        user   → Edit Profile ONLY (a user profile is private — no one
+                 else sees it, so there is nothing to Share). The hero-top
+                 Share icon is also hidden on the user face.
         owner  → Edit Profile + Share + "View as public"
         public → Follow + Share  (togglePublicFollow)
 
@@ -507,7 +510,7 @@ Closest references for mental model:
       Support & About — help, feedback, report, Terms, Privacy, DMCA
 
     CREATOR ONLY:
-      Creator Profile (public bio, handle, verification, social links)
+      Creator Profile (public bio, handle, verification)
       Creator Tools (upload defaults, manage clips, drafts)
       Payouts & Monetization (payout account, earnings, promoted clips)
       Analytics (quick this-week numbers → link to full dashboard)

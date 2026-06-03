@@ -668,6 +668,14 @@ const CURATOR_META = {
   hbo_stan_official: { name:'HBO Stan',         verified:true,  bio:'Prestige TV, no compromises' },
 };
 
+/* ── CURATOR DIRECTORY ──────────────────────────────
+   Search profile results show CURATORS ONLY — never normal user
+   accounts. We keep people discovering tastemakers, not browsing
+   each other. Today the directory is derived purely from clip
+   authors (so by definition only curators), and every entry is
+   explicitly flagged isCurator:true. When real user accounts exist,
+   the search filter below must keep matching on isCurator so plain
+   users can never surface here. */
 const CURATORS = (() => {
   const map = {};
   CLIPS.forEach(c => {
@@ -681,6 +689,7 @@ const CURATORS = (() => {
         bg: c.creator.bg,
         verified: !!meta.verified,
         bio: meta.bio || 'Curator on ShowShak',
+        isCurator: true,        // only curators are searchable as profiles
         clipCount: 0,
         totalFires: 0,
       };
@@ -861,10 +870,13 @@ function handleSearch(query) {
       recentSearches.unshift(query.trim());
       if (recentSearches.length > 5) recentSearches.pop();
     }
-    // Match curators by display name OR @username
+    // Match curators by display name OR @username — CURATORS ONLY,
+    // never normal user accounts (isCurator guard is future-proofing).
     const curators = CURATORS.filter(cu =>
-      cu.name.toLowerCase().includes(q) ||
-      cu.username.toLowerCase().includes(q)
+      cu.isCurator && (
+        cu.name.toLowerCase().includes(q) ||
+        cu.username.toLowerCase().includes(q)
+      )
     );
     // Match clips
     const filtered = CLIPS.filter(c =>
