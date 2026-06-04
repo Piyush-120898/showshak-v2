@@ -105,7 +105,23 @@ Closest references for mental model:
     https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap
   No npm, no React, no Tailwind, no bundler
   Runs directly in browser via VS Code Live Server extension
-  Target: website prototype → handed off to app developers later
+  Target: PWA-first product (NOT a throwaway prototype). Frontend is
+  built now; PWA layer (manifest/service worker/install) comes LATER —
+  only once the site + backend are complete and stable.
+
+  PLANNED BACKEND (agreed direction, not built yet):
+    - Supabase (managed Postgres + Auth + Storage + Realtime + Edge fns)
+      — relational fits our Creator/Clip/Title + follows/fires graph;
+        no lock-in (it's just Postgres).
+    - Mux (or Cloudflare Stream) for video upload/transcode/streaming —
+      do NOT build video infra ourselves.
+    - TMDB API for Titles + "watch providers" (Watch It availability).
+    - Vercel / Cloudflare Pages for hosting; Postgres full-text search
+      now, Typesense/Meilisearch later.
+    Guest-first auth: anonymous session on first visit, upgrade to a
+    real account at the emotional peak (after first Watch It).
+    All current state is sessionStorage MOCK; real persistence lands
+    WITH the backend.
 
 
 ── DESIGN TOKENS (key values) ──────────────────────────────────
@@ -158,14 +174,21 @@ Closest references for mental model:
   ├── showshak-discover.html      ← DONE ✓ search + mood + platform browse
   ├── showshak-watchlist.html     ← DONE ✓ stacks + recommended clips
   ├── showshak-profile.html       ← DONE ✓ 3-face profile (user/owner/public)
-  └── showshak-settings.html      ← DONE ✓ settings (shared + creator block)
+  ├── showshak-settings.html      ← DONE ✓ settings (shared + creator block)
+  └── showshak-upload.html        ← DONE ✓ curator upload flow (5 steps).
+                                     Self-contained like index — no ss-nav.
 
-  Every page (except index.html) must link in <head>:
+  Every APP page (NOT index.html / showshak-upload.html) links in <head>:
     <style>body{opacity:0}</style>          ← prevents FOUC before fade-in
     <link rel="stylesheet" href="showshak-tokens.css">
     <link rel="stylesheet" href="showshak-sidebar.css">
     <link rel="stylesheet" href="showshak-mobile-nav.css">
     <link rel="stylesheet" href="showshak-components.css">
+
+  Places ONE placeholder where the nav chrome goes (shared.js fills it
+  with sidebar + Watch It sheet + mobile nav):
+    <div id="ss-nav"></div>                 ← add data-no-sheet to skip the
+                                              shared Watch It sheet (Feed)
 
   And before </body>:
     <script src="showshak-shared.js"></script>
@@ -191,15 +214,16 @@ Closest references for mental model:
 
   Active nav highlighting:
     - Handled automatically by showshak-shared.js (highlightActiveNav)
-    - Uses data-nav="feed|discover|watchlist|profile" on sidebar items
+    - Uses data-nav="feed|discover|watchlist|profile|settings" on sidebar
     - Uses data-mob-nav="feed|discover|watchlist|profile" on mobile items
     - Matches against window.location.pathname
+    - Runs right after ssInjectChrome() injects the shared nav markup
 
   Page transitions:
     - ssNavigate(url) in shared.js: fade out → navigate
     - ssPageFadeIn() auto-runs on DOMContentLoaded on every page
     - Click handler in shared.js intercepts links inside .sidebar-nav,
-      .mobile-bottom-nav, .sidebar-logo only
+      .sidebar-bottom (Settings), .mobile-bottom-nav, .sidebar-logo
 
 
 ── SIDEBAR — RESOLVED (2026) ───────────────────────────────────
@@ -238,17 +262,45 @@ Closest references for mental model:
   showToast(msg)            alias for ssToast (legacy)
   ssOpenSheet(show)         open the Watch It bottom sheet
   ssCloseSheet()            close the Watch It bottom sheet
-  ssHandleWatchNow(p, t)    platform selected → toast + close
-  openSheet(idx)            legacy alias → ssOpenSheet(SHOWS[idx])
-  closeSheet()              legacy alias → ssCloseSheet()
-  handleWatchNow(p,t)       legacy alias → ssHandleWatchNow
+  ssHandleWatchNow(p, t)    platform selected -> toast + close
+  openSheet(idx)            legacy alias -> ssOpenSheet(SHOWS[idx])
+  closeSheet()              legacy alias -> ssCloseSheet()
+  handleWatchNow(p,t)       legacy alias -> ssHandleWatchNow
   ssShare(show)             Web Share API or clipboard fallback
-  shareClip(idx)            legacy alias → ssShare(SHOWS[idx])
+  shareClip(idx)            legacy alias -> ssShare(SHOWS[idx])
   ssPageFadeIn()            smooth opacity fade-in (auto DOMContentLoaded)
   ssScrollToTop(elementId)  smooth scroll element to top
-  scrollFeedToTop()         alias → ssScrollToTop('feed')
+  scrollFeedToTop()         alias -> ssScrollToTop('feed')
   ssNavigate(url)           fade-out transition then navigate
-  fmtFires(n)               format number: 1240 → "1.2k"
+  fmtFires(n)               format number: 1240 -> "1.2k"
+  highlightActiveNav()      mark active sidebar/mobile item by pathname
+  ssInjectChrome()          inject sidebar + sheet + mobile nav into #ss-nav
+
+  Universal clip viewer (Discover/Watchlist/Profile cards open into it):
+    ssOpenClip(clipOrId, list)  open full-screen vertical viewer; it
+                                normalizes any page's clip schema
+    ssCloseClip()               close (also on back / swipe-right)
+    Double-tap / double-click a viewer clip = fire it (flame burst).
+    Works on EVERY page now, not just Feed.
+
+  Universal SAVE & STACKS (sessionStorage 'ss_stacks_v1'):
+    ssToggleSave(clip, btnEl)   save (opens stack picker) / unsave
+    ssIsClipSaved(id)           bool
+    ssGetStacks()               all stacks
+    ssCreateStack(name) / ssRenameStack(id, name)
+    ssAddClipToStack / ssRemoveClipFromStack / ssRemoveClipFromAllStacks
+    ssShareStack(stack)         share a stack (Web Share / clipboard)
+    ssSyncAllSaveBtns()         repaint all [data-save-id] buttons
+    ssOnStacksChange(fn)        live re-render subscription (Watchlist)
+
+  Universal FOLLOWING (sessionStorage 'ss_following_v1'):
+    ssGetFollowing()            followed curator records
+    ssIsFollowing(username)     bool
+    ssToggleFollow(curator) / ssFollow / ssUnfollow
+    ssWireFollowButtons(root)   make any [data-follow] button real+synced
+    ssOnFollowingChange(fn)     live re-render subscription
+    Used by Feed clip, clip viewer, Discover search, public profile.
+    Following anywhere shows up in Profile -> Following.
 
   SVG mark injection:
     SS_MARK_SVG constant injected into body on every page load.
@@ -381,7 +433,8 @@ Closest references for mental model:
     - Empty state: animated orb + CTA to go to Feed
     - Filled state: .stacks-wrap with .stack-block per stack
     - Each stack: blurred gradient header + horizontal clip scroll
-    - Stack options (⋮ menu): Rename (coming soon), Delete
+    - Stack options (⋮ menu): Rename (real — opens rename sheet,
+      ssRenameStack), Delete
     - Remove clip: hover reveals ✕ button top-left of clip card
 
   Sheets:
@@ -483,6 +536,14 @@ Closest references for mental model:
       face='owner', lands on Create tab.
     - Edit Profile (#ep-overlay): identity only (photo, name, bio,
       + specialties for curators). Stays IN the profile page.
+    - Photo cropper (#crop-overlay): picking a photo (in Edit Profile
+      OR Become a Curator) opens a pan + zoom cropper (drag, slider,
+      pinch, scroll-wheel) that exports a centered 512px SQUARE JPEG via
+      openCropper(file, cb). Square output means it fits any avatar box
+      via background cover. Zoom range spans "fit whole photo" to a tight
+      crop; zoomed-out padding is a frosted-glass colour wash (downscale
+      -> heavy blur -> dark veil), baked into the export. The avatar
+      element (.av) uses background-size:cover so it never renders zoomed.
 
   Settings: the ⚙ (hero top-right AND sidebar) now navigates to the
   separate showshak-settings.html (NOT a modal). goSettings().
@@ -491,7 +552,8 @@ Closest references for mental model:
 
   Key functions:
     setFace(f) / renderAll()  switch face + full re-render
-    renderHeader()            identity + socials + actions + cockpit + creds
+    renderHeader()            identity + actions + cockpit + creds
+                              (NO social links — removed by design)
     renderCockpit()           owner-only private metrics, above clips
     renderCreds()             face-aware stats bar (the metrics rule)
     renderTabs()/switchTab()  face-aware tabs + panel switching
