@@ -460,6 +460,54 @@ function _ssNormalizeCurator(curator) {
   };
 }
 
+/* ── OPEN A CURATOR PROFILE (app-wide) ───────────────────────────
+   Tapping a curator's name/avatar on ANY clip (Feed, clip viewer,
+   Discover results, Watchlist, Profile grids) opens their PUBLIC
+   profile. We stash the curator object so the profile page can render
+   real data with no backend yet (same handoff Discover search uses).
+   Accepts a username string or a partial curator object. */
+function ssOpenCurator(curator) {
+  const c = _ssNormalizeCurator(curator);
+  if (!c) return;
+  try { sessionStorage.setItem('ss_view_curator_v1', JSON.stringify({
+    username: c.username, name: c.name, letter: c.letter, bg: c.bg,
+    verified: c.verified, clipCount: c.clips,
+  })); } catch (e) {}
+  const url = 'showshak-profile.html?face=public&curator=' + encodeURIComponent(c.username);
+  // If a full-screen clip viewer is open, tear it down first so we don't
+  // navigate "underneath" it.
+  if (typeof ssCloseClip === 'function') {
+    const v = document.getElementById('ss-clip-viewer');
+    if (v && v.classList.contains('open')) ssCloseClip();
+  }
+  if (typeof ssNavigate === 'function') ssNavigate(url);
+  else window.location.href = url;
+}
+
+/* Wire any element declaratively as a "open this curator" trigger:
+   give it  data-curator="<username>"  (+ optional data-curator-name /
+   -letter / -bg / -verified). ssWireCuratorLinks(root) attaches the
+   click handler (and stops propagation so it doesn't trigger the clip).
+   Pages call this after rendering clip/creator markup. */
+function ssWireCuratorLinks(root) {
+  const scope = root || document;
+  scope.querySelectorAll('[data-curator]').forEach(el => {
+    if (el._ssCuratorWired) return;
+    el._ssCuratorWired = true;
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      ssOpenCurator({
+        username: el.getAttribute('data-curator'),
+        name:     el.getAttribute('data-curator-name'),
+        letter:   el.getAttribute('data-curator-letter'),
+        bg:       el.getAttribute('data-curator-bg'),
+        verified: el.getAttribute('data-curator-verified') === '1',
+      });
+    });
+  });
+}
+
 /* Wire any Follow button declaratively. Give the button:
      data-follow="<username>"  (+ optional data-follow-* attrs for the
      name/letter/bg/verified/clips so the Following list shows real info).
@@ -1243,8 +1291,8 @@ function _ssvClipHTML(c, i) {
 
       <div class="ssv-bottom">
         <div class="ssv-creator-row">
-          <div class="ssv-avatar" style="background:${c.creator.bg}">${c.creator.letter}</div>
-          <span class="ssv-handle">@${c.creator.name}</span>
+          <div class="ssv-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${c.creator.letter}</div>
+          <span class="ssv-handle" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
           <span class="ssv-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
         <div class="ssv-tags">${tags}</div>
@@ -1296,6 +1344,7 @@ function ssOpenClip(clipOrId, list) {
   document.getElementById('ssv-clip-0')?.classList.add('active');
   ssSyncAllSaveBtns();
   ssWireFollowButtons(feed);   // make in-viewer Follow buttons real + synced
+  ssWireCuratorLinks(feed);    // tap curator name/avatar -> their profile
 
   // Push a history entry so the mobile back-swipe (and the browser/
   // Android back button) CLOSES the viewer instead of navigating away

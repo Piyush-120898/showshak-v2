@@ -679,8 +679,8 @@ function clipCardHTML(clip, size = 'lg') {
         <div class="${vigClass}"></div>
         ${playEl}
         <div style="position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:5px">
-          <div style="width:${avSize};height:${avSize};border-radius:50%;border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-size:${avFont};font-weight:700;color:#fff;flex-shrink:0;background:${clip.creator.bg}">${clip.creator.letter}</div>
-          <span style="font-size:${handleFont};font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,0.8)">@${clip.creator.name}</span>
+          <div data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}" style="width:${avSize};height:${avSize};border-radius:50%;border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-size:${avFont};font-weight:700;color:#fff;flex-shrink:0;background:${clip.creator.bg}">${clip.creator.letter}</div>
+          <span data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}" style="font-size:${handleFont};font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,0.8)">@${clip.creator.name}</span>
         </div>
       </div>
       <div class="${capClass}">
@@ -908,7 +908,7 @@ function showResultsView(clips, label, curators) {
         <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
       </div>
       <div class="result-clip-info">
-        <div class="result-clip-creator">@${clip.creator.name}</div>
+        <div class="result-clip-creator" data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}">@${clip.creator.name}</div>
         <div class="result-clip-caption">${clip.caption}</div>
         <div class="result-clip-tags">
           ${clip.genre.map(g=>`<span class="result-clip-tag">${g}</span>`).join('')}
@@ -922,6 +922,7 @@ function showResultsView(clips, label, curators) {
 
   list.innerHTML = html;
   if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(list);
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(list);
 }
 
 function showDefaultView() {
@@ -1012,6 +1013,8 @@ buildPlatforms();
 buildForYou();
 // Restore saved states from sessionStorage on page load
 ssSyncAllSaveBtns();
+// Make every curator name/avatar on the default-view cards open their profile
+if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document);
 </script>
 </body>
 </html>

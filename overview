@@ -302,6 +302,18 @@ Closest references for mental model:
     Used by Feed clip, clip viewer, Discover search, public profile.
     Following anywhere shows up in Profile -> Following.
 
+  Open a curator profile (app-wide):
+    ssOpenCurator(curator)      navigate to that curator's PUBLIC profile
+                                (showshak-profile.html?face=public&curator=)
+    ssWireCuratorLinks(root)    make any [data-curator] element open the
+                                curator on click (stops propagation so it
+                                doesn't trigger the clip). Wired on EVERY
+                                curator name/avatar across Feed, the clip
+                                viewer, Discover (results + cards), and
+                                Watchlist (stack + recommended clips), plus
+                                the Profile Following list. Tapping a
+                                curator's name/avatar opens their profile.
+
   SVG mark injection:
     SS_MARK_SVG constant injected into body on every page load.
     Use <svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg>

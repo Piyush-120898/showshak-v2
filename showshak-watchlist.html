@@ -762,7 +762,7 @@ function render() {
           <div class="wl-clip-vig"></div>
           <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}',${c.id})">✕</div>
           <div class="wl-clip-meta">
-            <div class="wl-clip-creator">@${c.creator}</div>
+            <div class="wl-clip-creator" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter||''}" data-curator-bg="${c.creatorBg||''}">@${c.creator}</div>
             <div class="wl-clip-tag">${c.genre[0]} · ${c.lang}</div>
           </div>
         </div>
@@ -806,6 +806,7 @@ function render() {
 
   // Sync rec save button states against current storage
   ssSyncAllSaveBtns();
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document);
 }
 
 /* ════════════════════════════════════════════════
@@ -840,8 +841,8 @@ function buildRec() {
         <div class="rec-clip-vig"></div>
         <div class="rec-clip-play">${PLAY_SVG}</div>
         <div class="rec-clip-creator-row">
-          <div class="rec-clip-avatar" style="background:${c.creatorBg}">${c.creatorLetter}</div>
-          <span class="rec-clip-handle">@${c.creator}</span>
+          <div class="rec-clip-avatar" style="background:${c.creatorBg}" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter}" data-curator-bg="${c.creatorBg}">${c.creatorLetter}</div>
+          <span class="rec-clip-handle" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter}" data-curator-bg="${c.creatorBg}">@${c.creator}</span>
         </div>
       </div>
       <div class="rec-clip-foot">
@@ -854,6 +855,7 @@ function buildRec() {
       </div>
     </div>
   `).join('');
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(grid);
 }
 
 /* ════════════════════════════════════════════════

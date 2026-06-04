@@ -800,8 +800,8 @@ function buildFeed() {
       <!-- Bottom content -->
       <div class="clip-bottom">
         <div class="creator-row">
-          <div class="creator-avatar" style="background:${show.creator.bg}">${show.creator.letter}</div>
-          <span class="creator-name">@${show.creator.name}</span>
+          <div class="creator-avatar" style="background:${show.creator.bg}" data-curator="${show.creator.name}" data-curator-name="${show.creator.name}" data-curator-letter="${show.creator.letter}" data-curator-bg="${show.creator.bg}">${show.creator.letter}</div>
+          <span class="creator-name" data-curator="${show.creator.name}" data-curator-name="${show.creator.name}" data-curator-letter="${show.creator.letter}" data-curator-bg="${show.creator.bg}">@${show.creator.name}</span>
           <span class="creator-follow" data-follow="${show.creator.name}" data-follow-plus data-follow-name="${show.creator.name}" data-follow-letter="${show.creator.letter}" data-follow-bg="${show.creator.bg}">+ Follow</span>
         </div>
         <div class="tag-row">
@@ -830,6 +830,7 @@ function buildFeed() {
   `;
   feed.appendChild(end);
   if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(feed);
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(feed);
 }
 
 function attachDoubleTap(el, idx) {

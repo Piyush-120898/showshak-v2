@@ -1600,13 +1600,14 @@ function renderFollowing() {
   }
   el.innerHTML = merged.map(f=>`
     <div class="follow-row">
-      <div class="follow-av" style="background:${f.color}">${f.letter}</div>
-      <div class="follow-info">
+      <div class="follow-av" style="background:${f.color}" data-curator="${f.handle}" data-curator-name="${f.handle}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}">${f.letter}</div>
+      <div class="follow-info" data-curator="${f.handle}" data-curator-name="${f.handle}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}" data-curator-verified="${f.verified?1:0}">
         <div class="follow-handle">@${f.handle}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
         <div class="follow-meta">${f.clips} clips</div>
       </div>
       <button class="btn-following" onclick="unfollowFromList('${f.handle}', this)">Following</button>
     </div>`).join('');
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(el);
 }
 function unfollowFromList(handle, btn) {
   if (typeof ssUnfollow === 'function') ssUnfollow(handle);
