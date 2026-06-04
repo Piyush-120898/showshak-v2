@@ -107,6 +107,9 @@ html, body { overflow: hidden; }
   font-family: var(--font-display); font-size: 46px; color: #fff;
   border: 3px solid var(--bg);
   box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+  /* photo (set via JS) must FILL the box, centered — not render zoomed */
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  overflow: hidden;
 }
 @media (max-width: 700px) { .av { width: 86px; height: 86px; font-size: 38px; border-radius: 20px; } }
 .av-flame {
@@ -567,6 +570,61 @@ html, body { overflow: hidden; }
 .pic-hint { font-size: 12px; color: var(--gray2); }
 .pic-hint a { color: var(--red); cursor: pointer; font-weight: 600; }
 
+/* ── PHOTO CROPPER (pan + zoom → square output) ──────────────────
+   Sits above the edit/become modals (z 600). Drag to reposition,
+   slider to zoom. Output is a centered square so it fits ANY avatar
+   box perfectly (no more zoomed/off-centre profile pictures). */
+#crop-overlay {
+  position: fixed; inset: 0; z-index: 600;
+  background: rgba(0,0,0,0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+#crop-overlay.open { opacity: 1; pointer-events: all; }
+.crop-card {
+  width: min(380px, 100%); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 24px; overflow: hidden;
+  transform: translateY(14px) scale(0.98); transition: transform 0.3s var(--ease-spring);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+#crop-overlay.open .crop-card { transform: none; }
+.crop-head { padding: 18px 20px 14px; text-align: center; }
+.crop-title { font-family: var(--font-display); font-size: 22px; letter-spacing: 1px; color: var(--white); }
+.crop-title em { color: var(--red); font-style: normal; }
+.crop-sub { font-size: 12px; color: var(--gray2); margin-top: 4px; }
+/* Stage = the square viewport the user is cropping into */
+.crop-stage {
+  position: relative; width: 280px; height: 280px; margin: 4px auto 16px;
+  border-radius: 50%; overflow: hidden; background: #000;
+  touch-action: none; cursor: grab; user-select: none;
+  box-shadow: 0 0 0 2px var(--border2), inset 0 0 0 1px rgba(0,0,0,0.4);
+}
+.crop-stage:active { cursor: grabbing; }
+.crop-stage canvas { display: block; }
+/* subtle rule-of-thirds + ring so it reads as a cropper */
+.crop-grid { position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
+  background:
+    linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px) 0 33.3% / 100% 33.4%,
+    linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px) 33.3% 0 / 33.4% 100%;
+}
+.crop-zoom-row { display: flex; align-items: center; gap: 12px; padding: 0 24px 6px; }
+.crop-zoom-ic { color: var(--gray2); flex-shrink: 0; }
+.crop-range { -webkit-appearance: none; appearance: none; flex: 1; height: 4px; border-radius: 4px;
+  background: var(--bg4); outline: none; cursor: pointer; }
+.crop-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--red); cursor: pointer; box-shadow: 0 2px 8px rgba(234,59,50,0.5); }
+.crop-range::-moz-range-thumb { width: 18px; height: 18px; border: none; border-radius: 50%;
+  background: var(--red); cursor: pointer; }
+.crop-foot { display: flex; gap: 10px; padding: 14px 20px 20px; }
+.crop-foot button { flex: 1; padding: 13px; border-radius: 100px; font-family: var(--font-body);
+  font-size: 14px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s; }
+.crop-foot button:active { transform: scale(0.97); }
+.crop-cancel { background: transparent; border: 1.5px solid var(--border); color: var(--gray); }
+.crop-cancel:hover { border-color: rgba(255,255,255,0.3); color: var(--white); }
+.crop-save { background: var(--red); border: none; color: #fff; }
+.crop-save:hover { background: var(--red2); }
+
 /* ── Genre / specialty chips ── */
 .gpick { display: flex; flex-wrap: wrap; gap: 8px; }
 .gchip {
@@ -877,6 +935,31 @@ html, body { overflow: hidden; }
 </div>
 
 <!-- ════════════════════════════════════════════
+     PHOTO CROPPER — pan + zoom → square avatar
+════════════════════════════════════════════ -->
+<div id="crop-overlay">
+  <div class="crop-card">
+    <div class="crop-head">
+      <div class="crop-title">Position your <em>photo</em></div>
+      <div class="crop-sub">Drag to move · pinch or slide to zoom</div>
+    </div>
+    <div class="crop-stage" id="crop-stage">
+      <canvas id="crop-canvas" width="280" height="280"></canvas>
+      <div class="crop-grid"></div>
+    </div>
+    <div class="crop-zoom-row">
+      <span class="crop-zoom-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span>
+      <input type="range" class="crop-range" id="crop-range" min="1" max="3" step="0.01" value="1">
+      <span class="crop-zoom-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg></span>
+    </div>
+    <div class="crop-foot">
+      <button class="crop-cancel" onclick="cropCancel()">Cancel</button>
+      <button class="crop-save" onclick="cropConfirm()">Use Photo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
      EDIT PROFILE — modal (user + curator)
 ════════════════════════════════════════════ -->
 <div id="ep-overlay">
@@ -1035,6 +1118,117 @@ function applyAvatar(el) {
     el.style.backgroundColor = PROFILE.color;
   }
 }
+
+/* ════════════════════════════════════════════════
+   PHOTO CROPPER — pan + zoom on a square canvas, export a centered
+   square data-URL. Because the output is always square, it then drops
+   into ANY avatar box (round or rounded-square) with background-size:
+   cover and fits perfectly — no more zoomed/off-centre photos.
+   Call: openCropper(file, dataUrl => { ... })
+════════════════════════════════════════════════ */
+const _crop = { img:null, scale:1, minScale:1, x:0, y:0, cb:null, size:280, drag:false, sx:0, sy:0 };
+
+function openCropper(file, cb) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      _crop.img = img; _crop.cb = cb;
+      // Base scale = cover the square stage; that's the minimum zoom.
+      const s = _crop.size;
+      _crop.minScale = Math.max(s / img.width, s / img.height);
+      _crop.scale = _crop.minScale;
+      _crop.x = (s - img.width  * _crop.scale) / 2;
+      _crop.y = (s - img.height * _crop.scale) / 2;
+      const range = document.getElementById('crop-range');
+      range.min = '1'; range.max = '3'; range.step = '0.01'; range.value = '1';
+      document.getElementById('crop-overlay').classList.add('open');
+      _cropDraw();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function _cropClamp() {
+  const s = _crop.size, w = _crop.img.width * _crop.scale, h = _crop.img.height * _crop.scale;
+  // Keep the image covering the stage (no empty gaps).
+  _crop.x = Math.min(0, Math.max(s - w, _crop.x));
+  _crop.y = Math.min(0, Math.max(s - h, _crop.y));
+}
+function _cropDraw() {
+  const cv = document.getElementById('crop-canvas');
+  if (!cv || !_crop.img) return;
+  const ctx = cv.getContext('2d');
+  _cropClamp();
+  ctx.clearRect(0,0,_crop.size,_crop.size);
+  ctx.drawImage(_crop.img, _crop.x, _crop.y, _crop.img.width*_crop.scale, _crop.img.height*_crop.scale);
+}
+
+/* Drag + zoom wiring (mouse + touch + pinch) */
+(function _cropWire() {
+  const stage = document.getElementById('crop-stage');
+  const range = document.getElementById('crop-range');
+  if (!stage || !range) return;
+
+  const setZoomFromSlider = () => {
+    const factor = parseFloat(range.value);           // 1..3
+    const cx = _crop.size/2, cy = _crop.size/2;
+    const prev = _crop.scale;
+    _crop.scale = _crop.minScale * factor;
+    // zoom around the centre of the stage
+    _crop.x = cx - (cx - _crop.x) * (_crop.scale/prev);
+    _crop.y = cy - (cy - _crop.y) * (_crop.scale/prev);
+    _cropDraw();
+  };
+  range.addEventListener('input', setZoomFromSlider);
+
+  const start = (x,y) => { _crop.drag = true; _crop.sx = x; _crop.sy = y; };
+  const move  = (x,y) => { if(!_crop.drag) return; _crop.x += x-_crop.sx; _crop.y += y-_crop.sy; _crop.sx=x; _crop.sy=y; _cropDraw(); };
+  const end   = () => { _crop.drag = false; };
+
+  stage.addEventListener('mousedown', e => start(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+  window.addEventListener('mouseup', end);
+
+  let pinchDist = 0;
+  stage.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY);
+    else if (e.touches.length === 2) pinchDist = _touchDist(e);
+  }, { passive:true });
+  stage.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      const d = _touchDist(e);
+      if (pinchDist) {
+        const f = Math.min(3, Math.max(1, parseFloat(range.value) * (d/pinchDist)));
+        range.value = String(f); setZoomFromSlider();
+      }
+      pinchDist = d;
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      move(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }
+  }, { passive:false });
+  stage.addEventListener('touchend', () => { end(); pinchDist = 0; });
+})();
+function _touchDist(e){ const a=e.touches[0],b=e.touches[1]; return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY); }
+
+function cropConfirm() {
+  // Export at 2x the stage for a crisp avatar.
+  const out = 512, src = document.getElementById('crop-canvas');
+  const cv = document.createElement('canvas'); cv.width = out; cv.height = out;
+  cv.getContext('2d').drawImage(src, 0, 0, out, out);
+  const dataUrl = cv.toDataURL('image/jpeg', 0.9);
+  document.getElementById('crop-overlay').classList.remove('open');
+  if (_crop.cb) _crop.cb(dataUrl);
+  _crop.cb = null; _crop.img = null;
+}
+function cropCancel() {
+  document.getElementById('crop-overlay').classList.remove('open');
+  _crop.cb = null; _crop.img = null;
+}
+
 
 function renderHeader() {
   isCreator = isCurator();   // keep legacy creator-styled CSS/logic in sync with face
@@ -1417,13 +1611,12 @@ function closeBecomeCurator() {
 function bcPickPhoto(e) {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    bcPhoto = ev.target.result;
+  e.target.value = '';   // allow re-picking the same file later
+  openCropper(file, (dataUrl) => {
+    bcPhoto = dataUrl;
     const av = document.getElementById('bc-pic-av');
     av.textContent = ''; av.style.backgroundImage = `url(${bcPhoto})`; av.style.backgroundColor = '';
-  };
-  reader.readAsDataURL(file);
+  });
 }
 function bcRenderGenres() {
   document.getElementById('bc-genres').innerHTML = GENRE_OPTIONS.map(g =>
@@ -1518,14 +1711,13 @@ function closeEditProfile() { document.getElementById('ep-overlay').classList.re
 function epPickPhoto(e) {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    epPhoto = ev.target.result;
+  e.target.value = '';   // allow re-picking the same file later
+  openCropper(file, (dataUrl) => {
+    epPhoto = dataUrl;
     const av = document.getElementById('ep-pic-av');
     av.textContent = ''; av.style.backgroundImage = `url(${epPhoto})`; av.style.backgroundColor = '';
     document.getElementById('ep-pic-remove').style.display = 'inline';
-  };
-  reader.readAsDataURL(file);
+  });
 }
 function epRemovePhoto(e) {
   if (e) e.stopPropagation();
