@@ -255,6 +255,25 @@ Closest references for mental model:
     Use <svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg>
     anywhere in HTML to reference the ShowShak logo.
 
+  Shared chrome injection (sidebar + mobile nav + Watch It sheet):
+    The sidebar + mobile-bottom-nav markup is NO LONGER copy-pasted
+    into each page. It lives ONCE in shared.js (SS_SIDEBAR_HTML,
+    SS_MOBILE_NAV_HTML, SS_WATCH_SHEET_HTML). A page opts in with a
+    single placeholder where the chrome should go:
+        <div id="ss-nav"></div>
+    ssInjectChrome() (runs on shared.js load) replaces it with the
+    sidebar + Watch It sheet + mobile nav, then highlightActiveNav()
+    marks the active item from window.location.pathname.
+    • Add data-no-sheet to the placeholder to SKIP the shared Watch It
+      sheet (Feed does this — it has its own bespoke sheet markup).
+    • Pages WITHOUT the placeholder (index.html, showshak-upload.html)
+      are left untouched.
+    • Because the shared sheet is now on Discover/Watchlist/Profile too,
+      ssOpenSheet() from the universal clip viewer finally works there
+      (previously the sheet only existed on Feed → Watch It silently
+      did nothing on the other pages).
+    To change nav links/icons for the whole app, edit shared.js ONCE.
+
 
 ── FEED PAGE (showshak-feed.html) ──────────────────────────────
 

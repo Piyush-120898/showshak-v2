@@ -145,26 +145,93 @@ function handleWatchNow(p, t) { ssHandleWatchNow(p, t); }
 
 
 /* ════════════════════════════════════════════════
+   SHARED CHROME — sidebar + mobile nav + Watch It sheet
+   ─────────────────────────────────────────────────────
+   This markup used to be copy-pasted (identically) into every
+   app page. It now lives here once. A page opts in by placing
+   an empty <div id="ss-nav"></div> where the chrome should go;
+   ssInjectChrome() fills it. Pages WITHOUT that placeholder
+   (e.g. index.html, showshak-upload.html) are left untouched.
+
+   The Watch It sheet (#watch-sheet) is included so ssOpenSheet()
+   works on EVERY page that has the nav — previously the sheet
+   only existed on the Feed, so "Watch It" from the universal
+   clip viewer silently did nothing on Discover/Watchlist/Profile.
+════════════════════════════════════════════════ */
+const SS_SIDEBAR_HTML = `
+<nav class="sidebar" id="sidebar">
+  <a class="sidebar-logo" href="showshak-feed.html">
+    <div class="sidebar-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+    <span class="sidebar-wordmark">show<em>shak</em></span>
+  </a>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-nav">
+    <a class="nav-item" data-nav="feed" href="showshak-feed.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="nav-item-label">Feed</span></a>
+    <a class="nav-item" data-nav="discover" href="showshak-discover.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="nav-item-label">Discover</span></a>
+    <a class="nav-item" data-nav="watchlist" href="showshak-watchlist.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="nav-item-label">Watchlist</span></a>
+    <a class="nav-item" data-nav="profile" href="showshak-profile.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="nav-item-label">Profile</span></a>
+  </div>
+  <div class="sidebar-bottom">
+    <a class="nav-item-settings" data-nav="settings" href="showshak-settings.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></a>
+  </div>
+</nav>`;
+
+const SS_WATCH_SHEET_HTML = `
+<div id="watch-sheet-overlay" onclick="ssCloseSheet()"></div>
+<div id="watch-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header" id="sheet-header"></div>
+  <div class="sheet-options-label">WATCH ON</div>
+  <div id="sheet-options"></div>
+  <div class="sheet-cancel" onclick="ssCloseSheet()">Cancel</div>
+</div>`;
+
+const SS_MOBILE_NAV_HTML = `
+<nav class="mobile-bottom-nav">
+  <a class="mob-nav-item" data-mob-nav="feed" href="showshak-feed.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div><span class="mob-nav-label">Feed</span></a>
+  <a class="mob-nav-item" data-mob-nav="discover" href="showshak-discover.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="mob-nav-label">Discover</span></a>
+  <a class="mob-nav-item" data-mob-nav="watchlist" href="showshak-watchlist.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><span class="mob-nav-label">Watchlist</span></a>
+  <a class="mob-nav-item" data-mob-nav="profile" href="showshak-profile.html"><div class="mob-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="mob-nav-label">Profile</span></a>
+</nav>`;
+
+function ssInjectChrome() {
+  const slot = document.getElementById('ss-nav');
+  if (!slot) return;   // page opted out (index/upload) — leave it alone
+  // data-no-sheet lets a page (e.g. Feed, which has its own bespoke sheet
+  // markup) skip the shared Watch It sheet to avoid a duplicate id.
+  const includeSheet = slot.getAttribute('data-no-sheet') === null;
+  slot.outerHTML = SS_SIDEBAR_HTML + (includeSheet ? SS_WATCH_SHEET_HTML : '') + SS_MOBILE_NAV_HTML;
+  highlightActiveNav();
+}
+
+/* ════════════════════════════════════════════════
    NAV HIGHLIGHT
 ════════════════════════════════════════════════ */
-(function highlightActiveNav() {
+function highlightActiveNav() {
   const path = window.location.pathname.toLowerCase();
   const navMap = {
-    'feed':      '[data-nav="feed"]',
-    'discover':  '[data-nav="discover"]',
-    'watchlist': '[data-nav="watchlist"]',
-    'profile':   '[data-nav="profile"]',
+    'feed':      'feed',
+    'discover':  'discover',
+    'watchlist': 'watchlist',
+    'profile':   'profile',
+    'settings':  'settings',
   };
-  for (const [key, selector] of Object.entries(navMap)) {
+  for (const key of Object.keys(navMap)) {
     if (path.includes(key)) {
-      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll(selector).forEach(el => el.classList.add('active'));
+      document.querySelectorAll('.nav-item, .nav-item-settings').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll(`[data-nav="${key}"]`).forEach(el => el.classList.add('active'));
       document.querySelectorAll('.mob-nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll(`[data-mob-nav="${key}"]`).forEach(el => el.classList.add('active'));
       break;
     }
   }
-})();
+}
+
+// Inject shared chrome as early as possible (the script tag is at end of
+// <body>, so the DOM placeholder already exists). Falls back to highlight
+// for any page that hard-codes its own nav and has no placeholder.
+ssInjectChrome();
+highlightActiveNav();
 
 
 /* ════════════════════════════════════════════════
@@ -244,6 +311,7 @@ document.addEventListener('click', function(e) {
   const href = link.getAttribute('href');
   if (!href || href === '#' || href.startsWith('http') || link.hasAttribute('onclick')) return;
   const inNav = link.closest('.sidebar-nav') ||
+                link.closest('.sidebar-bottom') ||
                 link.closest('.mobile-bottom-nav') ||
                 link.closest('.sidebar-logo');
   if (!inNav) return;
