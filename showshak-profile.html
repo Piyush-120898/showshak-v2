@@ -1183,14 +1183,26 @@ function _cropBuildBackdrop() {
   const bd = document.createElement('canvas'); bd.width = S; bd.height = S;
   const bctx = bd.getContext('2d');
   bctx.fillStyle = '#0B0B0F'; bctx.fillRect(0, 0, S, S);
+
+  // Frosted-glass: first downscale the photo to a TINY canvas (~24px) so
+  // all detail is destroyed and only the dominant colours survive, then
+  // blow that back up with heavy blur. Result reads as soft colour wash,
+  // not a recognisable image.
   try {
-    bctx.filter = 'blur(' + Math.round(S * 0.06) + 'px)';
-    const cover = Math.max(S / img.width, S / img.height);
-    const cw = img.width * cover, ch = img.height * cover;
-    bctx.drawImage(img, (S - cw) / 2, (S - ch) / 2, cw, ch);
+    const tiny = document.createElement('canvas'); tiny.width = 24; tiny.height = 24;
+    const tctx = tiny.getContext('2d');
+    const cv2 = Math.max(24 / img.width, 24 / img.height);
+    tctx.drawImage(img, (24 - img.width*cv2)/2, (24 - img.height*cv2)/2, img.width*cv2, img.height*cv2);
+
+    bctx.filter = 'blur(' + Math.round(S * 0.16) + 'px)';   // heavy blur
+    bctx.imageSmoothingEnabled = true;
+    bctx.drawImage(tiny, -20, -20, S + 40, S + 40);          // overscan to avoid edges
     bctx.filter = 'none';
-    bctx.fillStyle = 'rgba(11,11,15,0.35)'; bctx.fillRect(0, 0, S, S);
   } catch (e) { /* filter unsupported → solid fill already there */ }
+
+  // Strong, slightly translucent dark veil so it's clearly a BACKDROP
+  // (opaque-ish, just colour) and the cropped photo pops in front.
+  bctx.fillStyle = 'rgba(11,11,15,0.55)'; bctx.fillRect(0, 0, S, S);
   _crop.backdrop = bd;
 }
 
