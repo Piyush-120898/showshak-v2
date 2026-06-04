@@ -1126,7 +1126,7 @@ function applyAvatar(el) {
    cover and fits perfectly — no more zoomed/off-centre photos.
    Call: openCropper(file, dataUrl => { ... })
 ════════════════════════════════════════════════ */
-const _crop = { img:null, scale:1, fit:1, cover:1, min:1, max:1, x:0, y:0, cb:null, size:280, drag:false, sx:0, sy:0 };
+const _crop = { img:null, backdrop:null, scale:1, fit:1, cover:1, min:1, max:1, x:0, y:0, cb:null, size:280, drag:false, sx:0, sy:0 };
 
 function openCropper(file, cb) {
   const reader = new FileReader();
@@ -1146,6 +1146,7 @@ function openCropper(file, cb) {
       _crop.scale = _crop.cover;
       _crop.x = (s - img.width  * _crop.scale) / 2;
       _crop.y = (s - img.height * _crop.scale) / 2;
+      _cropBuildBackdrop();   // blur the padding ONCE, not every frame
       const range = document.getElementById('crop-range');
       range.min   = _crop.min.toFixed(4);
       range.max   = _crop.max.toFixed(4);
@@ -1172,45 +1173,67 @@ function _cropClamp() {
   _crop.y = (h <= s) ? (s - h) / 2 : Math.min(0, Math.max(s - h, _crop.y));
 }
 
-/* Draw to any size canvas (display = 280, export = 512). A blurred
-   "cover" backdrop fills any padding when the photo is zoomed out, so
-   it always looks intentional — never empty bars. */
+/* Pre-render the blurred "cover" backdrop ONCE per image into an
+   offscreen canvas. Re-blurring every frame (ctx.filter) was the main
+   source of slider jank — now each frame is just two cheap drawImage
+   calls. Built at export size so it's reused for both preview + export. */
+function _cropBuildBackdrop() {
+  const img = _crop.img; if (!img) return;
+  const S = 512;
+  const bd = document.createElement('canvas'); bd.width = S; bd.height = S;
+  const bctx = bd.getContext('2d');
+  bctx.fillStyle = '#0B0B0F'; bctx.fillRect(0, 0, S, S);
+  try {
+    bctx.filter = 'blur(' + Math.round(S * 0.06) + 'px)';
+    const cover = Math.max(S / img.width, S / img.height);
+    const cw = img.width * cover, ch = img.height * cover;
+    bctx.drawImage(img, (S - cw) / 2, (S - ch) / 2, cw, ch);
+    bctx.filter = 'none';
+    bctx.fillStyle = 'rgba(11,11,15,0.35)'; bctx.fillRect(0, 0, S, S);
+  } catch (e) { /* filter unsupported → solid fill already there */ }
+  _crop.backdrop = bd;
+}
+
+/* Draw to any size canvas (display = 280, export = 512). Uses the cached
+   backdrop for the padding so every frame is light and butter-smooth. */
 function _cropDrawTo(ctx, size) {
   const img = _crop.img; if (!img) return;
   const k = size / _crop.size;
   const w = img.width  * _crop.scale * k;
   const h = img.height * _crop.scale * k;
   const x = _crop.x * k, y = _crop.y * k;
-  ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = '#0B0B0F'; ctx.fillRect(0, 0, size, size);
-  try {
-    ctx.save();
-    ctx.filter = 'blur(' + Math.round(size * 0.05) + 'px)';
-    const cover = Math.max(size / img.width, size / img.height);
-    const cw = img.width * cover, ch = img.height * cover;
-    ctx.drawImage(img, (size - cw) / 2, (size - ch) / 2, cw, ch);
-    ctx.restore();
-    ctx.fillStyle = 'rgba(11,11,15,0.35)'; ctx.fillRect(0, 0, size, size);
-  } catch (e) { /* filter unsupported → solid fill already drawn */ }
+  if (_crop.backdrop) ctx.drawImage(_crop.backdrop, 0, 0, size, size);
+  else { ctx.fillStyle = '#0B0B0F'; ctx.fillRect(0, 0, size, size); }
   ctx.drawImage(img, x, y, w, h);
 }
+/* Coalesce all redraw requests into one paint per animation frame. */
+let _cropRaf = 0;
 function _cropDraw() {
-  const cv = document.getElementById('crop-canvas');
-  if (!cv || !_crop.img) return;
-  _cropClamp();
-  _cropDrawTo(cv.getContext('2d'), _crop.size);
+  if (_cropRaf) return;
+  _cropRaf = requestAnimationFrame(() => {
+    _cropRaf = 0;
+    const cv = document.getElementById('crop-canvas');
+    if (!cv || !_crop.img) return;
+    _cropClamp();
+    _cropDrawTo(cv.getContext('2d'), _crop.size);
+  });
 }
 
-/* Zoom to an absolute scale, keeping the stage centre fixed. */
-function _cropSetScale(newScale) {
+/* Zoom to an absolute scale, keeping the stage centre fixed.
+   `fromSlider` = true means the range thumb is the source of truth, so we
+   must NOT write back to range.value (that resets the thumb mid-drag and
+   is exactly what made it feel sticky). */
+function _cropSetScale(newScale, fromSlider) {
   newScale = Math.max(_crop.min, Math.min(_crop.max, newScale));
   const c = _crop.size / 2, prev = _crop.scale;
   if (newScale === prev) return;
   _crop.x = c - (c - _crop.x) * (newScale / prev);
   _crop.y = c - (c - _crop.y) * (newScale / prev);
   _crop.scale = newScale;
-  const range = document.getElementById('crop-range');
-  if (range) range.value = String(newScale);
+  if (!fromSlider) {
+    const range = document.getElementById('crop-range');
+    if (range) range.value = String(newScale);
+  }
   _cropDraw();
 }
 
@@ -1220,7 +1243,8 @@ function _cropSetScale(newScale) {
   const range = document.getElementById('crop-range');
   if (!stage || !range) return;
 
-  range.addEventListener('input', () => _cropSetScale(parseFloat(range.value)));
+  // Slider drives scale directly; never written back to mid-drag.
+  range.addEventListener('input', () => _cropSetScale(parseFloat(range.value), true));
 
   const start = (x,y) => { _crop.drag = true; _crop.sx = x; _crop.sy = y; };
   const move  = (x,y) => { if(!_crop.drag) return; _crop.x += x-_crop.sx; _crop.y += y-_crop.sy; _crop.sx=x; _crop.sy=y; _cropDraw(); };
@@ -1260,11 +1284,11 @@ function cropConfirm() {
   const dataUrl = cv.toDataURL('image/jpeg', 0.92);
   document.getElementById('crop-overlay').classList.remove('open');
   if (_crop.cb) _crop.cb(dataUrl);
-  _crop.cb = null; _crop.img = null;
+  _crop.cb = null; _crop.img = null; _crop.backdrop = null;
 }
 function cropCancel() {
   document.getElementById('crop-overlay').classList.remove('open');
-  _crop.cb = null; _crop.img = null;
+  _crop.cb = null; _crop.img = null; _crop.backdrop = null;
 }
 
 
