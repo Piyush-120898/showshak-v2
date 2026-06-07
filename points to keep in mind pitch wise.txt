@@ -231,3 +231,178 @@ H. CATEGORY POSITIONING:
     users + one IP-lawyer conversation. Then everything above unlocks.
 
 ═══════════════════════════════════════════════════════════════
+
+
+
+═══════════════════════════════════════════════════════════════
+  MARKET VALIDATION & SIZING  (added 2026 — investor-grade ammo)
+  Use these in the deck. Every number has a source. Treat as a
+  living section; refresh figures before any raise.
+  NOTE: market-size figures are 3rd-party estimates and vary by
+  analyst — cite a range, never a single vanity number.
+═══════════════════════════════════════════════════════════════
+
+──────────────────────────────────────────────────────────────
+  PART 1 — THE PROBLEM IS REAL, MEASURED & WORSENING (global)
+──────────────────────────────────────────────────────────────
+  - Titles per platform exploded from ~2,000 (2012) to 10,000+ on
+    Netflix/Prime by 2024. Abundance became paralysis. (Statista, 2024)
+  - ~72% of viewers spend MORE time browsing than watching.
+    (Deloitte Digital Media Trends, 2024)
+  - ~110 hours/year (~5 days) spent just DECIDING what to watch.
+    (UserTesting / Talker Research, 2025)
+  - 60%+ of viewers feel overwhelmed by too much choice; "scroll
+    paralysis" is a measured driver of CHURN — frustrated users
+    unsubscribe. (Deloitte 2024; Tasteray)
+  - 29% of Americans spend 30+ min deciding; worse among younger
+    viewers. (Bango, 2026)
+  TAKEAWAY: "What to watch" is not a hunch — it is a quantified,
+  growing pain that directly costs streamers money via churn.
+
+──────────────────────────────────────────────────────────────
+  PART 2 — INDIA (our launch market — the worst-hit, biggest upside)
+──────────────────────────────────────────────────────────────
+  WHY INDIA IS THE SHARPEST WEDGE:
+  - Most FRAGMENTED market on earth: 60+ OTT services across 13+
+    languages → the "what to watch" + "where to watch" pain is
+    structurally worse here than anywhere. (the-captable; LiveMint)
+  - OTT market: USD 5.4B (2025) → USD 28.1B by 2034, ~19% CAGR.
+    (IMARC). OTT video revenue ~USD 4.96B in 2026 (Statista).
+  - ~1.45 BILLION OTT MAUs (overlapping across services); YouTube
+    alone 772M MAUs; smartphone users → ~885M by FY28. (CLSA, 2026)
+  - M&E sector INR 2.78 trillion in 2025 (+9% YoY); DIGITAL MEDIA HAS
+    OVERTAKEN TV as the largest segment. (FICCI–EY, 2026)
+  - Incumbents validate the pain: JioHotstar partnered with OpenAI
+    for "Multilingual Cognitive Search" to fix the "what to watch"
+    problem. (Financial Express, 2026) → the problem is now urgent
+    enough that the biggest player is spending on it.
+
+  INDIA CREATOR ECONOMY (our supply side — formalising fast):
+  - Influencer marketing: INR 3,000–3,500 Cr (2025) → INR 4,500–5,000
+    Cr by 2027, ~22% CAGR. (Kofluence, 2026)
+  - 15% of active creators now registered as formal businesses; brands
+    tying creator spend to revenue targets. (Kofluence/CampaignIndia)
+  - Creator economy projected to influence ~USD 1 TRILLION of impact
+    by 2030 (BCG); creator-led commerce ~USD 25B GMV by 2030
+    (Deloitte–Google). Influence is moving metro → tier 2/3.
+  TAKEAWAY: the tastemakers we need are growing, going pro, and
+  hungry — and India is writing the playbook on creator commerce.
+
+──────────────────────────────────────────────────────────────
+  PART 3 — GLOBAL (the expansion thesis / TAM ceiling)
+──────────────────────────────────────────────────────────────
+  - Global streaming subscription revenue passed USD 150B in 2025
+    (USD 157.1B, +14% YoY); ~USD 177B incl. advertising. (Ampere)
+  - Global creator economy ~USD 205B (2024) → projected ~USD 1.35
+    TRILLION by 2033, ~23% CAGR. (Grand View Research)
+  - Short-form video ad spend is large and compounding double digits;
+    TikTok ~40% of short-video share, Reels & Shorts ~20% each. (shno)
+  - Proof a neutral cross-platform layer is a real BUSINESS, not a
+    feature:
+      • JustWatch: live in 32 countries, tens of millions of users,
+        PROFITABLE since 2016, clients incl. Sony/Universal/Paramount/
+        Fox. (JustWatch)
+      • Reelgood: where-to-watch data LICENSED BY Google, Apple, Starz,
+        Tubi; trained on 100M+ users over 8 years. (Reelgood)
+  CRITICAL DIFFERENTIATION: JustWatch/Reelgood monetise a COLD
+  DATABASE (where to watch). They have NO taste layer, NO emotion, NO
+  creator trust, NO "what should I watch + why." That whitespace — the
+  top of the funnel — is exactly ours. We are not competing on database
+  completeness; we win on engagement + trust.
+
+──────────────────────────────────────────────────────────────
+  PART 4 — THE COMPETITIVE GAP (why now, why us)
+──────────────────────────────────────────────────────────────
+  Everyone attacks "what to watch" as a UTILITY/DATABASE/AI-SEARCH
+  problem:
+    • OTT aggregators (OTTplay, Airtel Xstream, Tata Play) = bundle
+      subs + a search box.
+    • JustWatch / Reelgood / OTTASIA = cold "where to watch" lookup.
+    • AI search (JioHotstar + OpenAI) = better keyword/semantic search.
+  NONE answer "WHAT should I watch, and why should I TRUST it" via
+  HUMAN TASTE + EMOTION + one decisive action (Watch It).
+  That is the gap-inside-the-gap: Letterboxd's soul + TikTok's format
+  + an action layer. Incumbents are databases; we are a TRUST NETWORK.
+  Incumbent platforms (Netflix etc.) structurally CANNOT be neutral
+  cross-platform (they won't promote rivals) — so they cannot copy our
+  core without ceasing to be themselves. Neutrality = moat.
+
+──────────────────────────────────────────────────────────────
+  PART 5 — HONEST VERDICT (don't let validation become a comfort blanket)
+──────────────────────────────────────────────────────────────
+  - Market-gap fit on the PROBLEM: STRONG, quantified, India-acute.
+  - Differentiation on the SOLUTION: real (trust layer vs database).
+  - The bet does NOT ride on whether the gap exists (it does) — it
+    rides on CRACKING THREE-SIDED COLD-START (15 curators posting +
+    100 users returning) before an incumbent fakes "taste" with AI.
+  - "Stop validating the problem — it's validated. The next unit of
+    truth is curators posting and users coming back."
+
+
+═══════════════════════════════════════════════════════════════
+  MONETIZATION CLARITY — WHY INVESTORS WILL PROBE IT, & THE ANSWERS
+  (expanded — this is the question that decides the round)
+═══════════════════════════════════════════════════════════════
+
+WHAT "INVESTORS WILL PROBE IT" ACTUALLY MEANS:
+  Aggregators (OTTplay etc.) have a DEAD-SIMPLE, PROVEN model: bundle
+  subscriptions, take a cut. An investor understands it in one line.
+  OUR model (promoted clips + UA/CPA + data) is more valuable BUT less
+  proven and more dependent on the very platforms we rely on for
+  content. So a sharp investor will push on these specific holes. Have
+  crisp answers ready for EACH:
+
+  Q1. "Promoted clips + CPA are your big lines — but both REQUIRE deals
+       with the same streamers who could just block you. What's your
+       leverage?"
+   A: We don't need their permission to START. Watch It uses public
+      universal links + free TMDB availability data — zero deals needed
+      to drive (and measure) traffic. We prove we send high-intent,
+      pre-sold users FIRST (with our own attribution), THEN convert that
+      proof into a paid CPA line. Leverage = demonstrated conversion +
+      our neutrality (we're the only one who can market ALL of them).
+
+  Q2. "Netflix has no affiliate program and Prime's is thin. Who
+       actually PAYS you, and how much?"
+   A: Right — which is why we do NOT pitch affiliate crumbs ($5–25,
+      one-time). We pitch a UA/CPA PARTNERSHIP against the streamer's
+      existing acquisition budget. Anchor: streamers spend ~USD 89
+      (Netflix) and up to ~USD 200/yr to acquire ONE subscriber, while
+      OTT CAC keeps rising and price-driven churn runs ~4%+/month. A
+      warm, pre-sold subscriber at peak desire converts far better than
+      their cold ads — so we're a cheaper CAC channel. That's a growth-
+      team line item, not a referral kickback. (Sources: Spyro-Soft;
+      worldmetrics; Deloitte churn.)
+
+  Q3. "Why would a studio pay for promoted clips instead of just
+       buying TikTok/Meta ads?"
+   A: Intent + context. On TikTok a show ad interrupts unrelated
+      scrolling. On ShowShak the ENTIRE audience is in "what do I watch
+      next" mode, from a curator they trust, with a one-tap Watch It at
+      the emotional peak. It's native, on-concept, and demand-
+      independent (a studio pays to build awareness for a new season
+      regardless of whether the user subscribes today). Higher intent =
+      premium CPM/CPA.
+
+  Q4. "Doesn't pushing paid content break the trust the whole thing
+       runs on?" (THE TRUST TAX)
+   A: Yes if undisciplined — so we guard the organic:monetized ratio
+      like the company depends on it (it does). Promoted clips are real
+      curator clips, labelled, rate-limited, and taste-matched. Trust is
+      the inventory; we don't strip-mine it.
+
+  Q5. "When does ANY of this actually make money?"
+   A: Honest answer: every model is GATED BEHIND SCALE + DATA. Nothing
+      monetizes off a prototype. Path: (1) cold-start proof → (2) modest
+      first-party revenue (Premium tier) to show willingness-to-pay and
+      de-risk → (3) UA/CPA pilots once we drive measurable Watch Its →
+      (4) promoted clips at scale → (5) data/intel as the compounding
+      moat. Revenue diversity is a strength; it is NOT a fix for the
+      early stage. Don't oversell near-term revenue — oversell the WEDGE
+      + the cold-start plan.
+
+  THE ONE-LINER TO DISARM THE PROBE:
+   "We have multiple strong, sequenced revenue paths — but we're not
+    asking you to bet on the revenue model today. We're asking you to
+    bet that we can get 15 curators posting and 100 users coming back.
+    Everything above unlocks the moment that's true."
