@@ -2186,10 +2186,21 @@ function _ssvToggleFire(i) {
       });
     });
 
-    // Photo upload → preview now, uploaded to Storage on finish.
+    // Photo upload → validate (type + size to match the bucket rules),
+    // preview now, uploaded to Storage on finish.
     document.getElementById('ss-ob-file').addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
+      const OK_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+      const MAX_BYTES = 2 * 1024 * 1024;   // 2 MB — matches the avatars bucket limit
+      if (!OK_TYPES.includes(file.type)) {
+        if (typeof ssToast === 'function') ssToast('Please use a JPG, PNG or WEBP image');
+        e.target.value = ''; return;
+      }
+      if (file.size > MAX_BYTES) {
+        if (typeof ssToast === 'function') ssToast('Image too large — keep it under 2MB');
+        e.target.value = ''; return;
+      }
       _obData._photoFile = file;
       const reader = new FileReader();
       reader.onload = () => {

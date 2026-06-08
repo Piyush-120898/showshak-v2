@@ -30,8 +30,14 @@ create policy own_subscriptions on user_subscriptions
 --
 -- ── PROFILE PHOTOS (do this in the dashboard, not SQL) ──
 -- The photo step uploads to a Storage bucket named "avatars".
--- Create it once: Supabase → Storage → New bucket →
---   Name: avatars   |   Public bucket: ON (so profile photos display).
+-- Create it once: Supabase → Storage → New bucket → expand
+-- "Additional configuration" and set:
+--   Name:                 avatars
+--   Public bucket:        ON   (so profile photos display)
+--   Restrict file size:   2 MB (plenty for a cropped avatar; blocks abuse)
+--   Allowed MIME types:   image/jpeg, image/png, image/webp
+-- The client validates type + size before upload to match these rules,
+-- so users get a friendly message instead of a silent rejection.
 -- Photo upload is OPTIONAL in the flow, so onboarding still works
 -- before you create the bucket — it just skips the photo gracefully.
 -- ═══════════════════════════════════════════════════════════════
