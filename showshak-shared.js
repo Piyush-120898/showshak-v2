@@ -2192,13 +2192,13 @@ function _ssvToggleFire(i) {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       const OK_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-      const MAX_BYTES = 2 * 1024 * 1024;   // 2 MB — matches the avatars bucket limit
+      const MAX_BYTES = 5 * 1024 * 1024;   // 5 MB — matches the avatars bucket limit
       if (!OK_TYPES.includes(file.type)) {
         if (typeof ssToast === 'function') ssToast('Please use a JPG, PNG or WEBP image');
         e.target.value = ''; return;
       }
       if (file.size > MAX_BYTES) {
-        if (typeof ssToast === 'function') ssToast('Image too large — keep it under 2MB');
+        if (typeof ssToast === 'function') ssToast('Image too large — keep it under 5MB');
         e.target.value = ''; return;
       }
       _obData._photoFile = file;

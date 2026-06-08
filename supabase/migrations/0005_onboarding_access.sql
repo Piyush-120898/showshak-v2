@@ -34,7 +34,7 @@ create policy own_subscriptions on user_subscriptions
 -- "Additional configuration" and set:
 --   Name:                 avatars
 --   Public bucket:        ON   (so profile photos display)
---   Restrict file size:   2 MB (plenty for a cropped avatar; blocks abuse)
+--   Restrict file size:   5 MB (handles any phone photo; still blocks abuse)
 --   Allowed MIME types:   image/jpeg, image/png, image/webp
 -- The client validates type + size before upload to match these rules,
 -- so users get a friendly message instead of a silent rejection.
