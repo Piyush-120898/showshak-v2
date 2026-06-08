@@ -1,5 +1,11 @@
 # ShowShak — Backend Architecture & Data Model
 
+> NOTE: The authoritative table-by-table schema (DDL + RLS) lives in
+> **`backend-schema.md`** — that file reconciles this architecture with
+> the UML diagram (`uml dia.jpeg`) and is the single source of truth for
+> tables/columns. THIS file covers the higher-level architecture (stack,
+> media pipeline, feed, scaling principles). Read both.
+
 > Source of truth for ShowShak's backend. Written for a small team
 > (you + your sister). Built on the agreed stack: **Supabase
 > (Postgres + Auth + Storage + Realtime + Edge Functions) in the
