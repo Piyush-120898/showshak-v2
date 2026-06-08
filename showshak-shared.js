@@ -1612,7 +1612,7 @@ function _ssvToggleFire(i) {
 (function ssGuestGate() {
   'use strict';
 
-  const SIGNED_UP_KEY = 'ss_signed_up_v1';   // sessionStorage: '1' once converted
+  const SIGNED_UP_KEY = 'ss_signed_up_v1';   // sessionStorage: legacy/onboarding flag
   const PROFILE_KEY   = 'ss_user_profile_v1'; // localStorage: set by index onboarding
   const VIEW_LIMIT    = 6;                     // clips before the soft prompt
 
@@ -1620,25 +1620,91 @@ function _ssvToggleFire(i) {
   let _viewPromptShown = false;   // soft view-prompt fires only once
   let _lastActiveId    = null;    // de-dupe consecutive active toggles
 
-  /* ── Signed-up check (the ONE place real auth will plug in) ── */
+  /* ── Live Supabase session (cached so ssIsSignedUp() can be sync) ──
+     getSession() is async, but our click-gate needs an instant yes/no.
+     So we cache the session here and keep it fresh via onAuthStateChange. */
+  let _ssSession = null;
+
+  if (window.ssDB && window.ssDB.auth) {
+    // Initial read (async) — paints buttons correctly once it resolves.
+    window.ssDB.auth.getSession().then(({ data }) => {
+      _ssSession = data && data.session ? data.session : null;
+      if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
+      if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
+    }).catch(() => {});
+    // Live updates: login, logout, token refresh, OAuth redirect return.
+    window.ssDB.auth.onAuthStateChange((_event, session) => {
+      _ssSession = session || null;
+      if (session) {
+        _ssCloseSignupSheet();
+        if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak');
+      }
+      if (typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
+      if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
+    });
+  } else {
+    console.warn('ShowShak: Supabase not loaded — auth gate falls back to local flag.');
+  }
+
+  /* ── Signed-up check (now reads the REAL Supabase session) ──
+     Order: live Supabase session → legacy onboarding/local flag.
+     The local fallback keeps index.html's onboarding users un-gated
+     until they're migrated to real accounts. */
   function ssIsSignedUp() {
+    if (_ssSession) return true;
     try {
       if (sessionStorage.getItem(SIGNED_UP_KEY) === '1') return true;
-      if (localStorage.getItem(PROFILE_KEY)) return true; // came via onboarding
+      if (localStorage.getItem(PROFILE_KEY)) return true;
     } catch (e) {}
     return false;
   }
-  // expose for other code / future auth
   window.ssIsSignedUp = ssIsSignedUp;
 
-  /* ── Mock sign-up (swap for real Supabase auth later) ── */
+  /* ── Current user helper (for pages that need the profile) ── */
+  window.ssCurrentUser = function () { return _ssSession ? _ssSession.user : null; };
+
+  /* ── Real sign-up / sign-in ──
+     'google' / 'apple' → OAuth redirect (returns to this same page).
+     'email'            → email + password via a tiny inline flow. */
   function _ssGuestDoSignup(method) {
-    // FUTURE: call ssDB.auth.signInWith... here; on success set the flag.
-    try { sessionStorage.setItem(SIGNED_UP_KEY, '1'); } catch (e) {}
-    _ssCloseSignupSheet();
-    if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak');
+    if (!window.ssDB || !window.ssDB.auth) {
+      // Hard fallback (e.g. offline prototype): flip the local flag.
+      try { sessionStorage.setItem(SIGNED_UP_KEY, '1'); } catch (e) {}
+      _ssCloseSignupSheet();
+      if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak');
+      return;
+    }
+
+    if (method === 'google' || method === 'apple') {
+      window.ssDB.auth.signInWithOAuth({
+        provider: method,
+        options: { redirectTo: window.location.href }   // come right back here
+      }).then(({ error }) => {
+        if (error) {
+          // Most common cause: provider not enabled yet in the dashboard.
+          if (typeof ssToast === 'function') ssToast('Sign-in unavailable — try Email');
+          console.error('ShowShak OAuth error:', error.message);
+        }
+      });
+      return;
+    }
+
+    if (method === 'email') {
+      _ssShowEmailForm();
+      return;
+    }
   }
   window.ssGuestSignup = _ssGuestDoSignup;
+
+  /* ── Sign out (used by Settings later) ── */
+  window.ssSignOut = function () {
+    if (window.ssDB && window.ssDB.auth) {
+      window.ssDB.auth.signOut().then(() => {
+        try { sessionStorage.removeItem(SIGNED_UP_KEY); } catch (e) {}
+        if (typeof ssToast === 'function') ssToast('Signed out');
+      });
+    }
+  };
 
   /* ── Inject sheet CSS once ── */
   (function _css() {
@@ -1684,6 +1750,21 @@ function _ssvToggleFire(i) {
       .ss-su-btn:active { transform: scale(0.985); }
       .ss-su-btn.primary { background: #EA3B32; border-color: #EA3B32; }
       .ss-su-btn.primary:hover { background: #FF4D42; }
+      .ss-su-btn:disabled { opacity: 0.6; cursor: default; }
+      .ss-su-input {
+        width: 100%; height: 48px; margin-bottom: 10px; padding: 0 16px;
+        background: #1A1A24; border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 13px; color: #fff; font-family: 'DM Sans', sans-serif;
+        font-size: 15px; outline: none; transition: border-color 0.15s;
+      }
+      .ss-su-input:focus { border-color: rgba(234,59,50,0.6); }
+      .ss-su-input::placeholder { color: #5A5A72; }
+      .ss-su-msg { font-size: 12.5px; color: #ff7a70; min-height: 16px;
+        margin: 2px 0 10px; text-align: left; }
+      .ss-su-later { margin-top: 10px; padding: 10px; font-size: 13px;
+        color: #6b6b7a; font-weight: 600; cursor: pointer;
+        -webkit-tap-highlight-color: transparent; }
+      .ss-su-later:hover { color: #9a9aac; }
     `;
     document.head.appendChild(s);
   })();
@@ -1744,6 +1825,72 @@ function _ssvToggleFire(i) {
     if (ssIsSignedUp()) return false;
     _ssOpenSignupSheet(reason || 'fire');
     return true;
+  };
+
+  /* ── Inline email sign-up / sign-in form (reuses the same sheet) ──
+     Replaces the sheet body with email + password fields. Tries to
+     CREATE the account; if it already exists, falls back to signing in.
+     On success, onAuthStateChange closes the sheet + welcomes them. */
+  function _ssShowEmailForm() {
+    _ensureSheet();
+    const sheet = document.getElementById('ss-signup-sheet');
+    if (!sheet) return;
+    sheet.innerHTML = `
+      <div class="ss-su-handle"></div>
+      <div class="ss-su-title" style="margin-top:4px">SIGN UP WITH <em>EMAIL</em></div>
+      <div class="ss-su-sub">Use your email and a password (6+ characters).</div>
+      <input id="ss-su-email" class="ss-su-input" type="email" inputmode="email"
+        autocomplete="email" placeholder="you@email.com" />
+      <input id="ss-su-pass" class="ss-su-input" type="password"
+        autocomplete="new-password" placeholder="Password" />
+      <div id="ss-su-msg" class="ss-su-msg"></div>
+      <button id="ss-su-go" class="ss-su-btn primary" onclick="ssEmailSubmit()">Continue</button>
+      <div class="ss-su-later" onclick="ssEmailBack()">← Other ways to sign up</div>
+    `;
+    setTimeout(() => document.getElementById('ss-su-email')?.focus(), 60);
+  }
+
+  window.ssEmailBack = function () {
+    // Rebuild the default provider sheet.
+    const ov = document.getElementById('ss-signup-overlay');
+    if (ov) ov.remove();           // _ensureSheet() will rebuild the default
+    _ensureSheet();
+    _ssOpenSignupSheet('save');
+  };
+
+  window.ssEmailSubmit = function () {
+    const email = (document.getElementById('ss-su-email')?.value || '').trim();
+    const pass  = document.getElementById('ss-su-pass')?.value || '';
+    const msg   = document.getElementById('ss-su-msg');
+    const btn   = document.getElementById('ss-su-go');
+    const show  = (t) => { if (msg) msg.textContent = t; };
+
+    if (!email || !email.includes('@')) return show('Enter a valid email.');
+    if (pass.length < 6)               return show('Password needs 6+ characters.');
+    if (!window.ssDB || !window.ssDB.auth) return show('Connection unavailable — try again.');
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+    show('');
+
+    window.ssDB.auth.signUp({ email, password: pass }).then(({ data, error }) => {
+      if (!error) {
+        // If email confirmations are OFF, session is live now → state change fires.
+        // If ON, there's no session yet — tell them to check their inbox.
+        if (!data.session) show('Check your inbox to confirm, then come back.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
+        return;
+      }
+      // Account already exists → try signing them in instead.
+      if (/already registered|already exists/i.test(error.message)) {
+        window.ssDB.auth.signInWithPassword({ email, password: pass }).then(({ error: e2 }) => {
+          if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
+          if (e2) show('That email exists, but the password is wrong.');
+        });
+        return;
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Continue'; }
+      show(error.message || 'Could not sign up. Try again.');
+    });
   };
 
   /* ── Reaction gate: intercept Fire/Save/Follow in the CAPTURE phase,
