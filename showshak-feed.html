@@ -611,116 +611,16 @@ html, body { overflow: hidden; }
 <!-- ════════════════════════════════════════════
      SHARED JS
 ════════════════════════════════════════════ -->
+<script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
 
 <!-- ════════════════════════════════════════════
      PAGE-SPECIFIC JS — Feed logic only
 ════════════════════════════════════════════ -->
 <script>
-const SHOWS = [
-  {
-    id:1, title:'SACRED GAMES',
-    year:2018, genre:['Crime','Thriller'], lang:'Hindi',
-    runtime:'55 min/ep', season:'S1 · 8 Episodes',
-    synopsis:'A link in their pasts leads Mumbai crime boss Ganesh Gaitonde to police officer Sartaj Singh.',
-    caption:'This is how you <em>open</em> a series. Zero warning. Zero mercy.',
-    creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' },
-    litCount: 1240,
-    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
-    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
-    bg:'linear-gradient(160deg, #1a0505 0%, #2d0808 30%, #0d0d0d 70%, #000 100%)',
-  },
-  {
-    id:2, title:'THE BEAR',
-    year:2022, genre:['Drama','Comedy'], lang:'English',
-    runtime:'34 min/ep', season:'S1–3 · Available',
-    synopsis:'A young chef from the fine dining world returns to Chicago to run his family sandwich shop.',
-    caption:'The kitchen scene in episode 7 will destroy you. <em>Watch it.</em>',
-    creator:{ name:'streamjunkie_sk', letter:'S', bg:'#FF6B35' },
-    litCount: 876,
-    platforms:[
-      { name:'Disney+', color:'#0E3BD4', label:'D+', sub:'Included in your plan', included:true },
-      { name:'Hulu', color:'#1CE783', label:'H', sub:'Not in your plan', included:false },
-    ],
-    platLabel:'Disney+', platColor:'#0E3BD4', platRgb:'14,59,212',
-    bg:'linear-gradient(160deg, #050510 0%, #0a0a20 30%, #080808 70%, #000 100%)',
-  },
-  {
-    id:3, title:'MIRZAPUR',
-    year:2018, genre:['Action','Crime'], lang:'Hindi',
-    runtime:'45–60 min/ep', season:'S1–3 · Available',
-    synopsis:"A drug baron's son forces two brothers into the world of crime and violence in eastern UP.",
-    caption:'No one escapes Mirzapur. Literally <em>no one.</em>',
-    creator:{ name:'binge_with_priya', letter:'P', bg:'#9B59B6' },
-    litCount: 2100,
-    platforms:[{ name:'Prime Video', color:'#00A8E0', label:'P', sub:'Included in your plan', included:true }],
-    platLabel:'Prime Video', platColor:'#00A8E0', platRgb:'0,168,224',
-    bg:'linear-gradient(160deg, #0a0510 0%, #150820 30%, #0a0505 70%, #000 100%)',
-  },
-  {
-    id:4, title:'STRANGER THINGS',
-    year:2016, genre:['Sci-Fi','Horror'], lang:'English',
-    runtime:'51 min/ep', season:'S1–4 · Available',
-    synopsis:'When a boy vanishes, a small town uncovers a mystery involving secret experiments and terrifying forces.',
-    caption:'Started as nostalgia. Became <em>obsession.</em> S4 Vol 2 is cinema.',
-    creator:{ name:'netflixnerd_rv', letter:'R', bg:'#3498DB' },
-    litCount: 3400,
-    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
-    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
-    bg:'linear-gradient(160deg, #020510 0%, #050a1a 30%, #050205 70%, #000 100%)',
-  },
-  {
-    id:5, title:'PANCHAYAT',
-    year:2020, genre:['Comedy','Drama'], lang:'Hindi',
-    runtime:'28–40 min/ep', season:'S1–3 · Available',
-    synopsis:'A city boy reluctantly joins as a government officer in a remote village.',
-    caption:'This show will make you quit your job and move to a village. <em>Not joking.</em>',
-    creator:{ name:'desi_binge', letter:'D', bg:'#27AE60' },
-    litCount: 5200,
-    platforms:[{ name:'Prime Video', color:'#00A8E0', label:'P', sub:'Included in your plan', included:true }],
-    platLabel:'Prime Video', platColor:'#00A8E0', platRgb:'0,168,224',
-    bg:'linear-gradient(160deg, #021005 0%, #041a08 30%, #020802 70%, #000 100%)',
-  },
-  {
-    id:6, title:'SQUID GAME',
-    year:2021, genre:['Thriller','Drama'], lang:'Korean',
-    runtime:'32–63 min/ep', season:'S1–2 · Available',
-    synopsis:"Hundreds of cash-strapped contestants compete in deadly children's games for an enormous cash prize.",
-    caption:'Episode 6. Front Man reveal. You will <em>not</em> be okay.',
-    creator:{ name:'kdrama_world', letter:'K', bg:'#E74C3C' },
-    litCount: 7800,
-    platforms:[{ name:'Netflix', color:'#E50914', label:'N', sub:'Included in your plan', included:true }],
-    platLabel:'Netflix', platColor:'#E50914', platRgb:'229,9,20',
-    bg:'linear-gradient(160deg, #100008 0%, #1a0010 30%, #080005 70%, #000 100%)',
-  },
-  {
-    id:7, title:'SCAM 1992',
-    year:2020, genre:['Crime','Drama'], lang:'Hindi',
-    runtime:'40–55 min/ep', season:'S1 · 10 Episodes',
-    synopsis:'The rise and fall of Harshad Mehta — the man who took the Indian stock market by storm.',
-    caption:'Highest rated Indian show ever. One curator. One verdict. <em>Watch it.</em>',
-    creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' },
-    litCount: 4300,
-    platforms:[{ name:'SonyLIV', color:'#002868', label:'S', sub:'Not in your plan', included:false }],
-    platLabel:'SonyLIV', platColor:'#002868', platRgb:'0,40,104',
-    bg:'linear-gradient(160deg, #080500 0%, #140c00 30%, #050300 70%, #000 100%)',
-  },
-  {
-    id:8, title:'THE LAST OF US',
-    year:2023, genre:['Drama','Sci-Fi'], lang:'English',
-    runtime:'44–75 min/ep', season:'S1–2 · Available',
-    synopsis:'Joel smuggles a teenage girl across post-apocalyptic America.',
-    caption:'Episode 3 broke the internet. Broke <em>me</em>. Watch immediately.',
-    creator:{ name:'hbo_stan_official', letter:'H', bg:'#5C2D91' },
-    litCount: 6100,
-    platforms:[
-      { name:'HBO Max', color:'#5C2D91', label:'HBO', sub:'Not in your plan', included:false },
-      { name:'JioHotstar', color:'#FF6A00', label:'JH', sub:'Included in your plan', included:true },
-    ],
-    platLabel:'JioHotstar', platColor:'#FF6A00', platRgb:'255,106,0',
-    bg:'linear-gradient(160deg, #030805 0%, #050e08 30%, #020503 70%, #000 100%)',
-  },
-];
+/* Clip data now comes from the central source (data/showshak-data.js).
+   SSData.feedShows() returns the exact SHOWS shape this page expects. */
+const SHOWS = SSData.feedShows();
 
 const litState   = {};
 let currentClip  = 0;

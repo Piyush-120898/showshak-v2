@@ -704,6 +704,7 @@ html, body { overflow: hidden; }
 </div>
 
 <!-- SHARED JS -->
+<script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
 
 <script>
@@ -711,16 +712,11 @@ html, body { overflow: hidden; }
    CLIP DATA — matches Feed & Discover exactly
    id values must match so cross-page save works
 ════════════════════════════════════════════════ */
-const ALL_CLIPS = [
-  { id:1, creator:'cinephile_arj',    creatorLetter:'A', creatorBg:'#E8373E', genre:['Crime','Thriller'], lang:'Hindi',   fires:1240, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#1a0505 0%,#2d0808 35%,#0d0d0d 100%)' },
-  { id:2, creator:'streamjunkie_sk',  creatorLetter:'S', creatorBg:'#FF6B35', genre:['Drama','Comedy'],   lang:'English', fires:876,  platColor:'#0E3BD4', platAbbr:'D+', bg:'linear-gradient(160deg,#050510 0%,#0a0a20 35%,#080808 100%)' },
-  { id:3, creator:'binge_with_priya', creatorLetter:'P', creatorBg:'#9B59B6', genre:['Action','Crime'],   lang:'Hindi',   fires:2100, platColor:'#00A8E0', platAbbr:'P',  bg:'linear-gradient(160deg,#0a0510 0%,#150820 35%,#0a0505 100%)' },
-  { id:4, creator:'netflixnerd_rv',   creatorLetter:'R', creatorBg:'#3498DB', genre:['Sci-Fi','Horror'],  lang:'English', fires:3400, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#020510 0%,#050a1a 35%,#050205 100%)' },
-  { id:5, creator:'desi_binge',       creatorLetter:'D', creatorBg:'#27AE60', genre:['Comedy','Drama'],   lang:'Hindi',   fires:5200, platColor:'#00A8E0', platAbbr:'P',  bg:'linear-gradient(160deg,#021005 0%,#041a08 35%,#020802 100%)' },
-  { id:6, creator:'kdrama_world',     creatorLetter:'K', creatorBg:'#E74C3C', genre:['Thriller','Drama'], lang:'Korean',  fires:7800, platColor:'#E50914', platAbbr:'N',  bg:'linear-gradient(160deg,#100008 0%,#1a0010 35%,#080005 100%)' },
-  { id:7, creator:'cinephile_arj',    creatorLetter:'A', creatorBg:'#E8373E', genre:['Crime','Drama'],    lang:'Hindi',   fires:4300, platColor:'#002868', platAbbr:'S',  bg:'linear-gradient(160deg,#080500 0%,#140c00 35%,#050300 100%)' },
-  { id:8, creator:'hbo_stan_official',creatorLetter:'H', creatorBg:'#5C2D91', genre:['Drama','Sci-Fi'],   lang:'English', fires:6100, platColor:'#FF6A00', platAbbr:'JH', bg:'linear-gradient(160deg,#030805 0%,#050e08 35%,#020503 100%)' },
-];
+/* Clip data now comes from the central source (data/showshak-data.js).
+   SSData.watchlistClips() returns the exact ALL_CLIPS shape (flat
+   creator + 3-stop gradient). id values still match Feed/Discover so
+   cross-page save keeps working. */
+const ALL_CLIPS = SSData.watchlistClips();
 
 let activeStackId = null;
 

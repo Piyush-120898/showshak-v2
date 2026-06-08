@@ -432,6 +432,7 @@ body { background: var(--bg); }
   </div>
 </div>
 
+<script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
 <script>
 /* ════════════════════════════════════════════════
@@ -452,31 +453,15 @@ const draft = {
   vibes: [],
 };
 
-/* ── Mock show catalog (stands in for the TMDB search) ── */
-const SHOW_CATALOG = [
-  { name:'Sacred Games',    year:2018, genre:['Crime','Thriller'], platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)' },
-  { name:'The Bear',        year:2022, genre:['Drama','Comedy'],   platLabel:'Disney+',     platColor:'#0E3BD4', platAbbr:'D+', platRgb:'14,59,212', bg:'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)' },
-  { name:'Mirzapur',        year:2018, genre:['Action','Crime'],   platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#0a0510,#150820,#0a0505,#000)' },
-  { name:'Stranger Things', year:2016, genre:['Sci-Fi','Horror'],  platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#020510,#050a1a,#050205,#000)' },
-  { name:'Squid Game',      year:2021, genre:['Thriller','Drama'], platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)' },
-  { name:'Panchayat',       year:2020, genre:['Comedy','Drama'],   platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#021005,#041a08,#020802,#000)' },
-  { name:'Scam 1992',       year:2020, genre:['Crime','Drama'],    platLabel:'SonyLIV',     platColor:'#002868', platAbbr:'S',  platRgb:'0,40,104',  bg:'linear-gradient(160deg,#080500,#140c00,#050300,#000)' },
-  { name:'Breaking Bad',    year:2008, genre:['Crime','Drama'],    platLabel:'Netflix',     platColor:'#E50914', platAbbr:'N',  platRgb:'229,9,20',  bg:'linear-gradient(160deg,#02100a,#041a10,#020805,#000)' },
-  { name:'The Last of Us',  year:2023, genre:['Drama','Horror'],   platLabel:'JioHotstar',  platColor:'#FF6A00', platAbbr:'JH', platRgb:'255,106,0', bg:'linear-gradient(160deg,#0a0803,#161005,#050300,#000)' },
-  { name:'Dahaad',          year:2023, genre:['Crime','Thriller'], platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P',  platRgb:'0,168,224', bg:'linear-gradient(160deg,#10040a,#1a0610,#080205,#000)' },
-];
+/* Show catalog, vibes and pitch prompts now come from the central
+   source (data/showshak-data.js). SHOW_CATALOG stands in for the TMDB
+   title search; the projections reproduce the exact shapes this page
+   used to declare inline. */
+const SHOW_CATALOG = SSData.uploadCatalog();
 
-const VIBES = [
-  ['🍿','Edge of My Seat'], ['☀️','Feel Good'], ['😭','Want to Cry'], ['❤️','Date Night'],
-  ['🤯','Mind-Bending'], ['👨‍👩‍👧','Family Night'], ['🌙','Late Night'], ['😂','Laugh Out Loud'],
-];
+const VIBES = SSData.vibes;
 
-const PITCH_PROMPTS = [
-  'The scene that wrecked me was…',
-  'I went in expecting nothing and…',
-  'You will not be able to stop after episode…',
-  'This is the one I force everyone to watch because…',
-];
+const PITCH_PROMPTS = SSData.pitchPrompts;
 
 /* ════════════════════════════════════════════════
    PROGRESS BAR

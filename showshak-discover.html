@@ -564,93 +564,30 @@ html, body { overflow: hidden; }
 <!-- ════════════════════════════════════════════
      SHARED JS
 ════════════════════════════════════════════ -->
+<script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
 
 <!-- ════════════════════════════════════════════
      PAGE-SPECIFIC JS — Discover logic only
 ════════════════════════════════════════════ -->
 <script>
-const CLIPS = [
-  { id:1, caption:'This is how you <em>open</em> a series. Zero warning. Zero mercy.', genre:['Crime','Thriller'], lang:'Hindi', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' }, fires:1240, bg:'linear-gradient(160deg, #1a0505 0%, #2d0808 30%, #0d0d0d 70%, #000 100%)', mood:['Edge of My Seat','Late Night'] },
-  { id:2, caption:'The kitchen scene in episode 7 will <em>destroy</em> you.', genre:['Drama','Comedy'], lang:'English', platLabel:'Disney+', platColor:'#0E3BD4', platAbbr:'D+', platRgb:'14,59,212', creator:{ name:'streamjunkie_sk', letter:'S', bg:'#FF6B35' }, fires:876, bg:'linear-gradient(160deg, #050510 0%, #0a0a20 30%, #080808 70%, #000 100%)', mood:['Want to Cry','Edge of My Seat'] },
-  { id:3, caption:'No one escapes. Literally <em>no one.</em>', genre:['Action','Crime'], lang:'Hindi', platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P', platRgb:'0,168,224', creator:{ name:'binge_with_priya', letter:'P', bg:'#9B59B6' }, fires:2100, bg:'linear-gradient(160deg, #0a0510 0%, #150820 30%, #0a0505 70%, #000 100%)', mood:['Edge of My Seat','Late Night'] },
-  { id:4, caption:'Started as nostalgia. Became <em>obsession.</em>', genre:['Sci-Fi','Horror'], lang:'English', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'netflixnerd_rv', letter:'R', bg:'#3498DB' }, fires:3400, bg:'linear-gradient(160deg, #020510 0%, #050a1a 30%, #050205 70%, #000 100%)', mood:['Mind-Bending','Edge of My Seat'] },
-  { id:5, caption:'Will make you quit your job and move to a village. <em>Not joking.</em>', genre:['Comedy','Drama'], lang:'Hindi', platLabel:'Prime Video', platColor:'#00A8E0', platAbbr:'P', platRgb:'0,168,224', creator:{ name:'desi_binge', letter:'D', bg:'#27AE60' }, fires:5200, bg:'linear-gradient(160deg, #021005 0%, #041a08 30%, #020802 70%, #000 100%)', mood:['Feel Good','Family Night'] },
-  { id:6, caption:'Episode 6. Front Man reveal. You will <em>not</em> be okay.', genre:['Thriller','Drama'], lang:'Korean', platLabel:'Netflix', platColor:'#E50914', platAbbr:'N', platRgb:'229,9,20', creator:{ name:'kdrama_world', letter:'K', bg:'#E74C3C' }, fires:7800, bg:'linear-gradient(160deg, #100008 0%, #1a0010 30%, #080005 70%, #000 100%)', mood:['Edge of My Seat','Want to Cry'] },
-  { id:7, caption:'Highest rated Indian show ever. One curator. One verdict. <em>Watch it.</em>', genre:['Crime','Drama'], lang:'Hindi', platLabel:'SonyLIV', platColor:'#002868', platAbbr:'S', platRgb:'0,40,104', creator:{ name:'cinephile_arj', letter:'A', bg:'#E8373E' }, fires:4300, bg:'linear-gradient(160deg, #080500 0%, #140c00 30%, #050300 70%, #000 100%)', mood:['Mind-Bending','Late Night'] },
-  { id:8, caption:'Episode 3 broke the internet. Broke <em>me</em>. Watch immediately.', genre:['Drama','Sci-Fi'], lang:'English', platLabel:'JioHotstar', platColor:'#FF6A00', platAbbr:'JH', platRgb:'255,106,0', creator:{ name:'hbo_stan_official', letter:'H', bg:'#5C2D91' }, fires:6100, bg:'linear-gradient(160deg, #030805 0%, #050e08 30%, #020503 70%, #000 100%)', mood:['Want to Cry','Edge of My Seat'] },
-];
-
-const MOODS = [
-  { label:'Edge of My Seat', cls:'mood-edge'     },
-  { label:'Feel Good',       cls:'mood-feelgood' },
-  { label:'Want to Cry',     cls:'mood-cry'      },
-  { label:'Date Night',      cls:'mood-date'     },
-  { label:'Mind-Bending',    cls:'mood-mind'     },
-  { label:'Family Night',    cls:'mood-family'   },
-  { label:'Late Night',      cls:'mood-night'    },
-  { label:'Laugh Out Loud',  cls:'mood-laugh'    },
-];
-
-const PLATFORMS = [
-  { name:'Netflix',     color:'#E50914', abbr:'N',   rgb:'229,9,20'   },
-  { name:'Prime Video', color:'#00A8E0', abbr:'P',   rgb:'0,168,224'  },
-  { name:'Disney+',     color:'#0E3BD4', abbr:'D+',  rgb:'14,59,212'  },
-  { name:'JioHotstar',  color:'#FF6A00', abbr:'JH',  rgb:'255,106,0'  },
-  { name:'Apple TV+',   color:'#111111', abbr:'▶',   rgb:'80,80,80'   },
-  { name:'SonyLIV',     color:'#002868', abbr:'S',   rgb:'0,40,104'   },
-  { name:'HBO Max',     color:'#5C2D91', abbr:'HBO', rgb:'92,45,145'  },
-  { name:'Zee5',        color:'#6B1DF5', abbr:'Z5',  rgb:'107,29,245' },
-];
+/* Clip/curator/mood/platform data now comes from the central source
+   (data/showshak-data.js). Each call returns the exact shape this page
+   used to declare inline. */
+const CLIPS = SSData.discoverClips();
+const MOODS = SSData.moods;
+const PLATFORMS = SSData.discoverPlatforms();
 
 let recentSearches = ['thriller clips','feel good','kdrama'];
 let activeMood = null, activePlatform = null;
 
 /* ── CURATOR DIRECTORY ──────────────────────────────
-   Curators are searchable by real NAME or @username.
-   Derived once from CLIPS so it always stays in sync,
-   then enriched with display name + verified + bio. */
-const CURATOR_META = {
-  cinephile_arj:     { name:'Arjun Mehta',      verified:true,  bio:'World cinema & Indian streaming' },
-  streamjunkie_sk:   { name:'Sahil Kapoor',     verified:true,  bio:'Prestige drama obsessive' },
-  binge_with_priya:  { name:'Priya Nair',       verified:false, bio:'Crime & thriller binges' },
-  netflixnerd_rv:    { name:'Rohan Verma',      verified:false, bio:'Sci-fi, horror & the weird' },
-  desi_binge:        { name:'Desi Binge',       verified:true,  bio:'Feel-good desi picks' },
-  kdrama_world:      { name:'Kim Da-eun',       verified:true,  bio:'Your K-drama plug' },
-  hbo_stan_official: { name:'HBO Stan',         verified:true,  bio:'Prestige TV, no compromises' },
-};
-
-/* ── CURATOR DIRECTORY ──────────────────────────────
    Search profile results show CURATORS ONLY — never normal user
-   accounts. We keep people discovering tastemakers, not browsing
-   each other. Today the directory is derived purely from clip
-   authors (so by definition only curators), and every entry is
-   explicitly flagged isCurator:true. When real user accounts exist,
-   the search filter below must keep matching on isCurator so plain
-   users can never surface here. */
-const CURATORS = (() => {
-  const map = {};
-  CLIPS.forEach(c => {
-    const u = c.creator.name;
-    if (!map[u]) {
-      const meta = CURATOR_META[u] || {};
-      map[u] = {
-        username: u,
-        name: meta.name || u,
-        letter: c.creator.letter,
-        bg: c.creator.bg,
-        verified: !!meta.verified,
-        bio: meta.bio || 'Curator on ShowShak',
-        isCurator: true,        // only curators are searchable as profiles
-        clipCount: 0,
-        totalFires: 0,
-      };
-    }
-    map[u].clipCount += 1;
-    map[u].totalFires += c.fires;
-  });
-  return Object.values(map);
-})();
+   accounts. The directory is derived from clip authors (so by
+   definition only curators) and every entry is flagged isCurator:true.
+   Now sourced from the central data file (data/showshak-data.js);
+   SSData.discoverCurators() reproduces the old derived shape exactly. */
+const CURATORS = SSData.discoverCurators();
 
 /* Fire SVG for inline use */
 const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
