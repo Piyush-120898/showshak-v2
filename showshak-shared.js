@@ -1872,7 +1872,10 @@ function _ssvToggleFire(i) {
     if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
     show('');
 
-    window.ssDB.auth.signUp({ email, password: pass }).then(({ data, error }) => {
+    window.ssDB.auth.signUp({
+      email, password: pass,
+      options: { emailRedirectTo: window.location.href }   // confirm link returns here, not localhost
+    }).then(({ data, error }) => {
       if (!error) {
         // If email confirmations are OFF, session is live now → state change fires.
         // If ON, there's no session yet — tell them to check their inbox.
