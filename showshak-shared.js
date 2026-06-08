@@ -1634,10 +1634,12 @@ function _ssvToggleFire(i) {
     }).catch(() => {});
     // Live updates: login, logout, token refresh, OAuth redirect return.
     window.ssDB.auth.onAuthStateChange((_event, session) => {
+      const wasLoggedOut = !_ssSession;
       _ssSession = session || null;
       if (session) {
         _ssCloseSignupSheet();
-        if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak');
+        // Only react on a genuine new login (not token refreshes on every page).
+        if (wasLoggedOut) _ssAfterLogin();
       }
       if (typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
@@ -1941,4 +1943,394 @@ function _ssvToggleFire(i) {
   });
   // Start once the body exists (shared.js runs at end of body).
   _mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+})();
+
+
+
+/* ════════════════════════════════════════════════
+   ── POST-LOGIN ONBOARDING ───────────────────────
+   Runs ONCE, right after a user's first real login, to collect the
+   profile details the signup providers don't give us:
+     Step 1  Username (@handle)      — required, uniqueness-checked
+     Step 2  Genres (taste)          — required, min 2
+     Step 3  Platforms (you have)    — required-ish (drives Watch It)
+     Step 4  Personal details        — OPTIONAL, "set up later"
+             (gender + profile photo)
+
+   Saves to:  users (username, gender, genres, avatar_url, onboarded)
+              user_subscriptions (one row per platform they have)
+
+   "Onboarded" is tracked by users.meta->>'onboarded' = 'true', so it
+   never shows again. Reuses + improves index.html's pickers. Built as
+   its own module so it only activates where Supabase + a session exist.
+════════════════════════════════════════════════ */
+(function ssOnboarding() {
+  'use strict';
+
+  // Improved taste list (superset of index.html's).
+  const OB_GENRES = [
+    ['😰','Thriller'],['😂','Comedy'],['🎭','Drama'],['👻','Horror'],
+    ['💥','Action'],['❤️','Romance'],['🚀','Sci-Fi'],['⛩️','Anime'],
+    ['🌸','K-Drama'],['🎬','Bollywood'],['🔍','Crime'],['🔮','Fantasy'],
+    ['📺','Reality TV'],['🦸','Superhero'],['🕵️','True Crime'],
+    ['🎥','Documentary'],['⚽','Sports'],['📜','History'],
+  ];
+
+  let _obUser   = null;     // auth user
+  let _obStep   = 1;
+  let _obData   = { username: '', genres: new Set(), platforms: new Set(), gender: '', avatar_url: '' };
+  let _obPlatforms = [];    // [{id,name,color,abbr}] from DB
+  let _obUsernameOk = false;
+
+  /* ── Entry point: called once after a fresh login ── */
+  window._ssAfterLogin = async function () {
+    if (!window.ssDB || !_ssCanQuery()) { return; }
+    const user = window.ssCurrentUser && window.ssCurrentUser();
+    if (!user) return;
+    _obUser = user;
+    try {
+      const { data, error } = await window.ssDB
+        .from('users').select('username, gender, genres, avatar_url, meta').eq('id', user.id).single();
+      if (error) { console.warn('ShowShak onboarding: profile read failed', error.message); _welcome(); return; }
+      const done = data && data.meta && data.meta.onboarded === true;
+      if (done) { _welcome(); return; }   // already onboarded → just greet
+      // Pre-fill the auto-generated username + any provider avatar.
+      _obData.username   = (data && data.username) || '';
+      _obData.avatar_url = (data && data.avatar_url) || (user.user_metadata && user.user_metadata.avatar_url) || '';
+      _obData.gender     = (data && data.gender) || '';
+      _openOnboarding();
+    } catch (e) { console.warn('ShowShak onboarding error', e); _welcome(); }
+  };
+
+  function _welcome() { if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak'); }
+  function _ssCanQuery() { return window.ssDB && window.ssDB.from; }
+
+  /* ── CSS ── */
+  (function _css() {
+    const s = document.createElement('style');
+    s.id = 'ss-onboard-style';
+    s.textContent = `
+      #ss-ob-overlay { position: fixed; inset: 0; z-index: 700; background: #0B0B0F;
+        opacity: 0; pointer-events: none; transition: opacity 0.35s ease; overflow-y: auto; }
+      #ss-ob-overlay.open { opacity: 1; pointer-events: all; }
+      .ss-ob-wrap { max-width: 460px; margin: 0 auto; min-height: 100%;
+        display: flex; flex-direction: column; padding: 28px 22px 110px; }
+      .ss-ob-progress { display: flex; align-items: center; gap: 6px; margin-bottom: 28px; }
+      .ss-ob-dot { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); transition: background 0.3s; }
+      .ss-ob-dot.on { background: #EA3B32; }
+      .ss-ob-step { display: none; }
+      .ss-ob-step.active { display: block; animation: ssObIn 0.35s ease; }
+      @keyframes ssObIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+      .ss-ob-title { font-family: 'Bebas Neue', sans-serif; font-size: 30px; letter-spacing: 1px;
+        color: #fff; line-height: 1.05; margin-bottom: 8px; }
+      .ss-ob-title em { color: #EA3B32; font-style: normal; }
+      .ss-ob-sub { font-size: 14px; color: #9a9aac; line-height: 1.5; margin-bottom: 22px; }
+      .ss-ob-uname-row { display: flex; align-items: center; background: #13131A;
+        border: 1.5px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 0 14px;
+        transition: border-color 0.15s; }
+      .ss-ob-uname-row:focus-within { border-color: rgba(234,59,50,0.6); }
+      .ss-ob-at { color: #5A5A72; font-size: 17px; font-weight: 700; }
+      .ss-ob-uname { flex: 1; background: none; border: none; outline: none; color: #fff;
+        font-family: 'DM Sans', sans-serif; font-size: 16px; padding: 15px 8px; }
+      .ss-ob-uname-msg { font-size: 12.5px; min-height: 18px; margin: 8px 2px 0; }
+      .ss-ob-uname-msg.ok  { color: #2ecc71; }
+      .ss-ob-uname-msg.bad { color: #ff7a70; }
+      .ss-ob-grid { display: flex; flex-wrap: wrap; gap: 9px; }
+      .ss-ob-pill { display: inline-flex; align-items: center; gap: 7px; padding: 10px 15px;
+        background: #13131A; border: 1.5px solid rgba(255,255,255,0.1); border-radius: 100px;
+        color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+        -webkit-tap-highlight-color: transparent; }
+      .ss-ob-pill.on { background: rgba(234,59,50,0.15); border-color: #EA3B32; color: #fff; }
+      .ss-ob-plats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .ss-ob-plat { position: relative; background: #13131A; border: 1.5px solid rgba(255,255,255,0.1);
+        border-radius: 14px; padding: 16px 8px 12px; text-align: center; cursor: pointer; transition: all 0.15s;
+        -webkit-tap-highlight-color: transparent; }
+      .ss-ob-plat.on { border-color: #EA3B32; background: rgba(234,59,50,0.08); }
+      .ss-ob-plat-logo { width: 38px; height: 38px; border-radius: 10px; margin: 0 auto 8px;
+        display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; color: #fff; }
+      .ss-ob-plat-name { font-size: 11.5px; color: #cfcfda; font-weight: 600; }
+      .ss-ob-plat-check { position: absolute; top: 7px; right: 7px; width: 18px; height: 18px; border-radius: 50%;
+        background: #EA3B32; display: none; align-items: center; justify-content: center; }
+      .ss-ob-plat.on .ss-ob-plat-check { display: flex; }
+      .ss-ob-genders { display: flex; gap: 10px; }
+      .ss-ob-gender { flex: 1; padding: 14px; text-align: center; background: #13131A;
+        border: 1.5px solid rgba(255,255,255,0.1); border-radius: 14px; color: #cfcfda; font-weight: 600;
+        font-size: 13.5px; cursor: pointer; transition: all 0.15s; }
+      .ss-ob-gender.on { border-color: #EA3B32; background: rgba(234,59,50,0.08); color: #fff; }
+      .ss-ob-photo-row { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+      .ss-ob-photo { width: 72px; height: 72px; border-radius: 50%; background: #13131A;
+        border: 1.5px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;
+        font-size: 28px; overflow: hidden; flex-shrink: 0; }
+      .ss-ob-photo img { width: 100%; height: 100%; object-fit: cover; }
+      .ss-ob-photo-btn { font-size: 13px; color: #EA3B32; font-weight: 700; cursor: pointer;
+        border: 1px solid rgba(234,59,50,0.4); border-radius: 10px; padding: 9px 14px; background: none; }
+      .ss-ob-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 701;
+        background: linear-gradient(to top, #0B0B0F 60%, transparent);
+        padding: 18px 22px 26px; }
+      .ss-ob-footer-inner { max-width: 460px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+      .ss-ob-next { flex: 1; height: 52px; border-radius: 15px; background: #EA3B32; color: #fff; border: none;
+        font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+      .ss-ob-next:disabled { opacity: 0.4; cursor: default; }
+      .ss-ob-next:not(:disabled):hover { background: #FF4D42; }
+      .ss-ob-skip { padding: 14px 6px; font-size: 14px; color: #6b6b7a; font-weight: 600; cursor: pointer;
+        background: none; border: none; -webkit-tap-highlight-color: transparent; }
+      .ss-ob-skip:hover { color: #9a9aac; }
+      .ss-ob-back { font-size: 13px; color: #6b6b7a; font-weight: 600; cursor: pointer; margin-bottom: 14px;
+        display: inline-block; }
+    `;
+    document.head.appendChild(s);
+  })();
+
+  /* ── Build overlay HTML once ── */
+  function _ensureOverlay() {
+    if (document.getElementById('ss-ob-overlay')) return;
+    const ov = document.createElement('div');
+    ov.id = 'ss-ob-overlay';
+    ov.innerHTML = `
+      <div class="ss-ob-wrap">
+        <div class="ss-ob-progress">
+          <div class="ss-ob-dot" id="ss-ob-dot-1"></div>
+          <div class="ss-ob-dot" id="ss-ob-dot-2"></div>
+          <div class="ss-ob-dot" id="ss-ob-dot-3"></div>
+          <div class="ss-ob-dot" id="ss-ob-dot-4"></div>
+        </div>
+
+        <!-- Step 1: username -->
+        <div class="ss-ob-step" id="ss-ob-step-1">
+          <div class="ss-ob-title">CLAIM YOUR <em>HANDLE</em></div>
+          <div class="ss-ob-sub">This is how curators and friends find you on ShowShak.</div>
+          <div class="ss-ob-uname-row">
+            <span class="ss-ob-at">@</span>
+            <input class="ss-ob-uname" id="ss-ob-uname" type="text" maxlength="20"
+              autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="yourname" />
+          </div>
+          <div class="ss-ob-uname-msg" id="ss-ob-uname-msg"></div>
+        </div>
+
+        <!-- Step 2: genres -->
+        <div class="ss-ob-step" id="ss-ob-step-2">
+          <div class="ss-ob-title">WHAT DO YOU <em>LOVE?</em></div>
+          <div class="ss-ob-sub">Pick at least 2. We'll tune your feed to your taste.</div>
+          <div class="ss-ob-grid" id="ss-ob-genre-grid"></div>
+        </div>
+
+        <!-- Step 3: platforms -->
+        <div class="ss-ob-step" id="ss-ob-step-3">
+          <div class="ss-ob-title">WHERE DO YOU <em>WATCH?</em></div>
+          <div class="ss-ob-sub">Select your subscriptions so "Watch It" sends you to the right place.</div>
+          <div class="ss-ob-plats" id="ss-ob-plat-grid"></div>
+        </div>
+
+        <!-- Step 4: personal (optional) -->
+        <div class="ss-ob-step" id="ss-ob-step-4">
+          <div class="ss-ob-title">MAKE IT <em>YOURS</em></div>
+          <div class="ss-ob-sub">Optional — you can always set this up later from your profile.</div>
+          <div style="font-size:12px;color:#6b6b7a;font-weight:700;letter-spacing:1px;margin-bottom:10px">PROFILE PHOTO</div>
+          <div class="ss-ob-photo-row">
+            <div class="ss-ob-photo" id="ss-ob-photo">🎬</div>
+            <button class="ss-ob-photo-btn" onclick="document.getElementById('ss-ob-file').click()">Upload photo</button>
+            <input id="ss-ob-file" type="file" accept="image/*" style="display:none" />
+          </div>
+          <div style="font-size:12px;color:#6b6b7a;font-weight:700;letter-spacing:1px;margin:22px 0 10px">GENDER</div>
+          <div class="ss-ob-genders" id="ss-ob-genders">
+            <div class="ss-ob-gender" data-g="male">Male</div>
+            <div class="ss-ob-gender" data-g="female">Female</div>
+            <div class="ss-ob-gender" data-g="other">Prefer not to say</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ss-ob-footer">
+        <div class="ss-ob-footer-inner">
+          <button class="ss-ob-skip" id="ss-ob-skip" style="display:none" onclick="ssObSkip()">Set up later</button>
+          <button class="ss-ob-next" id="ss-ob-next" onclick="ssObNext()">Continue</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(ov);
+    _wireOnboarding();
+  }
+
+  function _wireOnboarding() {
+    // Username live check (debounced).
+    const input = document.getElementById('ss-ob-uname');
+    let t = null;
+    input.addEventListener('input', () => {
+      input.value = input.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      _obData.username = input.value;
+      clearTimeout(t);
+      t = setTimeout(_checkUsername, 350);
+      _obUsernameOk = false; _refreshNextBtn();
+    });
+
+    // Genres
+    const gg = document.getElementById('ss-ob-genre-grid');
+    OB_GENRES.forEach(([e, l]) => {
+      const b = document.createElement('button');
+      b.className = 'ss-ob-pill';
+      b.innerHTML = `<span>${e}</span>${l}`;
+      b.addEventListener('click', () => {
+        _obData.genres.has(l) ? _obData.genres.delete(l) : _obData.genres.add(l);
+        b.classList.toggle('on', _obData.genres.has(l));
+        _refreshNextBtn();
+      });
+      gg.appendChild(b);
+    });
+
+    // Gender
+    document.querySelectorAll('#ss-ob-genders .ss-ob-gender').forEach(el => {
+      el.addEventListener('click', () => {
+        document.querySelectorAll('#ss-ob-genders .ss-ob-gender').forEach(x => x.classList.remove('on'));
+        el.classList.add('on');
+        _obData.gender = el.getAttribute('data-g');
+      });
+    });
+
+    // Photo upload → preview now, uploaded to Storage on finish.
+    document.getElementById('ss-ob-file').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      _obData._photoFile = file;
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById('ss-ob-photo').innerHTML = `<img src="${reader.result}" alt="">`;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function _checkUsername() {
+    const msg = document.getElementById('ss-ob-uname-msg');
+    const u = _obData.username;
+    if (!u || u.length < 3) { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = u ? 'At least 3 characters.' : ''; _obUsernameOk = false; _refreshNextBtn(); return; }
+    msg.className = 'ss-ob-uname-msg'; msg.textContent = 'Checking…';
+    try {
+      const { data, error } = await window.ssDB.from('users').select('id').eq('username', u).neq('id', _obUser.id).limit(1);
+      if (error) throw error;
+      if (data && data.length) { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = '@' + u + ' is taken.'; _obUsernameOk = false; }
+      else { msg.className = 'ss-ob-uname-msg ok'; msg.textContent = '@' + u + ' is available ✓'; _obUsernameOk = true; }
+    } catch (e) { msg.className = 'ss-ob-uname-msg'; msg.textContent = ''; _obUsernameOk = true; /* don't block on network hiccup */ }
+    _refreshNextBtn();
+  }
+
+  async function _openOnboarding() {
+    _ensureOverlay();
+    // Load real platforms from the DB for step 3.
+    try {
+      const { data } = await window.ssDB.from('platforms').select('id, name, color, abbr').eq('active', true);
+      _obPlatforms = data || [];
+    } catch (e) { _obPlatforms = []; }
+    _renderPlatforms();
+    // Pre-fill username field.
+    const input = document.getElementById('ss-ob-uname');
+    if (input && _obData.username) { input.value = _obData.username; }
+    if (_obData.avatar_url) document.getElementById('ss-ob-photo').innerHTML = `<img src="${_obData.avatar_url}" alt="">`;
+    _obStep = 1;
+    _showStep(1);
+    document.getElementById('ss-ob-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (_obData.username) _checkUsername();
+  }
+
+  function _renderPlatforms() {
+    const grid = document.getElementById('ss-ob-plat-grid');
+    if (!grid) return;
+    grid.innerHTML = _obPlatforms.map(p => `
+      <div class="ss-ob-plat" data-pid="${p.id}">
+        <div class="ss-ob-plat-check"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg></div>
+        <div class="ss-ob-plat-logo" style="background:${p.color || '#EA3B32'}">${p.abbr || p.name.charAt(0)}</div>
+        <div class="ss-ob-plat-name">${p.name}</div>
+      </div>`).join('');
+    grid.querySelectorAll('.ss-ob-plat').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-pid');
+        _obData.platforms.has(id) ? _obData.platforms.delete(id) : _obData.platforms.add(id);
+        el.classList.toggle('on', _obData.platforms.has(id));
+        _refreshNextBtn();
+      });
+    });
+  }
+
+  function _showStep(n) {
+    _obStep = n;
+    [1,2,3,4].forEach(i => {
+      document.getElementById('ss-ob-step-' + i)?.classList.toggle('active', i === n);
+      document.getElementById('ss-ob-dot-' + i)?.classList.toggle('on', i <= n);
+    });
+    // Skip button only on the optional last step.
+    document.getElementById('ss-ob-skip').style.display = (n === 4) ? '' : 'none';
+    const next = document.getElementById('ss-ob-next');
+    next.textContent = (n === 4) ? 'Finish' : 'Continue';
+    if (n === 1) setTimeout(() => document.getElementById('ss-ob-uname')?.focus(), 80);
+    _refreshNextBtn();
+  }
+
+  function _refreshNextBtn() {
+    const next = document.getElementById('ss-ob-next');
+    if (!next) return;
+    let ok = true;
+    if (_obStep === 1) ok = _obUsernameOk && _obData.username.length >= 3;
+    else if (_obStep === 2) ok = _obData.genres.size >= 2;
+    else if (_obStep === 3) ok = true;   // platforms recommended, not blocking
+    next.disabled = !ok;
+  }
+
+  window.ssObNext = function () {
+    if (_obStep < 4) { _showStep(_obStep + 1); return; }
+    _finishOnboarding(false);
+  };
+  window.ssObSkip = function () { _finishOnboarding(true); };
+
+  async function _finishOnboarding(skippedPersonal) {
+    const next = document.getElementById('ss-ob-next');
+    const skip = document.getElementById('ss-ob-skip');
+    if (next) { next.disabled = true; next.textContent = 'Saving…'; }
+    if (skip) skip.style.pointerEvents = 'none';
+
+    try {
+      // Upload photo to Supabase Storage if one was chosen.
+      if (!skippedPersonal && _obData._photoFile) {
+        try {
+          const file = _obData._photoFile;
+          const path = _obUser.id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '');
+          const up = await window.ssDB.storage.from('avatars').upload(path, file, { upsert: true });
+          if (!up.error) {
+            const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
+            if (pub && pub.publicUrl) _obData.avatar_url = pub.publicUrl;
+          }
+        } catch (e) { /* storage not set up yet — skip photo, don't block */ }
+      }
+
+      // Update the profile row.
+      const patch = {
+        username: _obData.username,
+        genres: Array.from(_obData.genres),
+        meta: { onboarded: true },
+      };
+      if (!skippedPersonal && _obData.gender) patch.gender = _obData.gender;
+      if (_obData.avatar_url) patch.avatar_url = _obData.avatar_url;
+
+      const { error: upErr } = await window.ssDB.from('users').update(patch).eq('id', _obUser.id);
+      if (upErr) throw upErr;
+
+      // Save platform subscriptions (insert rows; ignore dupes).
+      if (_obData.platforms.size) {
+        const rows = Array.from(_obData.platforms).map(pid => ({ user_id: _obUser.id, platform_id: pid }));
+        await window.ssDB.from('user_subscriptions').upsert(rows, { onConflict: 'user_id,platform_id' });
+      }
+
+      _closeOnboarding();
+      if (typeof ssToast === 'function') ssToast('🎉 You\'re all set, @' + _obData.username);
+    } catch (e) {
+      console.error('ShowShak onboarding save failed', e);
+      if (next) { next.disabled = false; next.textContent = (_obStep === 4 ? 'Finish' : 'Continue'); }
+      if (skip) skip.style.pointerEvents = '';
+      if (typeof ssToast === 'function') ssToast('Could not save — please try again');
+    }
+  }
+
+  function _closeOnboarding() {
+    document.getElementById('ss-ob-overlay')?.classList.remove('open');
+    document.body.style.overflow = '';
+  }
 })();
