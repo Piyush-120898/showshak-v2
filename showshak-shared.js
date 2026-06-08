@@ -1684,10 +1684,6 @@ function _ssvToggleFire(i) {
       .ss-su-btn:active { transform: scale(0.985); }
       .ss-su-btn.primary { background: #EA3B32; border-color: #EA3B32; }
       .ss-su-btn.primary:hover { background: #FF4D42; }
-      .ss-su-later { margin-top: 6px; padding: 12px; font-size: 13.5px;
-        color: #6b6b7a; font-weight: 600; cursor: pointer;
-        -webkit-tap-highlight-color: transparent; }
-      .ss-su-later:hover { color: #9a9aac; }
     `;
     document.head.appendChild(s);
   })();
@@ -1709,7 +1705,6 @@ function _ssvToggleFire(i) {
           Continue with Google
         </button>
         <button class="ss-su-btn" onclick="ssGuestSignup('email')">Sign up with Email</button>
-        <div class="ss-su-later" onclick="ssGuestLater()">Maybe later</div>
       </div>`;
     document.body.appendChild(ov);
   }
