@@ -1402,6 +1402,8 @@ function _ssvAttachDoubleTap(feed) {
 /* Fire a clip via double-tap: only turns fire ON (never off), syncs the
    rail button, flashes the Watch It CTA, and bursts a flame at (x,y). */
 function _ssvFireOn(i, x, y, zone) {
+  // Guest gate: double-tap-to-fire is a reaction → prompt sign-up first.
+  if (typeof ssGuestGuard === 'function' && ssGuestGuard('fire')) return;
   if (!_ssvFired.has(i)) _ssvToggleFire(i);   // toggle on (no-op visual if already lit)
 
   // Burst at the tap point, positioned relative to the clip.
@@ -1579,3 +1581,219 @@ function _ssvToggleFire(i) {
     if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => watch.style.filter = '', 360); }
   }
 }
+
+
+
+/* ════════════════════════════════════════════════
+   ── GUEST GATE (try-before-signup funnel) ───────
+   Lets a brand-new visitor FEEL the app — scroll the feed, open
+   clips, even Watch It & Share — then prompts sign-up at the first
+   real commitment (Fire / Save / Follow) OR after they've watched a
+   handful of clips. This is the "guest-first" funnel from
+   backend-architecture.md.
+
+   SWAP-READY (our scaling rule): today sign-up is mocked locally
+   (sets a sessionStorage flag, like index.html's mocked auth). When
+   real Supabase auth lands, ONLY the body of _ssGuestDoSignup() and
+   ssIsSignedUp() change — every page and every reaction button stays
+   exactly as-is. The app never talks to auth directly; it talks to
+   this gate.
+
+   WHAT IS GATED (a guest is stopped + prompted on):
+     • Fire   (feed #rail-lit, viewer .ssv-fire)
+     • Save   (any [data-save-id])
+     • Follow (any [data-follow])
+   WHAT STAYS FREE (so they feel the magic): browsing/scrolling,
+   opening clips, Watch It, Share.
+
+   VIEW TRIGGER: after SS_GUEST_VIEW_LIMIT clips become active, the
+   sheet appears once (soft prompt; dismissable).
+════════════════════════════════════════════════ */
+(function ssGuestGate() {
+  'use strict';
+
+  const SIGNED_UP_KEY = 'ss_signed_up_v1';   // sessionStorage: '1' once converted
+  const PROFILE_KEY   = 'ss_user_profile_v1'; // localStorage: set by index onboarding
+  const VIEW_LIMIT    = 6;                     // clips before the soft prompt
+
+  let _viewedClips     = 0;
+  let _viewPromptShown = false;   // soft view-prompt fires only once
+  let _lastActiveId    = null;    // de-dupe consecutive active toggles
+
+  /* ── Signed-up check (the ONE place real auth will plug in) ── */
+  function ssIsSignedUp() {
+    try {
+      if (sessionStorage.getItem(SIGNED_UP_KEY) === '1') return true;
+      if (localStorage.getItem(PROFILE_KEY)) return true; // came via onboarding
+    } catch (e) {}
+    return false;
+  }
+  // expose for other code / future auth
+  window.ssIsSignedUp = ssIsSignedUp;
+
+  /* ── Mock sign-up (swap for real Supabase auth later) ── */
+  function _ssGuestDoSignup(method) {
+    // FUTURE: call ssDB.auth.signInWith... here; on success set the flag.
+    try { sessionStorage.setItem(SIGNED_UP_KEY, '1'); } catch (e) {}
+    _ssCloseSignupSheet();
+    if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak');
+  }
+  window.ssGuestSignup = _ssGuestDoSignup;
+
+  /* ── Inject sheet CSS once ── */
+  (function _css() {
+    const s = document.createElement('style');
+    s.id = 'ss-signup-sheet-style';
+    s.textContent = `
+      #ss-signup-overlay {
+        position: fixed; inset: 0; z-index: 600;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+      }
+      #ss-signup-overlay.open { opacity: 1; pointer-events: all; }
+      #ss-signup-sheet {
+        position: fixed; left: 50%; bottom: 0;
+        transform: translateX(-50%) translateY(100%);
+        z-index: 601; width: min(440px, 100vw);
+        background: #13131A; border-top: 1px solid rgba(255,255,255,0.08);
+        border-radius: 26px 26px 0 0; padding: 0 22px 30px;
+        transition: transform 0.42s cubic-bezier(.4,0,.2,1);
+        text-align: center;
+      }
+      #ss-signup-sheet.open { transform: translateX(-50%) translateY(0); }
+      .ss-su-handle { width: 38px; height: 4px; background: rgba(255,255,255,0.12);
+        border-radius: 2px; margin: 14px auto 22px; }
+      .ss-su-mark { width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 14px;
+        display:flex; align-items:center; justify-content:center; }
+      .ss-su-mark svg { width: 52px; height: 52px; }
+      .ss-su-title { font-family: 'Bebas Neue', sans-serif; font-size: 27px;
+        letter-spacing: 1px; color: #fff; line-height: 1.05; margin-bottom: 8px; }
+      .ss-su-title em { color: #EA3B32; font-style: normal; }
+      .ss-su-sub { font-size: 13.5px; color: #9a9aac; line-height: 1.5;
+        margin: 0 auto 22px; max-width: 320px; }
+      .ss-su-btn {
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        width: 100%; height: 50px; border-radius: 14px; margin-bottom: 10px;
+        font-family: 'DM Sans', sans-serif; font-size: 14.5px; font-weight: 700;
+        cursor: pointer; border: 1px solid rgba(255,255,255,0.1);
+        background: #1F1F2B; color: #fff; transition: background 0.15s, transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .ss-su-btn:hover { background: #26263444; }
+      .ss-su-btn:active { transform: scale(0.985); }
+      .ss-su-btn.primary { background: #EA3B32; border-color: #EA3B32; }
+      .ss-su-btn.primary:hover { background: #FF4D42; }
+      .ss-su-later { margin-top: 6px; padding: 12px; font-size: 13.5px;
+        color: #6b6b7a; font-weight: 600; cursor: pointer;
+        -webkit-tap-highlight-color: transparent; }
+      .ss-su-later:hover { color: #9a9aac; }
+    `;
+    document.head.appendChild(s);
+  })();
+
+  /* ── Inject sheet HTML once ── */
+  function _ensureSheet() {
+    if (document.getElementById('ss-signup-overlay')) return;
+    const ov = document.createElement('div');
+    ov.id = 'ss-signup-overlay';
+    ov.addEventListener('click', (e) => { if (e.target === ov) _ssCloseSignupSheet(); });
+    ov.innerHTML = `
+      <div id="ss-signup-sheet" role="dialog" aria-label="Sign up to ShowShak">
+        <div class="ss-su-handle"></div>
+        <div class="ss-su-mark"><svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg></div>
+        <div class="ss-su-title" id="ss-su-title">KEEP WHAT YOU <em>LOVE</em></div>
+        <div class="ss-su-sub" id="ss-su-sub">Sign up to fire clips, save to your Watchlist, and follow the curators whose taste you trust.</div>
+        <button class="ss-su-btn primary" onclick="ssGuestSignup('google')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.35 11.1H12v2.8h5.35c-.25 1.5-1.7 4.4-5.35 4.4-3.2 0-5.8-2.65-5.8-5.9s2.6-5.9 5.8-5.9c1.8 0 3 .77 3.7 1.43l2.5-2.42C16.7 3.6 14.6 2.7 12 2.7 6.9 2.7 2.8 6.8 2.8 12s4.1 9.3 9.2 9.3c5.3 0 8.8-3.73 8.8-8.98 0-.6-.07-1.07-.15-1.52z"/></svg>
+          Continue with Google
+        </button>
+        <button class="ss-su-btn" onclick="ssGuestSignup('email')">Sign up with Email</button>
+        <div class="ss-su-later" onclick="ssGuestLater()">Maybe later</div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+
+  function _ssOpenSignupSheet(reason) {
+    _ensureSheet();
+    const title = document.getElementById('ss-su-title');
+    const sub   = document.getElementById('ss-su-sub');
+    if (reason === 'fire') {
+      title.innerHTML = 'FELT THAT <em>FIRE?</em>';
+      sub.textContent = 'Sign up to fire clips and tell curators what hits. Your taste shapes your feed.';
+    } else if (reason === 'save') {
+      title.innerHTML = 'SAVE IT FOR <em>LATER</em>';
+      sub.textContent = 'Sign up to build your Watchlist and never lose a clip you loved.';
+    } else if (reason === 'follow') {
+      title.innerHTML = 'FOUND YOUR <em>PEOPLE?</em>';
+      sub.textContent = 'Sign up to follow the curators whose taste you trust and get their new picks.';
+    } else { // view threshold
+      title.innerHTML = 'ENJOYING THE <em>VIBE?</em>';
+      sub.textContent = 'Sign up to save clips, follow curators, and pick up right where you left off.';
+    }
+    document.getElementById('ss-signup-overlay')?.classList.add('open');
+    document.getElementById('ss-signup-sheet')?.classList.add('open');
+  }
+
+  function _ssCloseSignupSheet() {
+    document.getElementById('ss-signup-sheet')?.classList.remove('open');
+    document.getElementById('ss-signup-overlay')?.classList.remove('open');
+  }
+  window.ssGuestLater = _ssCloseSignupSheet;
+  window._ssCloseSignupSheet = _ssCloseSignupSheet;
+
+  /* Public guard for non-click fire paths (e.g. viewer double-tap).
+     Returns true if the action should be BLOCKED (guest) and shows the
+     sheet; returns false if the user is signed up (allow the action). */
+  window.ssGuestGuard = function (reason) {
+    if (ssIsSignedUp()) return false;
+    _ssOpenSignupSheet(reason || 'fire');
+    return true;
+  };
+
+  /* ── Reaction gate: intercept Fire/Save/Follow in the CAPTURE phase,
+       so we stop the action BEFORE its onclick runs. If signed up, we
+       never interfere. ── */
+  const GATED = [
+    { sel: '#rail-lit',         reason: 'fire'   }, // feed fire (desktop)
+    { sel: '[id^="m-lit-"]',    reason: 'fire'   }, // feed fire (mobile rail)
+    { sel: '.ssv-fire',         reason: 'fire'   }, // viewer fire (rail)
+    { sel: '[data-save-id]',    reason: 'save'   }, // any save button
+    { sel: '[data-follow]',     reason: 'follow' }, // any follow button
+  ];
+  document.addEventListener('click', (e) => {
+    if (ssIsSignedUp()) return;                  // signed up → fully transparent
+    if (!e.target || !e.target.closest) return;
+    for (const g of GATED) {
+      if (e.target.closest(g.sel)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();            // stops the element's onclick
+        _ssOpenSignupSheet(g.reason);
+        return;
+      }
+    }
+  }, true);
+
+  /* ── View trigger: count clips that become active (feed + viewer),
+       prompt once at the limit. Zero page edits — we watch the DOM. ── */
+  const _mo = new MutationObserver((muts) => {
+    if (ssIsSignedUp() || _viewPromptShown) return;
+    for (const m of muts) {
+      const el = m.target;
+      if (!(el instanceof Element)) continue;
+      const isClip = el.classList && (el.classList.contains('clip') || el.classList.contains('ssv-clip'));
+      if (!isClip || !el.classList.contains('active')) continue;
+      const id = el.id || (el.dataset && el.dataset.ssvIdx) || Math.random();
+      if (id === _lastActiveId) continue;        // ignore re-toggles of same clip
+      _lastActiveId = id;
+      _viewedClips++;
+      if (_viewedClips >= VIEW_LIMIT) {
+        _viewPromptShown = true;
+        _ssOpenSignupSheet('view');
+        break;
+      }
+    }
+  });
+  // Start once the body exists (shared.js runs at end of body).
+  _mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+})();
