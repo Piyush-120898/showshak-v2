@@ -29,7 +29,11 @@
   <h2>3. Real curators (users where role=curator)</h2>
   <div id="curators" class="box">Checking…</div>
 
-  <h2>4. Live tests</h2>
+  <h2>4. Who does the DB think you are?</h2>
+  <button onclick="whoami()">Who am I (DB)</button>
+  <div id="whoout" class="box">Tap to ask the database how it sees this request.</div>
+
+  <h2>5. Live tests</h2>
   <button onclick="testFire()">Test FIRE first clip</button>
   <button onclick="testFollow()">Test FOLLOW first curator</button>
   <div id="testout" class="box">Tap a button above.</div>
@@ -65,6 +69,22 @@
       if(uRes.error){ $('curators').className='box err'; $('curators').textContent='✗ '+uRes.error.message; log({curators_error:uRes.error}); }
       else { CURATORS=uRes.data||[]; $('curators').className='box '+(CURATORS.length?'ok':'warn');
         $('curators').innerHTML = CURATORS.length ? ('✓ '+CURATORS.length+' curators:<br>'+CURATORS.map(c=>'<span class="mono">@'+c.username+'</span>').join(', ')) : '⚠ No curators found. Did migration 0007 run? Check users table.'; }
+    }
+
+    async function whoami(){
+      $('whoout').className='box'; $('whoout').textContent='Asking the database…';
+      const { data, error } = await window.ssDB.rpc('whoami');
+      if(error){ $('whoout').className='box err'; $('whoout').textContent='✗ '+error.message+' (run migration 0009 first)'; log({whoami_error:error}); return; }
+      log({whoami:data});
+      const role = data && (data.jwt_role || data.role);
+      const uid = data && data.uid;
+      if(role==='authenticated' && uid){
+        $('whoout').className='box ok';
+        $('whoout').innerHTML='✓ DB sees you as <b>authenticated</b><br><span class="mono">uid: '+uid+'</span><br>→ So the issue is GRANTS, not your token.';
+      } else {
+        $('whoout').className='box err';
+        $('whoout').innerHTML='✗ DB sees you as <b>'+(role||'unknown')+'</b>'+(uid?'':' with NO uid')+'<br>→ Your login token is NOT reaching the database. THIS is the bug — your writes are treated as a logged-out visitor.';
+      }
     }
 
     async function testFire(){
