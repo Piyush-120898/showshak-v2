@@ -658,13 +658,19 @@ async function _ssDbRemoveClip(stackId,clipId){ try{ if(!window.ssDB||!window.ss
    across sessions/devices). Loads the users stacks + their items + the
    linked clip display data, rebuilds the sessionStorage store in the
    shape the Watchlist renders, then notifies listeners. No-op for guests. */
+function _ssHexToRgb(hex) {
+  if (!hex) return null;
+  const m = String(hex).replace('#','').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return null;
+  return parseInt(m[1],16) + ',' + parseInt(m[2],16) + ',' + parseInt(m[3],16);
+}
 async function ssHydrateStacks() {
   try {
     if (!window.ssDB || !window.ssCurrentUser) return;
     const me = window.ssCurrentUser(); if (!me) return;
     const { data: stacks, error } = await window.ssDB
       .from('stacks')
-      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, creator:creator_id(username), platform:platform_id(name,color,abbr,rgb)))')
+      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
       .eq('user_id', me.id).is('deleted_at', null);
     if (error || !stacks) return;
     const mapped = stacks.map(st => ({
@@ -672,7 +678,7 @@ async function ssHydrateStacks() {
       clips: (st.stack_items || []).filter(it => it.content).map(it => {
         const c = it.content, meta = c.meta || {}, p = c.platform || {}, cr = c.creator || {};
         return { id: c.id, title: '', bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
-          platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: p.rgb || '234,59,50',
+          platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
           caption: c.description || '', genre: [], lang: meta.lang || '', fires: c.fires_count || 0,
           creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
       })

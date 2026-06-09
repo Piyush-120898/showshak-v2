@@ -634,7 +634,7 @@ async function loadRealClips() {
   try {
     const { data, error } = await window.ssDB
       .from('content')
-      .select('id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr,rgb)')
+      .select('id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr)')
       .eq('status', 'live')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -648,6 +648,7 @@ async function loadRealClips() {
       const meta = row.meta || {};
       let mood = []; try { mood = JSON.parse(meta.mood || '[]'); } catch (e) {}
       const cname = cr.name || cr.username || 'curator';
+      const rgb = (function(h){ const m=String(h||'').replace('#','').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m?(parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16)):'234,59,50'; })(p.color);
       return {
         id: row.id,                                  // REAL uuid → fires/saves link to this
         title: (t.name || '').toUpperCase(),
@@ -657,7 +658,7 @@ async function loadRealClips() {
         creator: { name: cr.username || cname, letter: cname.charAt(0).toUpperCase(), bg: '#EA3B32', avatar: cr.avatar_url || null },
         litCount: row.fires_count || 0,
         platforms: p.name ? [{ name: p.name, color: p.color || '#EA3B32', label: p.abbr || p.name.charAt(0), sub: 'Available to stream', included: false }] : [],
-        platLabel: p.name || 'Streaming', platColor: p.color || '#EA3B32', platRgb: p.rgb || '234,59,50',
+        platLabel: p.name || 'Streaming', platColor: p.color || '#EA3B32', platRgb: rgb,
         bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
       };
     });
