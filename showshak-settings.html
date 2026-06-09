@@ -249,7 +249,7 @@ function homeScreen() {
     </div>
 
     <div class="group" style="margin-top:18px">
-      <div class="row row-danger" onclick="ssToast('Logged out (prototype)')">${ic('<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>')}<div class="row-main"><div class="row-title">Log out</div></div></div>
+      <div class="row row-danger" onclick="settingsSignOut()">${ic('<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>')}<div class="row-main"><div class="row-title">Log out</div></div></div>
     </div>
 
     <div class="set-foot-note">ShowShak · v0.9.0 (prototype)<br><a onclick="ssToast('Terms')">Terms</a> · <a onclick="ssToast('Privacy Policy')">Privacy</a> · <a onclick="ssToast('DMCA / report content')">DMCA</a></div>
@@ -260,7 +260,7 @@ function accountScreen() {
   return `
     <div class="sec-label">Login &amp; identity</div>
     <div class="group">
-      <div class="row" onclick="ssToast('Change email — coming soon')">${ic(ICONS.account)}<div class="row-main"><div class="row-title">Email</div><div class="row-sub">arjun@example.com</div></div>${ARROW}</div>
+      <div class="row" onclick="ssToast('Change email — coming soon')">${ic(ICONS.account)}<div class="row-main"><div class="row-title">Email</div><div class="row-sub" id="set-email">—</div></div>${ARROW}</div>
       <div class="row" onclick="ssToast('Change password — coming soon')"><div class="row-main" style="padding-left:48px"><div class="row-title">Change password</div></div>${ARROW}</div>
       <div class="row static"><div class="row-main" style="padding-left:48px"><div class="row-title">Connected logins</div><div class="row-sub">Google · Apple</div></div></div>
     </div>
@@ -427,11 +427,66 @@ function render() {
   document.getElementById('head-title').textContent = TITLES[cur] || 'Settings';
   document.getElementById('screens').innerHTML = `<div class="screen active">${(BUILDERS[cur]||homeScreen)()}</div>`;
   document.getElementById('back-btn').setAttribute('aria-label', stack.length>1 ? 'Back' : 'Back to profile');
+  // Fill the real signed-in email if we're on the account screen.
+  if (cur === 'account') {
+    const emailEl = document.getElementById('set-email');
+    const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+    if (emailEl) emailEl.textContent = (user && user.email) ? user.email : 'Guest (not signed in)';
+  }
+}
+
+/* ── Real sign-out ── */
+function settingsSignOut() {
+  if (typeof ssSignOut === 'function') ssSignOut();
+  else ssToast('Signed out');
+  try { sessionStorage.removeItem('ss_is_creator_v1'); } catch (e) {}
+  setTimeout(() => {
+    if (typeof ssNavigate === 'function') ssNavigate('showshak-feed.html');
+    else location.href = 'showshak-feed.html';
+  }, 500);
+}
+
+/* ── Load the user's REAL platform subscriptions from the DB ──
+   Reflects which platforms they ticked during onboarding. Falls back
+   to the mock defaults silently if logged out / offline. */
+async function hydratePlatforms() {
+  if (!window.ssDB || !window.ssCurrentUser) return;
+  const user = window.ssCurrentUser();
+  if (!user) return;
+  try {
+    const [{ data: allPlats }, { data: mySubs }] = await Promise.all([
+      window.ssDB.from('platforms').select('id, name').eq('active', true),
+      window.ssDB.from('user_subscriptions').select('platform_id').eq('user_id', user.id),
+    ]);
+    if (!allPlats) return;
+    const mine = new Set((mySubs || []).map(s => s.platform_id));
+    // Rebuild PLATFORMS from the real catalog, marking the user's as on.
+    PLATFORMS.length = 0;
+    allPlats.forEach(p => PLATFORMS.push({ id: p.id, name: p.name, on: mine.has(p.id) }));
+    if (stack[stack.length - 1] === 'platforms') render();
+  } catch (e) { /* keep mock platforms on failure */ }
 }
 
 /* ── Interactions ── */
 function toggleKey(key, el) { TOG[key] = !TOG[key]; el.classList.toggle('on', TOG[key]); }
-function togglePlatform(i, el) { PLATFORMS[i].on = !PLATFORMS[i].on; el.classList.toggle('on', PLATFORMS[i].on); }
+function togglePlatform(i, el) {
+  PLATFORMS[i].on = !PLATFORMS[i].on;
+  el.classList.toggle('on', PLATFORMS[i].on);
+  // Persist to the DB if signed in and this platform has a real id.
+  const plat = PLATFORMS[i];
+  const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+  if (user && plat.id && window.ssDB) {
+    if (plat.on) {
+      window.ssDB.from('user_subscriptions')
+        .upsert({ user_id: user.id, platform_id: plat.id }, { onConflict: 'user_id,platform_id' })
+        .then(({ error }) => { if (error) ssToast('Could not save — try again'); });
+    } else {
+      window.ssDB.from('user_subscriptions')
+        .delete().eq('user_id', user.id).eq('platform_id', plat.id)
+        .then(({ error }) => { if (error) ssToast('Could not save — try again'); });
+    }
+  }
+}
 function setRegion(r) { REGION.region = r; render(); ssToast('Region: ' + r); }
 function setLang(l) { REGION.lang = l; render(); ssToast('Language: ' + l); }
 function setStackPrivacy(v) { stackPriv = v; render(); }
@@ -451,6 +506,7 @@ window.addEventListener('popstate', () => {
 });
 
 render();
+hydratePlatforms();
 </script>
 </body>
 </html>

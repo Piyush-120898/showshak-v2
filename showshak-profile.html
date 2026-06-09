@@ -1906,8 +1906,42 @@ if (_params.get('curator')) {
   if (pv) pv.style.display = 'none';
 }
 
-renderWall();
-renderAll();
+/* ── HYDRATE FROM THE REAL LOGGED-IN USER ───────────────────────
+   When you're viewing YOUR OWN profile (not another curator via
+   ?curator=), pull your real row from the DB and fill PROFILE so the
+   page shows your actual name / @username / avatar / genres instead of
+   the mock. Falls back silently to the mock if logged out or offline,
+   so the page never breaks. */
+async function hydrateOwnProfile() {
+  if (_params.get('curator')) return;                 // viewing someone else → skip
+  if (!window.ssDB || !window.ssCurrentUser) return;  // no backend → keep mock
+  const user = window.ssCurrentUser();
+  if (!user) return;                                  // guest → keep mock
+  try {
+    const { data, error } = await window.ssDB
+      .from('users')
+      .select('username, name, bio, avatar_url, genres, verified, role')
+      .eq('id', user.id).single();
+    if (error || !data) return;
+    if (data.name)      PROFILE.name   = data.name.toUpperCase();
+    if (data.username)  PROFILE.handle = '@' + data.username;
+    PROFILE.letter = ((data.name || data.username || 'U').charAt(0)).toUpperCase();
+    PROFILE.photo  = data.avatar_url || null;
+    if (data.bio)            PROFILE.bio    = data.bio;
+    if (Array.isArray(data.genres) && data.genres.length) PROFILE.genres = data.genres;
+    // If they're a real curator, reflect the owner face (unless a deep-link set one).
+    if (data.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
+      face = 'owner';
+      activeTab = defaultTabFor(face);
+    }
+  } catch (e) { /* keep mock on any failure */ }
+}
+
+(async function boot() {
+  await hydrateOwnProfile();
+  renderWall();
+  renderAll();
+})();
 
 // Keep the Following list + public Follow button live if following changes
 // from anywhere (e.g. a clip viewer opened from this page).
