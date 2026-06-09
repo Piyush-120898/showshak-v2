@@ -700,6 +700,51 @@ async function ssHydrateStacks() {
   } catch (e) { /* keep local store on failure */ }
 }
 
+/* ════════════════════════════════════════════════
+   ── UNIFIED CLIP LOADER (one source for every page) ──
+   Single place every page gets its clips from, so they all carry real
+   DB UUIDs and the shared save/fire/follow functions work identically
+   everywhere. Returns a normalized base shape; per-page adapters below
+   reshape it to what feed/discover expect. Falls back to [] on failure
+   (callers keep their mock data), so guests/offline still work.
+   ════════════════════════════════════════════════ */
+function _ssHexRgb(h){ var m=String(h||"").replace("#","").match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m?(parseInt(m[1],16)+","+parseInt(m[2],16)+","+parseInt(m[3],16)):"234,59,50"; }
+async function ssLoadClips(limit){
+  if(!window.ssDB) return [];
+  try{
+    var res = await window.ssDB.from("content")
+      .select("id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr)")
+      .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).limit(limit||50);
+    if(res.error || !res.data || !res.data.length) return [];
+    return res.data.map(function(row){
+      var meta=row.meta||{}, p=row.platform||{}, t=row.title||{}, cr=row.creator||{};
+      var mood=[]; try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){}
+      var uname=cr.username||"curator";
+      return {
+        id: row.id,
+        title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
+        caption: row.description||"", fires: row.fires_count||0,
+        genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
+        bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
+        platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
+        platAbbr: p.abbr||(p.name?p.name.charAt(0):"▶"), platRgb: _ssHexRgb(p.color),
+        creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
+      };
+    });
+  }catch(e){ return []; }
+}
+/* FEED shape: titles shown, full platforms[] for the Watch It sheet. */
+function ssClipsForFeed(base){ return base.map(function(c){ return {
+  id:c.id, title:(c.title||"").toUpperCase(), year:c.year, genre:c.genre, lang:c.lang,
+  season:c.season, synopsis:c.synopsis, caption:c.caption, creator:c.creator, litCount:c.fires,
+  platforms: c.platLabel? [{name:c.platLabel,color:c.platColor,label:c.platAbbr,sub:"Available to stream",included:false}] : [],
+  platLabel:c.platLabel, platColor:c.platColor, platRgb:c.platRgb, bg:c.bg }; }); }
+/* DISCOVER shape: title hidden, mood[] kept. */
+function ssClipsForDiscover(base){ return base.map(function(c){ return {
+  id:c.id, caption:c.caption, genre:c.genre, lang:c.lang, platLabel:c.platLabel, platColor:c.platColor,
+  platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, bg:c.bg, mood:c.mood }; }); }
+window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover;
+
 /* ── Button UI sync ────────────────────────────── */
 // Call after any page renders its save buttons so they
 // reflect the current sessionStorage state correctly.

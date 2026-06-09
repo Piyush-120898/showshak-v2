@@ -630,40 +630,10 @@ let SHOWS = SSData.feedShows();
    DB id so fires/saves/follows link by foreign key. Falls back to the
    mock SHOWS silently if logged out / offline / no clips yet. */
 async function loadRealClips() {
-  if (!window.ssDB) return false;
-  try {
-    const { data, error } = await window.ssDB
-      .from('content')
-      .select('id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr)')
-      .eq('status', 'live')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (error || !data || !data.length) return false;
-
-    SHOWS = data.map(row => {
-      const cr   = row.creator || {};
-      const t    = row.title || {};
-      const p    = row.platform || {};
-      const meta = row.meta || {};
-      let mood = []; try { mood = JSON.parse(meta.mood || '[]'); } catch (e) {}
-      const cname = cr.name || cr.username || 'curator';
-      const rgb = (function(h){ const m=String(h||'').replace('#','').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m?(parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16)):'234,59,50'; })(p.color);
-      return {
-        id: row.id,                                  // REAL uuid → fires/saves link to this
-        title: (t.name || '').toUpperCase(),
-        year: t.year || '', genre: [], lang: meta.lang || '',
-        season: meta.season || '', synopsis: t.synopsis || '',
-        caption: row.description || '',
-        creator: { name: cr.username || cname, letter: cname.charAt(0).toUpperCase(), bg: '#EA3B32', avatar: cr.avatar_url || null },
-        litCount: row.fires_count || 0,
-        platforms: p.name ? [{ name: p.name, color: p.color || '#EA3B32', label: p.abbr || p.name.charAt(0), sub: 'Available to stream', included: false }] : [],
-        platLabel: p.name || 'Streaming', platColor: p.color || '#EA3B32', platRgb: rgb,
-        bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
-      };
-    });
-    return true;
-  } catch (e) { return false; }
+  const base = (typeof ssLoadClips === "function") ? await ssLoadClips(50) : [];
+  if (!base.length) return false;
+  SHOWS = ssClipsForFeed(base);
+  return true;
 }
 
 const litState   = {};

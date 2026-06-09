@@ -579,7 +579,7 @@ html, body { overflow: hidden; }
 let CLIPS = SSData.discoverClips();
 const MOODS = SSData.moods;
 const PLATFORMS = SSData.discoverPlatforms();
-async function discoverLoadRealClips(){ if(!window.ssDB)return false; try{ const {data,error}=await window.ssDB.from('content').select("id, description, fires_count, meta, status, creator:creator_id(username), platform:platform_id(name,color,abbr)").eq('status','live').is('deleted_at',null).order('created_at',{ascending:false}).limit(50); if(error||!data||!data.length)return false; const hexToRgb=(h)=>{const m=String(h||'').replace('#','').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);return m?(parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16)):'234,59,50';}; CLIPS=data.map(row=>{ const meta=row.meta||{},p=row.platform||{},cr=row.creator||{}; let mood=[];try{mood=JSON.parse(meta.mood||'[]');}catch(e){} const cname=cr.username||'curator'; return { id:row.id, caption:row.description||'', genre:[], lang:meta.lang||'', platLabel:p.name||'Streaming', platColor:p.color||'#EA3B32', platAbbr:p.abbr||(p.name?p.name.charAt(0):'\u25B6'), platRgb:hexToRgb(p.color), creator:{name:cname,letter:cname.charAt(0).toUpperCase(),bg:'#EA3B32'}, fires:row.fires_count||0, bg:meta.bg||'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)', mood:mood }; }); return true; }catch(e){return false;} }
+async function discoverLoadRealClips(){ var base=(typeof ssLoadClips==="function")?await ssLoadClips(50):[]; if(!base.length)return false; CLIPS=ssClipsForDiscover(base); return true; }
 
 let recentSearches = ['thriller clips','feel good','kdrama'];
 let activeMood = null, activePlatform = null;
