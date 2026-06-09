@@ -107,7 +107,7 @@ These are the rules we've been operating by. Keep following them.
 ✅ Constraint audit passed (PKs/FKs/uniques/checks verified, 0 orphans)
 ✅ Step 4a  Fires  → persist to DB
 ✅ Step 4b  Follows → persist to DB
-⬜ Step 4c  Saves / Stacks → still sessionStorage (NEXT)
+✅ Step 4c  Saves / Stacks → persist to DB (mirror + hydrate)
 ⬜ Step 2   Titles + Watch It (TMDB) — real availability data
 ⬜ Step 3   Clips + real video (Mux) — the emotional core
 ⬜ Step 5   Events + analytics rollups (creator cockpit, RLS-gated)
@@ -260,12 +260,19 @@ accounts in Authentication → Users (profiles cascade away).
 
 ## 10. Immediate next step
 
-**Step 4c — wire Saves/Stacks to the DB.** Right now saving a clip to a Stack
-(the Watchlist) is still in `sessionStorage` and vanishes when the tab closes.
-Make it real: create stack → `stacks`, add clip → `stack_items`. Grants are
-already in place (`0008`/`0010`). Use `.insert()`/`.delete()` (NOT upsert —
-lesson #3). Then Step 4 is fully done, and the next milestone is **Step 3:
-real video via Mux** (the emotional core of the product).
+**Step 4 is fully done** — fires, follows, and saves/stacks all persist to
+the DB (mirror-to-DB + hydrate-on-login pattern; sessionStorage stays the
+instant UI layer). The next milestone is **Step 2 (Titles + Watch It via
+TMDB)** for real availability data, and/or **Step 3 (real video via Mux)** —
+the emotional core of the product. TMDB needs no deals and works today;
+Mux needs an account + the upload pipeline. Recommended: TMDB/Watch It next
+(unlocks the real "send them to the right platform" payoff), then Mux.
+
+How saves/stacks work now (for reference): `ssCreateStack` uses a real UUID
+so local id == DB id; every stack write mirrors to `stacks`/`stack_items`
+via `.insert()`/`.delete()` (never upsert — lesson #3); `ssHydrateStacks()`
+reloads them from the DB on login. Guests and mock (non-uuid) clips no-op
+safely.
 
 ---
 
