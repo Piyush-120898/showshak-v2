@@ -33,6 +33,10 @@
   <button onclick="whoami()">Who am I (DB)</button>
   <div id="whoout" class="box">Tap to ask the database how it sees this request.</div>
 
+  <h2>4b. What grants does the DB actually have?</h2>
+  <button onclick="checkGrants()">Check grants</button>
+  <div id="grantout" class="box">Tap to list the authenticated role's grants on the social tables.</div>
+
   <h2>5. Live tests</h2>
   <button onclick="testFire()">Test FIRE first clip</button>
   <button onclick="testFollow()">Test FOLLOW first curator</button>
@@ -85,6 +89,16 @@
         $('whoout').className='box err';
         $('whoout').innerHTML='✗ DB sees you as <b>'+(role||'unknown')+'</b>'+(uid?'':' with NO uid')+'<br>→ Your login token is NOT reaching the database. THIS is the bug — your writes are treated as a logged-out visitor.';
       }
+    }
+
+    async function checkGrants(){
+      $('grantout').className='box'; $('grantout').textContent='Checking grants…';
+      const { data, error } = await window.ssDB.rpc('check_social_grants');
+      if(error){ $('grantout').className='box err'; $('grantout').textContent='✗ '+error.message+' (run migration 0010 first)'; log({grants_error:error}); return; }
+      log({grants:data});
+      const hasInsert = data && data.indexOf('content_fires:INSERT')>=0 && data.indexOf('follows:INSERT')>=0;
+      $('grantout').className='box '+(hasInsert?'ok':'err');
+      $('grantout').innerHTML = (hasInsert?'✓ Grants present:<br>':'✗ Missing INSERT grants — this is the bug:<br>')+'<span class="mono">'+data+'</span>';
     }
 
     async function testFire(){
