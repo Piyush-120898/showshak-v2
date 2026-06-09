@@ -754,11 +754,11 @@ function render() {
       : 'linear-gradient(160deg,#0B0B0F,#13131A)';
 
     const clipsHtml = stack.clips.map(c => `
-      <div class="wl-clip" onclick="wlOpenStackClip('${stack.id}',${c.id})">
+      <div class="wl-clip" onclick="wlOpenStackClip('${stack.id}','${c.id}')">
         <div class="wl-clip-thumb">
           <div class="wl-clip-bg" style="background:${c.bg}"></div>
           <div class="wl-clip-vig"></div>
-          <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}',${c.id})">✕</div>
+          <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}','${c.id}')">✕</div>
           <div class="wl-clip-meta">
             <div class="wl-clip-creator" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter||''}" data-curator-bg="${c.creatorBg||''}">@${c.creator}</div>
             <div class="wl-clip-tag">${c.genre[0]} · ${c.lang}</div>
