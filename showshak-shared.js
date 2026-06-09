@@ -427,6 +427,7 @@ function ssFollow(curator) {
   if (!c) return false;
   const list = ssGetFollowing();
   if (!list.some(x => x.username === c.username)) { list.push(c); _ss_writeFollowing(list); }
+  _ssDbFollow(c.username, true);   // persist to DB (fire-and-forget)
   return true;
 }
 function ssUnfollow(username) {
@@ -434,7 +435,49 @@ function ssUnfollow(username) {
   const u = String(username).replace(/^@/, '');
   const list = ssGetFollowing().filter(c => c.username !== u);
   _ss_writeFollowing(list);
+  _ssDbFollow(u, false);           // persist to DB (fire-and-forget)
   return false;
+}
+
+/* Persist a follow/unfollow to the DB. Resolves the curator's real
+   user id from their @username, then inserts/deletes a follows row for
+   the logged-in user. No-ops silently for guests or unknown curators
+   (e.g. mock-only curators not seeded in the DB). */
+async function _ssDbFollow(username, shouldFollow) {
+  try {
+    if (!window.ssDB || !window.ssCurrentUser) return;
+    const me = window.ssCurrentUser();
+    if (!me) return;
+    const u = String(username).replace(/^@/, '');
+    const { data: cur } = await window.ssDB.from('users').select('id').eq('username', u).single();
+    if (!cur || !cur.id || cur.id === me.id) return;
+    if (shouldFollow) {
+      await window.ssDB.from('follows').upsert(
+        { follower_id: me.id, creator_id: cur.id }, { onConflict: 'follower_id,creator_id' });
+    } else {
+      await window.ssDB.from('follows').delete().eq('follower_id', me.id).eq('creator_id', cur.id);
+    }
+  } catch (e) { /* keep UI working even if the DB write fails */ }
+}
+
+/* Persist a fire/unfire to the DB. Inserts/deletes a content_fires row
+   for the logged-in user; the DB trigger keeps content.fires_count in
+   sync. No-ops for guests or clips whose id isn't a real DB row (mock
+   clips), so the prototype keeps working. */
+async function _ssDbFire(clipId, shouldFire) {
+  try {
+    if (!window.ssDB || !window.ssCurrentUser) return;
+    const me = window.ssCurrentUser();
+    if (!me) return;
+    // Real clip ids are uuids; mock ids are small integers — skip those.
+    if (!/^[0-9a-f-]{36}$/i.test(String(clipId))) return;
+    if (shouldFire) {
+      await window.ssDB.from('content_fires').upsert(
+        { user_id: me.id, content_id: clipId }, { onConflict: 'user_id,content_id' });
+    } else {
+      await window.ssDB.from('content_fires').delete().eq('user_id', me.id).eq('content_id', clipId);
+    }
+  } catch (e) { /* keep UI working even if the DB write fails */ }
 }
 function ssToggleFollow(curator) {
   const c = _ssNormalizeCurator(curator);
@@ -1574,6 +1617,8 @@ function _ssvToggleFire(i) {
   }
   const count = document.getElementById(`ssv-fire-count-${i}`);
   if (count) count.textContent = fmtFires(clip.fires + (fired ? 1 : 0));
+
+  _ssDbFire(clip.id, fired);   // persist to DB (fire-and-forget)
 
   // Fire energy → flash the Watch It CTA on this clip
   if (fired) {

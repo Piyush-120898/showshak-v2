@@ -622,7 +622,48 @@ html, body { overflow: hidden; }
 <script>
 /* Clip data now comes from the central source (data/showshak-data.js).
    SSData.feedShows() returns the exact SHOWS shape this page expects. */
-const SHOWS = SSData.feedShows();
+let SHOWS = SSData.feedShows();
+
+/* ── Load REAL clips from the database (Step 4) ──
+   Maps live `content` rows (joined to creator + title + platform) into
+   the exact SHOWS shape this page renders. Each clip carries its real
+   DB id so fires/saves/follows link by foreign key. Falls back to the
+   mock SHOWS silently if logged out / offline / no clips yet. */
+async function loadRealClips() {
+  if (!window.ssDB) return false;
+  try {
+    const { data, error } = await window.ssDB
+      .from('content')
+      .select('id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr,rgb)')
+      .eq('status', 'live')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error || !data || !data.length) return false;
+
+    SHOWS = data.map(row => {
+      const cr   = row.creator || {};
+      const t    = row.title || {};
+      const p    = row.platform || {};
+      const meta = row.meta || {};
+      let mood = []; try { mood = JSON.parse(meta.mood || '[]'); } catch (e) {}
+      const cname = cr.name || cr.username || 'curator';
+      return {
+        id: row.id,                                  // REAL uuid → fires/saves link to this
+        title: (t.name || '').toUpperCase(),
+        year: t.year || '', genre: [], lang: meta.lang || '',
+        season: meta.season || '', synopsis: t.synopsis || '',
+        caption: row.description || '',
+        creator: { name: cr.username || cname, letter: cname.charAt(0).toUpperCase(), bg: '#EA3B32', avatar: cr.avatar_url || null },
+        litCount: row.fires_count || 0,
+        platforms: p.name ? [{ name: p.name, color: p.color || '#EA3B32', label: p.abbr || p.name.charAt(0), sub: 'Available to stream', included: false }] : [],
+        platLabel: p.name || 'Streaming', platColor: p.color || '#EA3B32', platRgb: p.rgb || '234,59,50',
+        bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+      };
+    });
+    return true;
+  } catch (e) { return false; }
+}
 
 const litState   = {};
 let currentClip  = 0;
@@ -910,6 +951,8 @@ function toggleLit(idx) {
   }
   if (litState[idx]) setTimeout(() => flashCTA(idx), 120);
   syncRail(idx);
+  // Persist fire to DB (real clips only; guests/mock no-op safely).
+  if (typeof _ssDbFire === 'function') _ssDbFire(show.id, litState[idx]);
 }
 
 function toggleSave(idx, btnEl) {
@@ -928,12 +971,15 @@ function positionRail() {
 }
 
 // ── INIT ──
-buildFeed();
-ssSyncAllSaveBtns();   // restore saved states from sessionStorage on page load
-initScrollObserver();
-startProgress(0);
-syncRail(0);
-requestAnimationFrame(() => { positionRail(); animateRailIn(); });
+(async function initFeed() {
+  await loadRealClips();   // swap mock → real DB clips if available
+  buildFeed();
+  ssSyncAllSaveBtns();   // restore saved states on page load
+  initScrollObserver();
+  startProgress(0);
+  syncRail(0);
+  requestAnimationFrame(() => { positionRail(); animateRailIn(); });
+})();
 window.addEventListener('resize', positionRail);
 </script>
 </body>
