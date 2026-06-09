@@ -108,7 +108,8 @@
       const clip = CLIPS[0];
       const row = { user_id: SESSION.user.id, content_id: clip.id };
       log({attempting_fire: row});
-      const { data, error } = await window.ssDB.from('content_fires').upsert(row, { onConflict:'user_id,content_id' }).select();
+      const { data, error } = await window.ssDB.from('content_fires').insert(row).select();
+      if(error && error.code==='23505'){ $('testout').className='box ok'; $('testout').textContent='✓ Already fired (row exists) — that\'s a success too!'; return; }
       if(error){ $('testout').className='box err'; $('testout').textContent='✗ FIRE FAILED: '+error.message; log({fire_error:error}); }
       else { $('testout').className='box ok'; $('testout').textContent='✓ Fire row created for clip '+clip.id.slice(0,8)+'… Check content_fires table!'; log({fire_ok:data}); }
     }
@@ -121,7 +122,8 @@
       if(cur.id === SESSION.user.id){ $('testout').className='box warn'; $('testout').textContent='First curator is YOU — can\'t follow yourself. (This is fine.)'; return; }
       const row = { follower_id: SESSION.user.id, creator_id: cur.id };
       log({attempting_follow: row});
-      const { data, error } = await window.ssDB.from('follows').upsert(row, { onConflict:'follower_id,creator_id' }).select();
+      const { data, error } = await window.ssDB.from('follows').insert(row).select();
+      if(error && error.code==='23505'){ $('testout').className='box ok'; $('testout').textContent='✓ Already following (row exists) — success!'; return; }
       if(error){ $('testout').className='box err'; $('testout').textContent='✗ FOLLOW FAILED: '+error.message; log({follow_error:error}); }
       else { $('testout').className='box ok'; $('testout').textContent='✓ Follow row created (@'+cur.username+'). Check follows table!'; log({follow_ok:data}); }
     }

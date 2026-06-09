@@ -452,8 +452,11 @@ async function _ssDbFollow(username, shouldFollow) {
     const { data: cur } = await window.ssDB.from('users').select('id').eq('username', u).single();
     if (!cur || !cur.id || cur.id === me.id) return;
     if (shouldFollow) {
-      await window.ssDB.from('follows').upsert(
-        { follower_id: me.id, creator_id: cur.id }, { onConflict: 'follower_id,creator_id' });
+      // insert (not upsert) — these rows are only inserted/deleted, never
+      // updated, so we don't need (and shouldn't require) UPDATE privilege.
+      // Ignore duplicate-key errors (already following).
+      const { error } = await window.ssDB.from('follows').insert({ follower_id: me.id, creator_id: cur.id });
+      if (error && error.code !== '23505') console.warn('ShowShak follow:', error.message);
     } else {
       await window.ssDB.from('follows').delete().eq('follower_id', me.id).eq('creator_id', cur.id);
     }
@@ -472,8 +475,10 @@ async function _ssDbFire(clipId, shouldFire) {
     // Real clip ids are uuids; mock ids are small integers — skip those.
     if (!/^[0-9a-f-]{36}$/i.test(String(clipId))) return;
     if (shouldFire) {
-      await window.ssDB.from('content_fires').upsert(
-        { user_id: me.id, content_id: clipId }, { onConflict: 'user_id,content_id' });
+      // insert (not upsert) — fire rows are only inserted/deleted. Ignore
+      // duplicate-key (already fired); the trigger keeps fires_count synced.
+      const { error } = await window.ssDB.from('content_fires').insert({ user_id: me.id, content_id: clipId });
+      if (error && error.code !== '23505') console.warn('ShowShak fire:', error.message);
     } else {
       await window.ssDB.from('content_fires').delete().eq('user_id', me.id).eq('content_id', clipId);
     }
