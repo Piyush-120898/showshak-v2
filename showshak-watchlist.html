@@ -931,9 +931,12 @@ function shareActiveStack() {
 function deleteActiveStack() {
   document.getElementById('opts-menu').classList.remove('show');
   if (!activeStackId) return;
+  const deletedId = activeStackId;
   // Delete via shared storage
   const stacks = ssGetStacks().filter(s => s.id !== activeStackId);
   try { sessionStorage.setItem('ss_stacks_v1', JSON.stringify(stacks)); } catch {}
+  // Mirror the deletion to the DB (stack + its items).
+  if (typeof _ssDbDeleteStack === 'function') _ssDbDeleteStack(deletedId);
   activeStackId = null;
   render();
   ssToast('Stack deleted');

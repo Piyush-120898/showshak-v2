@@ -623,6 +623,7 @@ function ssAddClipToStack(stackId, clip) {
   if (stack.clips.some(c => c.id === clip.id)) return; // no duplicates
   stack.clips.unshift(clip);                            // newest first
   _ss_writeStacks(stacks);
+  _ssDbAddClip(stackId, clip.id);
 }
 
 function ssRemoveClipFromStack(stackId, clipId) {
@@ -631,12 +632,52 @@ function ssRemoveClipFromStack(stackId, clipId) {
   if (!stack) return;
   stack.clips = stack.clips.filter(c => c.id !== clipId);
   _ss_writeStacks(stacks);
+  _ssDbRemoveClip(stackId, clipId);
 }
 
 function ssRemoveClipFromAllStacks(clipId) {
   const stacks = ssGetStacks();
+  const affected = stacks.filter(s => s.clips.some(c => String(c.id) === String(clipId))).map(s => s.id);
   stacks.forEach(s => { s.clips = s.clips.filter(c => c.id !== clipId); });
   _ss_writeStacks(stacks);
+  affected.forEach(sid => _ssDbRemoveClip(sid, clipId));
+}
+
+/* Stacks DB mirror (insert/delete only — never upsert; lesson #3). */
+function _ssIsUuid(v) { return /^[0-9a-f-]{36}$/i.test(String(v)); }
+async function _ssDbCreateStack(stack) { try { if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stack.id))return; const {error}=await window.ssDB.from('stacks').insert({id:stack.id,user_id:me.id,name:stack.name}); if(error&&error.code!=='23505')console.warn('SS stack create:',error.message);}catch(e){} }
+async function _ssDbRenameStack(stackId,name){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stacks').update({name:name}).eq('id',stackId).eq('user_id',me.id);}catch(e){} }
+async function _ssDbDeleteStack(stackId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId); await window.ssDB.from('stacks').delete().eq('id',stackId).eq('user_id',me.id);}catch(e){} }
+async function _ssDbAddClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; const {error}=await window.ssDB.from('stack_items').insert({stack_id:stackId,content_id:clipId}); if(error&&error.code!=='23505')console.warn('SS stack add:',error.message);}catch(e){} }
+async function _ssDbRemoveClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId).eq('content_id',clipId);}catch(e){} }
+
+/* Hydrate the local Stacks store from the DB (so saved clips persist
+   across sessions/devices). Loads the users stacks + their items + the
+   linked clip display data, rebuilds the sessionStorage store in the
+   shape the Watchlist renders, then notifies listeners. No-op for guests. */
+async function ssHydrateStacks() {
+  try {
+    if (!window.ssDB || !window.ssCurrentUser) return;
+    const me = window.ssCurrentUser(); if (!me) return;
+    const { data: stacks, error } = await window.ssDB
+      .from('stacks')
+      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, creator:creator_id(username), platform:platform_id(name,color,abbr,rgb)))')
+      .eq('user_id', me.id).is('deleted_at', null);
+    if (error || !stacks) return;
+    const mapped = stacks.map(st => ({
+      id: st.id, name: st.name, createdAt: st.created_at ? Date.parse(st.created_at) : Date.now(),
+      clips: (st.stack_items || []).filter(it => it.content).map(it => {
+        const c = it.content, meta = c.meta || {}, p = c.platform || {}, cr = c.creator || {};
+        return { id: c.id, title: '', bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+          platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: p.rgb || '234,59,50',
+          caption: c.description || '', genre: [], lang: meta.lang || '', fires: c.fires_count || 0,
+          creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
+      })
+    }));
+    try { sessionStorage.setItem(SS_STACKS_KEY, JSON.stringify(mapped)); } catch (e) {}
+    if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
+    if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
+  } catch (e) { /* keep local store on failure */ }
 }
 
 /* ── Button UI sync ────────────────────────────── */
@@ -1681,6 +1722,7 @@ function _ssvToggleFire(i) {
       _ssSession = data && data.session ? data.session : null;
       if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
+      if (_ssSession && typeof ssHydrateStacks === 'function') ssHydrateStacks();
     }).catch(() => {});
     // Live updates: login, logout, token refresh, OAuth redirect return.
     window.ssDB.auth.onAuthStateChange((_event, session) => {
