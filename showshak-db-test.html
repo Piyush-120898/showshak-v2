@@ -3,103 +3,96 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ShowShak — DB Connection Test</title>
+  <title>ShowShak — Social Layer Test</title>
   <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #0B0B0F; color: #fff;
-      max-width: 640px; margin: 0 auto; padding: 40px 20px;
-    }
-    h1 { font-size: 20px; }
-    #status {
-      padding: 14px 16px; border-radius: 12px; margin: 16px 0;
-      font-weight: 600; font-size: 14px;
-    }
-    .pending { background: #1A1A24; color: #9a9aac; }
-    .ok      { background: rgba(39,174,96,0.15); color: #2ecc71; border: 1px solid rgba(39,174,96,0.4); }
-    .err     { background: rgba(234,59,50,0.15); color: #ff5a4d; border: 1px solid rgba(234,59,50,0.4); }
-    .row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 10px 14px; background: #13131A;
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 10px; margin-bottom: 8px;
-    }
-    .chip {
-      width: 34px; height: 34px; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 12px; color: #fff; flex-shrink: 0;
-    }
-    .label { font-weight: 600; }
-    .sub { font-size: 12px; color: #6b6b7a; }
-    pre {
-      background: #13131A; border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 10px; padding: 14px; overflow-x: auto;
-      font-size: 12px; color: #9a9aac;
-    }
-    h2 { font-size: 14px; color: #6b6b7a; margin: 24px 0 10px; text-transform: uppercase; letter-spacing: 1px; }
+    body { font-family: system-ui, sans-serif; background:#0B0B0F; color:#fff; max-width:640px; margin:0 auto; padding:32px 18px 80px; }
+    h1 { font-size:19px; } h2 { font-size:13px; color:#6b6b7a; text-transform:uppercase; letter-spacing:1px; margin:22px 0 8px; }
+    .box { padding:12px 14px; border-radius:10px; margin-bottom:8px; font-size:13px; line-height:1.5; border:1px solid rgba(255,255,255,0.08); background:#13131A; }
+    .ok { background:rgba(39,174,96,0.13); color:#2ecc71; border-color:rgba(39,174,96,0.35); }
+    .err { background:rgba(234,59,50,0.13); color:#ff6a5d; border-color:rgba(234,59,50,0.35); }
+    .warn { background:rgba(255,180,0,0.1); color:#ffcf57; border-color:rgba(255,180,0,0.3); }
+    pre { background:#0d0d12; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px; font-size:11px; overflow-x:auto; color:#9a9aac; white-space:pre-wrap; word-break:break-word; }
+    button { background:#EA3B32; color:#fff; border:none; border-radius:10px; padding:11px 16px; font-size:13px; font-weight:700; cursor:pointer; margin:4px 4px 4px 0; }
+    .mono { font-family:monospace; font-size:11px; color:#9a9aac; }
   </style>
 </head>
 <body>
-  <h1>ShowShak — Database Connection Test</h1>
-  <p class="sub">This page reads live from your Supabase database. If the moods &amp; platforms below load, the frontend ↔ backend pipe works.</p>
+  <h1>ShowShak — Social Layer Test</h1>
+  <p class="mono">Tests fires + follows persistence against the live DB. Open this WHILE SIGNED IN.</p>
 
-  <div id="status" class="pending">Connecting to database…</div>
+  <h2>1. Your session</h2>
+  <div id="session" class="box">Checking…</div>
 
-  <h2>Moods (read from database)</h2>
-  <div id="moods"></div>
+  <h2>2. Real clips the feed can read (content)</h2>
+  <div id="clips" class="box">Checking…</div>
 
-  <h2>Platforms (read from database)</h2>
-  <div id="platforms"></div>
+  <h2>3. Real curators (users where role=curator)</h2>
+  <div id="curators" class="box">Checking…</div>
 
-  <h2>Raw response (debug)</h2>
-  <pre id="raw">—</pre>
+  <h2>4. Live tests</h2>
+  <button onclick="testFire()">Test FIRE first clip</button>
+  <button onclick="testFollow()">Test FOLLOW first curator</button>
+  <div id="testout" class="box">Tap a button above.</div>
 
-  <!-- Supabase library, then our connection, then this page's test -->
+  <h2>Debug log</h2>
+  <pre id="log">—</pre>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="showshak-supabase.js"></script>
   <script>
-    async function runTest() {
-      const statusEl = document.getElementById('status');
-      const rawEl    = document.getElementById('raw');
+    const $ = id => document.getElementById(id);
+    const logLines = [];
+    function log(x){ logLines.push(typeof x==='string'?x:JSON.stringify(x,null,2)); $('log').textContent = logLines.join('\n'); }
+    let SESSION=null, CLIPS=[], CURATORS=[];
 
-      if (!window.ssDB) {
-        statusEl.className = 'err';
-        statusEl.textContent = '✗ Could not create the Supabase client (library not loaded).';
-        return;
-      }
+    async function init(){
+      if(!window.ssDB){ $('session').className='box err'; $('session').textContent='✗ Supabase client not created'; return; }
 
-      try {
-        // Read the two seeded reference tables.
-        const moodsRes     = await window.ssDB.from('moods').select('name, tag').order('name');
-        const platformsRes = await window.ssDB.from('platforms').select('name, color, abbr');
+      // 1. Session
+      const { data:s } = await window.ssDB.auth.getSession();
+      SESSION = s && s.session ? s.session : null;
+      if(SESSION){ $('session').className='box ok'; $('session').innerHTML = '✓ Signed in as <b>'+(SESSION.user.email||SESSION.user.id)+'</b><br><span class="mono">uid: '+SESSION.user.id+'</span>'; }
+      else { $('session').className='box warn'; $('session').innerHTML='⚠ NOT signed in. Fires/follows can only persist when logged in.<br>Go to the feed, sign up/in, then reopen this page.'; }
 
-        if (moodsRes.error)     throw moodsRes.error;
-        if (platformsRes.error) throw platformsRes.error;
+      // 2. Clips
+      const cRes = await window.ssDB.from('content').select('id, description, status, fires_count, creator:creator_id(username)').eq('status','live').limit(10);
+      if(cRes.error){ $('clips').className='box err'; $('clips').textContent='✗ '+cRes.error.message; log({clips_error:cRes.error}); }
+      else { CLIPS=cRes.data||[]; $('clips').className='box '+(CLIPS.length?'ok':'warn');
+        $('clips').innerHTML = CLIPS.length ? ('✓ '+CLIPS.length+' live clips found:<br>'+CLIPS.map(c=>'<span class="mono">'+c.id.slice(0,8)+'… by @'+(c.creator?c.creator.username:'?')+' (🔥'+c.fires_count+')</span>').join('<br>')) : '⚠ No live clips found. Did migration 0007 run? Check the content table.'; }
 
-        // Render moods
-        document.getElementById('moods').innerHTML = moodsRes.data.map(m => `
-          <div class="row">
-            <div class="chip" style="background:#EA3B32">🔥</div>
-            <div><div class="label">${m.name}</div><div class="sub">${m.tag || ''}</div></div>
-          </div>`).join('');
-
-        // Render platforms
-        document.getElementById('platforms').innerHTML = platformsRes.data.map(p => `
-          <div class="row">
-            <div class="chip" style="background:${p.color}">${p.abbr}</div>
-            <div><div class="label">${p.name}</div></div>
-          </div>`).join('');
-
-        statusEl.className = 'ok';
-        statusEl.textContent = `✓ Connected! Read ${moodsRes.data.length} moods and ${platformsRes.data.length} platforms straight from the database.`;
-        rawEl.textContent = JSON.stringify({ moods: moodsRes.data, platforms: platformsRes.data }, null, 2);
-      } catch (e) {
-        statusEl.className = 'err';
-        statusEl.textContent = '✗ ' + (e.message || 'Something went wrong — see raw response below.');
-        rawEl.textContent = JSON.stringify(e, null, 2);
-      }
+      // 3. Curators
+      const uRes = await window.ssDB.from('users').select('id, username, role').eq('role','curator').limit(10);
+      if(uRes.error){ $('curators').className='box err'; $('curators').textContent='✗ '+uRes.error.message; log({curators_error:uRes.error}); }
+      else { CURATORS=uRes.data||[]; $('curators').className='box '+(CURATORS.length?'ok':'warn');
+        $('curators').innerHTML = CURATORS.length ? ('✓ '+CURATORS.length+' curators:<br>'+CURATORS.map(c=>'<span class="mono">@'+c.username+'</span>').join(', ')) : '⚠ No curators found. Did migration 0007 run? Check users table.'; }
     }
-    runTest();
+
+    async function testFire(){
+      $('testout').className='box'; $('testout').textContent='Firing…';
+      if(!SESSION){ $('testout').className='box err'; $('testout').textContent='Not signed in.'; return; }
+      if(!CLIPS.length){ $('testout').className='box err'; $('testout').textContent='No clips to fire.'; return; }
+      const clip = CLIPS[0];
+      const row = { user_id: SESSION.user.id, content_id: clip.id };
+      log({attempting_fire: row});
+      const { data, error } = await window.ssDB.from('content_fires').upsert(row, { onConflict:'user_id,content_id' }).select();
+      if(error){ $('testout').className='box err'; $('testout').textContent='✗ FIRE FAILED: '+error.message; log({fire_error:error}); }
+      else { $('testout').className='box ok'; $('testout').textContent='✓ Fire row created for clip '+clip.id.slice(0,8)+'… Check content_fires table!'; log({fire_ok:data}); }
+    }
+
+    async function testFollow(){
+      $('testout').className='box'; $('testout').textContent='Following…';
+      if(!SESSION){ $('testout').className='box err'; $('testout').textContent='Not signed in.'; return; }
+      if(!CURATORS.length){ $('testout').className='box err'; $('testout').textContent='No curators to follow.'; return; }
+      const cur = CURATORS[0];
+      if(cur.id === SESSION.user.id){ $('testout').className='box warn'; $('testout').textContent='First curator is YOU — can\'t follow yourself. (This is fine.)'; return; }
+      const row = { follower_id: SESSION.user.id, creator_id: cur.id };
+      log({attempting_follow: row});
+      const { data, error } = await window.ssDB.from('follows').upsert(row, { onConflict:'follower_id,creator_id' }).select();
+      if(error){ $('testout').className='box err'; $('testout').textContent='✗ FOLLOW FAILED: '+error.message; log({follow_error:error}); }
+      else { $('testout').className='box ok'; $('testout').textContent='✓ Follow row created (@'+cur.username+'). Check follows table!'; log({follow_ok:data}); }
+    }
+
+    init();
   </script>
 </body>
 </html>
