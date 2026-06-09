@@ -1794,16 +1794,58 @@ function epToggleGenre(g) {
   else { if (epGenres.length >= 6) { ssToast('Pick up to 6 specialties'); return; } epGenres.push(g); }
   epRenderGenres();
 }
-function saveEditProfile() {
+async function saveEditProfile() {
   const name = (document.getElementById('ep-name').value || '').trim();
   const bio = (document.getElementById('ep-bio').value || '').trim();
   if (!name) { ssToast('Add a display name'); return; }
+
+  const saveBtn = document.querySelector('#ep-overlay .bc-next');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+  // Update local PROFILE first for instant feedback.
   PROFILE.name = name;
   PROFILE.letter = name.charAt(0).toUpperCase();
   PROFILE.bio = bio;
   if (epPhoto === '') PROFILE.photo = null;        // removed
-  else if (epPhoto) PROFILE.photo = epPhoto;       // changed
+  else if (epPhoto) PROFILE.photo = epPhoto;       // changed (data URL preview)
   if (isCurator()) PROFILE.genres = epGenres.slice();
+
+  // Persist to the database if signed in.
+  const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+  if (user && window.ssDB) {
+    try {
+      let avatarUrl;   // undefined = don't touch, null = remove, string = set
+      // If a new photo was picked (data URL), upload it to Storage.
+      if (epPhoto && epPhoto.startsWith('data:')) {
+        try {
+          const blob = await (await fetch(epPhoto)).blob();
+          const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg','jpg');
+          const path = user.id + '/' + Date.now() + '.' + ext;
+          const up = await window.ssDB.storage.from('avatars').upload(path, blob, { upsert: true, contentType: blob.type });
+          if (!up.error) {
+            const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
+            if (pub && pub.publicUrl) { avatarUrl = pub.publicUrl; PROFILE.photo = pub.publicUrl; }
+          }
+        } catch (e) { /* storage not set up — skip photo, keep other edits */ }
+      } else if (epPhoto === '') {
+        avatarUrl = null;   // explicit removal
+      }
+
+      const patch = { name: name, bio: bio };
+      if (isCurator()) patch.genres = epGenres.slice();
+      if (avatarUrl !== undefined) patch.avatar_url = avatarUrl;
+
+      const { error } = await window.ssDB.from('users').update(patch).eq('id', user.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error('ShowShak: profile save failed', e);
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save changes'; }
+      ssToast('Could not save — please try again');
+      return;
+    }
+  }
+
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save changes'; }
   closeEditProfile();
   renderHeader();
   ssToast('✓ Profile updated');

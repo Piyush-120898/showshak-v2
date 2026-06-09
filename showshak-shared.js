@@ -1978,7 +1978,7 @@ function _ssvToggleFire(i) {
 
   let _obUser   = null;     // auth user
   let _obStep   = 1;
-  let _obData   = { username: '', genres: new Set(), platforms: new Set(), gender: '', avatar_url: '' };
+  let _obData   = { name: '', username: '', genres: new Set(), platforms: new Set(), gender: '', avatar_url: '' };
   let _obPlatforms = [];    // [{id,name,color,abbr}] from DB
   let _obUsernameOk = false;
 
@@ -1996,6 +1996,7 @@ function _ssvToggleFire(i) {
       if (done) { _welcome(); return; }   // already onboarded → just greet
       // Pre-fill the auto-generated username + any provider avatar.
       _obData.username   = (data && data.username) || '';
+      _obData.name       = (data && data.name) || (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
       _obData.avatar_url = (data && data.avatar_url) || (user.user_metadata && user.user_metadata.avatar_url) || '';
       _obData.gender     = (data && data.gender) || '';
       _openOnboarding();
@@ -2095,10 +2096,13 @@ function _ssvToggleFire(i) {
           <div class="ss-ob-dot" id="ss-ob-dot-4"></div>
         </div>
 
-        <!-- Step 1: username -->
+        <!-- Step 1: name + username -->
         <div class="ss-ob-step" id="ss-ob-step-1">
-          <div class="ss-ob-title">CLAIM YOUR <em>HANDLE</em></div>
-          <div class="ss-ob-sub">This is how curators and friends find you on ShowShak.</div>
+          <div class="ss-ob-title">WHAT SHOULD WE <em>CALL YOU?</em></div>
+          <div class="ss-ob-sub">Your name shows on your profile. Your handle is how people find you.</div>
+          <input class="ss-ob-uname" id="ss-ob-name" type="text" maxlength="40"
+            autocomplete="name" placeholder="Your name"
+            style="width:100%;background:#13131A;border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;margin-bottom:12px;padding:15px 14px;" />
           <div class="ss-ob-uname-row">
             <span class="ss-ob-at">@</span>
             <input class="ss-ob-uname" id="ss-ob-uname" type="text" maxlength="20"
@@ -2152,6 +2156,10 @@ function _ssvToggleFire(i) {
   }
 
   function _wireOnboarding() {
+    // Name
+    const nameInput = document.getElementById('ss-ob-name');
+    if (nameInput) nameInput.addEventListener('input', () => { _obData.name = nameInput.value; });
+
     // Username live check (debounced).
     const input = document.getElementById('ss-ob-uname');
     let t = null;
@@ -2235,6 +2243,8 @@ function _ssvToggleFire(i) {
     // Pre-fill username field.
     const input = document.getElementById('ss-ob-uname');
     if (input && _obData.username) { input.value = _obData.username; }
+    const nameInput = document.getElementById('ss-ob-name');
+    if (nameInput && _obData.name) { nameInput.value = _obData.name; }
     if (_obData.avatar_url) document.getElementById('ss-ob-photo').innerHTML = `<img src="${_obData.avatar_url}" alt="">`;
     _obStep = 1;
     _showStep(1);
@@ -2318,6 +2328,7 @@ function _ssvToggleFire(i) {
         genres: Array.from(_obData.genres),
         meta: { onboarded: true },
       };
+      if (_obData.name && _obData.name.trim()) patch.name = _obData.name.trim();
       if (!skippedPersonal && _obData.gender) patch.gender = _obData.gender;
       if (_obData.avatar_url) patch.avatar_url = _obData.avatar_url;
 
