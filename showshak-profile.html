@@ -1039,13 +1039,9 @@ const MOCK_COLLECTIONS = [
   { id:5, name:'Guilty Pleasures', count:8, vis:'private',
     thumbs:['linear-gradient(160deg,#100008,#1a0010)','linear-gradient(160deg,#1a0505,#2d0808)','linear-gradient(160deg,#030805,#050e08)'] },
 ];
-const MOCK_FOLLOWING = [
-  { handle:'streamjunkie_sk', letter:'S', color:'#FF6B35', clips:28, fires:12400, verified:true },
-  { handle:'kdrama_world', letter:'K', color:'#E74C3C', clips:64, fires:31000, verified:true },
-  { handle:'desi_binge', letter:'D', color:'#27AE60', clips:19, fires:8700, verified:false },
-  { handle:'hbo_stan_official', letter:'H', color:'#5C2D91', clips:35, fires:22100, verified:true },
-  { handle:'netflixnerd_rv', letter:'R', color:'#3498DB', clips:47, fires:18900, verified:false },
-];
+// Empty by default — the Following list now reflects who YOU actually
+// follow (from the real `follows` table / shared store), not seed mocks.
+const MOCK_FOLLOWING = [];
 const CHART = [28,42,35,68,91,57,84];
 const FIRE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
 const VIS_ICON = {
@@ -1454,7 +1450,7 @@ function renderTabs() {
       <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${myClipsCount()}</span></button>
       <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
       <button class="tab ${t==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
-      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>`;
+      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${followingCount()}</span></button>`;
   } else if (isPublic()) {
     bar.innerHTML = `
       <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">Clips <span class="tab-c">${myClipsCount()}</span></button>
@@ -1462,7 +1458,7 @@ function renderTabs() {
   } else {
     bar.innerHTML = `
       <button class="tab ${t==='history'?'active':''}" onclick="switchTab('history')">History</button>
-      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${MOCK_FOLLOWING.length}</span></button>`;
+      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${followingCount()}</span></button>`;
   }
 }
 function switchTab(t) {
@@ -1587,15 +1583,50 @@ function renderStacks() {
    Reads the REAL followed curators from the shared store
    (ssGetFollowing) and merges them with the seed mock list,
    so anyone you follow anywhere in the app shows up here. */
-function renderFollowing() {
-  const real = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
-  // Merge: real follows first, then seed mocks not already followed.
-  const seen = new Set(real.map(c => c.username));
-  const merged = [
-    ...real.map(c => ({ handle:c.username, letter:c.letter, color:c.bg, clips:c.clips||0, verified:!!c.verified, real:true })),
-    ...MOCK_FOLLOWING.filter(f => !seen.has(f.handle)),
-  ];
+// Quick count for the Following tab badge (from the shared local store).
+function followingCount() {
+  try { return (typeof ssGetFollowing === 'function') ? ssGetFollowing().length : 0; }
+  catch (e) { return 0; }
+}
+
+async function renderFollowing() {
   const el = document.getElementById('following');
+  if (!el) return;
+
+  let merged = [];
+
+  // Prefer the REAL follows from the DB when signed in.
+  const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+  if (user && window.ssDB) {
+    try {
+      const { data, error } = await window.ssDB
+        .from('follows')
+        .select('creator:creator_id(username, name, avatar_url, verified)')
+        .eq('follower_id', user.id)
+        .is('deleted_at', null);
+      if (!error && data) {
+        merged = data.filter(r => r.creator).map(r => ({
+          handle: r.creator.username,
+          letter: (r.creator.name || r.creator.username || '?').charAt(0).toUpperCase(),
+          color: '#EA3B32',
+          clips: 0,
+          verified: !!r.creator.verified,
+          real: true,
+        }));
+      }
+    } catch (e) { /* fall back to local store below */ }
+  }
+
+  // Fallback / merge with the shared local store (covers guests + instant UI).
+  const local = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
+  const seen = new Set(merged.map(c => c.handle));
+  local.forEach(c => {
+    if (!seen.has(c.username)) {
+      seen.add(c.username);
+      merged.push({ handle:c.username, letter:c.letter, color:c.bg, clips:c.clips||0, verified:!!c.verified, real:true });
+    }
+  });
+
   if (!merged.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">👀</div><div class="empty-t">Not following anyone yet</div><div class="empty-d">Find curators whose taste you trust — tap Follow on any clip or profile and they'll show up here.</div></div>`;
     return;
