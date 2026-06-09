@@ -599,9 +599,11 @@ ssOnFollowingChange(_ssRepaintAllFollowButtons);
 
 function ssCreateStack(name) {
   const stacks = ssGetStacks();
-  const stack  = { id: 'stack_' + Date.now(), name: name.trim(), createdAt: Date.now(), clips: [] };
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('stack_' + Date.now());
+  const stack  = { id: id, name: name.trim(), createdAt: Date.now(), clips: [] };
   stacks.push(stack);
   _ss_writeStacks(stacks);
+  _ssDbCreateStack(stack);   // mirror to DB so it persists past the tab session
   return stack;
 }
 
@@ -645,10 +647,11 @@ function ssRemoveClipFromAllStacks(clipId) {
 
 /* Stacks DB mirror (insert/delete only — never upsert; lesson #3). */
 function _ssIsUuid(v) { return /^[0-9a-f-]{36}$/i.test(String(v)); }
-async function _ssDbCreateStack(stack) { try { if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stack.id))return; const {error}=await window.ssDB.from('stacks').insert({id:stack.id,user_id:me.id,name:stack.name}); if(error&&error.code!=='23505')console.warn('SS stack create:',error.message);}catch(e){} }
+const _ssStackCreates = {};   // stackId -> Promise (so adds wait for the create)
+async function _ssDbCreateStack(stack) { const p=(async()=>{ try { if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stack.id))return; const {error}=await window.ssDB.from('stacks').insert({id:stack.id,user_id:me.id,name:stack.name}); if(error&&error.code!=='23505')console.warn('SS stack create:',error.message);}catch(e){} })(); _ssStackCreates[stack.id]=p; return p; }
 async function _ssDbRenameStack(stackId,name){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stacks').update({name:name}).eq('id',stackId).eq('user_id',me.id);}catch(e){} }
 async function _ssDbDeleteStack(stackId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId); await window.ssDB.from('stacks').delete().eq('id',stackId).eq('user_id',me.id);}catch(e){} }
-async function _ssDbAddClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; const {error}=await window.ssDB.from('stack_items').insert({stack_id:stackId,content_id:clipId}); if(error&&error.code!=='23505')console.warn('SS stack add:',error.message);}catch(e){} }
+async function _ssDbAddClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; if(_ssStackCreates[stackId])await _ssStackCreates[stackId]; const {error}=await window.ssDB.from('stack_items').insert({stack_id:stackId,content_id:clipId}); if(error&&error.code!=='23505')console.warn('SS stack add:',error.message);}catch(e){} }
 async function _ssDbRemoveClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId).eq('content_id',clipId);}catch(e){} }
 
 /* Hydrate the local Stacks store from the DB (so saved clips persist
