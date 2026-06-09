@@ -625,7 +625,7 @@ function ssAddClipToStack(stackId, clip) {
   if (stack.clips.some(c => c.id === clip.id)) return; // no duplicates
   stack.clips.unshift(clip);                            // newest first
   _ss_writeStacks(stacks);
-  _ssDbAddClip(stackId, clip.id);
+  _ssTrackWrite(_ssDbAddClip(stackId, clip.id));
 }
 
 function ssRemoveClipFromStack(stackId, clipId) {
@@ -634,7 +634,7 @@ function ssRemoveClipFromStack(stackId, clipId) {
   if (!stack) return;
   stack.clips = stack.clips.filter(c => c.id !== clipId);
   _ss_writeStacks(stacks);
-  _ssDbRemoveClip(stackId, clipId);
+  _ssTrackWrite(_ssDbRemoveClip(stackId, clipId));
 }
 
 function ssRemoveClipFromAllStacks(clipId) {
@@ -648,6 +648,14 @@ function ssRemoveClipFromAllStacks(clipId) {
 /* Stacks DB mirror (insert/delete only — never upsert; lesson #3). */
 function _ssIsUuid(v) { return /^[0-9a-f-]{36}$/i.test(String(v)); }
 const _ssStackCreates = {};   // stackId -> Promise (so adds wait for the create)
+// Track in-flight stack writes so hydrate doesn't overwrite a save that
+// hasn't reached the DB yet (prevents the "empty folder" clobber).
+let _ssPendingWrites = [];
+function _ssTrackWrite(p) {
+  if (!p || typeof p.then !== 'function') return;
+  _ssPendingWrites.push(p);
+  p.finally(() => { _ssPendingWrites = _ssPendingWrites.filter(x => x !== p); });
+}
 async function _ssDbCreateStack(stack) { const p=(async()=>{ try { if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stack.id))return; const {error}=await window.ssDB.from('stacks').insert({id:stack.id,user_id:me.id,name:stack.name}); if(error&&error.code!=='23505')console.warn('SS stack create:',error.message);}catch(e){} })(); _ssStackCreates[stack.id]=p; return p; }
 async function _ssDbRenameStack(stackId,name){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stacks').update({name:name}).eq('id',stackId).eq('user_id',me.id);}catch(e){} }
 async function _ssDbDeleteStack(stackId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId); await window.ssDB.from('stacks').delete().eq('id',stackId).eq('user_id',me.id);}catch(e){} }
@@ -668,6 +676,9 @@ async function ssHydrateStacks() {
   try {
     if (!window.ssDB || !window.ssCurrentUser) return;
     const me = window.ssCurrentUser(); if (!me) return;
+    // Wait for any in-flight saves to land first, so we never overwrite a
+    // just-saved clip with a stale DB snapshot (the "empty folder" clobber).
+    if (_ssPendingWrites.length) { try { await Promise.all(_ssPendingWrites); } catch (e) {} }
     const { data: stacks, error } = await window.ssDB
       .from('stacks')
       .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
@@ -989,17 +1000,18 @@ function _ssToggleInStack(stackId) {
 
   if (alreadyIn) {
     // Removing is not a "done" action — keep the sheet open so the user
-    // can re-pick. Just update the row + buttons in place.
-    stack.clips = stack.clips.filter(c => String(c.id) !== String(clipId));
-    _ss_writeStacks(stacks);
+    // can re-pick. Route through ssRemoveClipFromStack so it ALSO mirrors
+    // the removal to the DB (not just sessionStorage).
+    ssRemoveClipFromStack(stackId, clipId);
     ssToast(`Removed from ${stack.name}`);
     _ssRenderStackList();
     ssSyncSaveBtn(clipId);
   } else {
-    // Saving IS a completion action — save, show the checkmark, then
-    // auto-close the sheet (like Instagram/TikTok save-to-collection).
-    stack.clips.unshift(_ssSheetClip);
-    _ss_writeStacks(stacks);
+    // Saving IS a completion action. Route through ssAddClipToStack so it
+    // writes to BOTH sessionStorage AND the DB (this was the bug: the sheet
+    // used to write storage directly and skip the DB, so saves vanished on
+    // hydrate / next session). Then checkmark + auto-close.
+    ssAddClipToStack(stackId, _ssSheetClip);
     ssToast(`🔖 Saved to ${stack.name}`);
     _ssRenderStackList();          // briefly shows the checkmark filling in
     ssSyncSaveBtn(clipId);
@@ -1803,7 +1815,16 @@ function _ssvToggleFire(i) {
   window.ssSignOut = function () {
     if (window.ssDB && window.ssDB.auth) {
       window.ssDB.auth.signOut().then(() => {
-        try { sessionStorage.removeItem(SIGNED_UP_KEY); } catch (e) {}
+        // Clear ALL per-user local caches so a signed-out user doesn't keep
+        // seeing the previous user's stacks/following. The DB is the source
+        // of truth; these are rebuilt on next login via hydrate.
+        try {
+          sessionStorage.removeItem(SIGNED_UP_KEY);
+          sessionStorage.removeItem('ss_stacks_v1');
+          sessionStorage.removeItem('ss_following_v1');
+          sessionStorage.removeItem('ss_view_curator_v1');
+        } catch (e) {}
+        if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
         if (typeof ssToast === 'function') ssToast('Signed out');
       });
     }
