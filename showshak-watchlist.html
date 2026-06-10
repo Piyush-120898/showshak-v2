@@ -833,7 +833,7 @@ function buildRec() {
   const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
 
   grid.innerHTML = shuffled.map(c => `
-    <div class="rec-clip-card" onclick="ssOpenClip(${c.id}, ALL_CLIPS)">
+    <div class="rec-clip-card" onclick="ssOpenClip('${c.id}', ALL_CLIPS)">
       <div class="rec-clip-thumb">
         <div class="rec-clip-bg" style="background:${c.bg}"></div>
         <div class="rec-clip-vig"></div>
@@ -847,7 +847,7 @@ function buildRec() {
         <div class="rec-fire-row">${FIRE_SVG} ${fmtFires(c.fires)}</div>
         <div class="rec-save-btn"
           data-save-id="${c.id}"
-          onclick="event.stopPropagation(); ssToggleSave(ALL_CLIPS.find(x=>x.id===${c.id}), this)">
+          onclick="event.stopPropagation(); ssToggleSave(ALL_CLIPS.find(x=>String(x.id)==='${c.id}'), this)">
           ${BKMK_SVG}
         </div>
       </div>
@@ -984,4 +984,4 @@ if (typeof ssOnStacksChange === 'function') ssOnStacksChange(refresh);
 
 </script>
 </body>
-</html>
+</html>

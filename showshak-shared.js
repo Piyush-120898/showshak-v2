@@ -1633,11 +1633,6 @@ const ClipEngine = {
 
     // Build one Media_Surface + one Progress_Bar per clip, wire progress + gestures.
     // The engine speaks ONLY the Media_Surface contract here — no medium logic.
-    const inlineEngine = {
-      // Adapter so the shared gesture handler routes to the INLINE host.
-      fire:        (i, x, y) => ClipEngine.fire(i, x, y, 'INLINE'),
-      togglePause: (i)       => ClipEngine.togglePause(i, 'INLINE'),
-    };
     _inlineClips.forEach((clip, i) => {
       const card    = document.getElementById(`clip-${i}`);
       const mediaEl = document.getElementById(`clip-media-${i}`);
@@ -1648,8 +1643,14 @@ const ClipEngine = {
       surface.onTimeupdate(p => bar.set(p));
       _inlineSurfaces[i] = surface;
       _inlineBars[i] = bar;
+      // FEED MODEL: a single tap on the clip OPENS the full Clip Viewer, which
+      // is the one place all actions + single-tap-pause + double-tap-fire live.
+      // The frame keeps autoplaying inline; the rail buttons act directly (they
+      // stopPropagation, so they never reach this handler).
       const tapZone = document.getElementById(`tap-${i}`);
-      if (tapZone) ssAttachGestures(tapZone, i, inlineEngine);
+      if (tapZone) tapZone.addEventListener('click', function () {
+        ssOpenClip(_inlineClips[i], _inlineClips);
+      });
     });
 
     // Wire the fixed desktop #action-rail's controls to the engine (acting on
@@ -1741,10 +1742,6 @@ function _inlineClipHTML(c, i) {
       <div class="clip-logo-float">
         <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
       </div>
-      <button class="clip-expand" id="clip-expand-${i}" aria-label="Open fullscreen"
-        onclick="event.stopPropagation(); ssOpenClip(_inlineClips[${i}], _inlineClips)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-      </button>
       <div class="clip-tap" id="tap-${i}">
         <div class="clip-pause-icon" id="pause-icon-${i}">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -3271,22 +3268,34 @@ function ssMakeProgressBar(container) {
  * (ssOpenClip); the old _ssvAttachDoubleTap has been removed.
  */
 function ssAttachGestures(tapZoneEl, idx, engine) {
-  var lastTap = 0, timer = null, lastX = 0, lastY = 0;
+  var lastTap = 0, timer = null, lastX = 0, lastY = 0, lastTouch = 0;
   function onTap(x, y) {
     var now = Date.now(), gap = now - lastTap;
     var near = Math.abs(x - lastX) < 40 && Math.abs(y - lastY) < 40;
-    lastTap = now; lastX = x; lastY = y;
-    if (gap > 0 && gap < 300 && near) {        // DOUBLE -> fire + burst
+    lastX = x; lastY = y;
+    if (gap > 0 && gap < 300 && near) {        // QUICK DOUBLE TAP -> fire
+      clearTimeout(timer); timer = null;
+      lastTap = 0;                              // reset so the next tap starts fresh
+      engine.fire(idx, x, y);                   // guest-gated inside engine.fire
+    } else {                                    // possible SINGLE -> wait briefly for a 2nd tap
+      lastTap = now;
       clearTimeout(timer);
-      engine.fire(idx, x, y);                  // guest-gated inside engine.fire
-    } else {                                    // maybe SINGLE -> defer
-      timer = setTimeout(function () { engine.togglePause(idx); }, 310);
+      timer = setTimeout(function () { engine.togglePause(idx); }, 260);
     }
   }
-  tapZoneEl.addEventListener('click', function (e) { onTap(e.clientX, e.clientY); });
+  // Touch path. We also record the touch time so the synthetic mouse "click"
+  // the browser fires ~300ms later can be ignored — otherwise ONE physical
+  // tap is counted twice and mis-registers as a double-tap (the fire bug).
   tapZoneEl.addEventListener('touchend', function (e) {
-    var t = e.changedTouches[0]; if (t) onTap(t.clientX, t.clientY);
+    lastTouch = Date.now();
+    var t = e.changedTouches && e.changedTouches[0];
+    if (t) onTap(t.clientX, t.clientY);
   }, { passive: true });
+  // Mouse/desktop path. Ignore the click that is merely the echo of a touch.
+  tapZoneEl.addEventListener('click', function (e) {
+    if (Date.now() - lastTouch < 600) return;
+    onTap(e.clientX, e.clientY);
+  });
 }
 
 /**
