@@ -191,8 +191,24 @@ async function searchTmdb(name, year) {
 
   const targetNorm = normalizeName(name);
 
-  // Keep only candidates clearing the similarity threshold (R1.6 gate).
-  const viable = candidates.filter((c) => nameSimilarity(name, candidateName(c)) >= NAME_SIMILARITY_THRESHOLD);
+  // Keep only candidates clearing the match gate (R1.6). A candidate matches if:
+  //   (a) its normalized name equals the target, OR
+  //   (b) ALL of the target's tokens are contained in the candidate's tokens
+  //       (handles subtitle-extended titles, e.g. "Scam 1992" matching
+  //        "Scam 1992: The Harshad Mehta Story"), OR
+  //   (c) Jaccard token overlap >= NAME_SIMILARITY_THRESHOLD.
+  const _tn = normalizeName(name);
+  const _tt = new Set(_tn.split(' ').filter(Boolean));
+  const viable = candidates.filter((c) => {
+    const cn = normalizeName(candidateName(c));
+    if (!cn) return false;
+    if (cn === _tn) return true;
+    const ct = new Set(cn.split(' ').filter(Boolean));
+    let allIn = _tt.size > 0;
+    _tt.forEach((tok) => { if (!ct.has(tok)) allIn = false; });
+    if (allIn) return true;
+    return nameSimilarity(name, candidateName(c)) >= NAME_SIMILARITY_THRESHOLD;
+  });
   if (!viable.length) return null;
 
   viable.sort((a, b) => {
