@@ -322,3 +322,83 @@
 .svg-defs {
   display: none;
 }
+
+/* ════════════════════════════════════════════════
+   CLIP PROGRESS BAR (shared Progress_Bar component)
+   Produced by ssMakeProgressBar() in showshak-shared.js as
+   `.ss-progress > .ss-progress-fill` and appended to each clip card in
+   BOTH modes. The FULLSCREEN viewer styles `.ssv-clip .ss-progress` in its
+   own injected CSS (white fill); these rules cover the INLINE Feed and any
+   future surface WITHOUT overriding the viewer's higher-specificity rules.
+════════════════════════════════════════════════ */
+
+/* Generic / shared fallback — sane default for any surface that uses
+   ssMakeProgressBar. Low specificity so the FULLSCREEN viewer's
+   `.ssv-clip .ss-progress*` rules (and the Feed rules below) win. */
+.ss-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+.ss-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--red);
+  transition: width 0.12s linear;
+}
+
+/* INLINE Feed — thin bar pinned to the top of the clip frame, sitting above
+   the media / vignette but below the action rails (z-index 30+). Brand red
+   fill to match the Feed. Scoped to `.clip` so it never affects the
+   FULLSCREEN viewer's `.ssv-clip` white-fill bar. */
+.clip .ss-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+.clip .ss-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--red);
+  transition: width 0.12s linear;
+}
+
+/* INLINE Feed — dedicated "expand / enter fullscreen" affordance.
+   Single tap on the clip pauses/resumes (the shared gesture model), so it
+   cannot also open fullscreen; this corner control is how the Feed enters the
+   immersion layer (Req 7.2, 7.3). It sits ABOVE the `.clip-tap` gesture zone
+   (z-index > 5) and its handler calls event.stopPropagation() so a tap on it
+   never reaches the gesture handler (no accidental pause). Styling matches the
+   FULLSCREEN viewer's `.ssv-close` / `.ssv-mute` corner controls. Scoped to
+   `.clip` so it never affects the FULLSCREEN viewer. */
+.clip .clip-expand {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 25;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, transform 0.15s;
+}
+.clip .clip-expand:hover  { background: rgba(0, 0, 0, 0.7); transform: scale(1.06); }
+.clip .clip-expand:active { transform: scale(0.92); }

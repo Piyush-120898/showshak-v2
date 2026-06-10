@@ -525,10 +525,11 @@ html, body { overflow: hidden; }
 <body>
 
 <!-- ════════════════════════════════════════════
-     SHARED CHROME (sidebar + mobile nav) — injected by showshak-shared.js
-     data-no-sheet: Feed keeps its own bespoke Watch It sheet below.
+     SHARED CHROME (sidebar + mobile nav + shared Watch It sheet)
+     — injected by showshak-shared.js (ssInjectChrome). The Feed uses the
+       shared Watch It sheet; it no longer carries its own.
 ════════════════════════════════════════════ -->
-<div id="ss-nav" data-no-sheet></div>
+<div id="ss-nav"></div>
 
 <!-- ════════════════════════════════════════════
      MAIN LAYOUT
@@ -543,7 +544,7 @@ html, body { overflow: hidden; }
      DESKTOP ACTION RAIL
 ════════════════════════════════════════════ -->
 <div class="action-rail-outer" id="action-rail">
-  <div class="act-btn" id="rail-lit" onclick="toggleLit(currentClip)">
+  <div class="act-btn" id="rail-lit">
     <div class="act-icon">
       <svg class="fire-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/>
@@ -556,20 +557,20 @@ html, body { overflow: hidden; }
     </div>
     <span class="act-label" id="rail-lit-count">—</span>
   </div>
-  <div class="act-btn" id="rail-save" data-save-id="" onclick="toggleSave(currentClip)">
+  <div class="act-btn" id="rail-save" data-save-id="">
     <div class="act-icon">
       <svg class="save-outline" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       <svg class="save-filled"  width="26" height="26" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
     </div>
     <span class="act-label">Save</span>
   </div>
-  <div class="act-btn" onclick="ssShare(SHOWS[currentClip])">
+  <div class="act-btn">
     <div class="act-icon">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
     </div>
     <span class="act-label">Share</span>
   </div>
-  <div class="rail-watch-btn" id="rail-watch" onclick="ssOpenSheet(SHOWS[currentClip])">
+  <div class="rail-watch-btn" id="rail-watch">
     <div class="rail-watch-pill" id="rail-watch-pill" style="background:#E50914; --pill-rgb:229,9,20">
       <div class="rail-watch-pill-play">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -593,16 +594,8 @@ html, body { overflow: hidden; }
 </div>
 
 <!-- ════════════════════════════════════════════
-     WATCH IT SHEET (HTML from showshak-components.css)
+     WATCH IT SHEET — provided by shared chrome (#ss-nav / ssInjectChrome)
 ════════════════════════════════════════════ -->
-<div id="watch-sheet-overlay" onclick="ssCloseSheet()"></div>
-<div id="watch-sheet">
-  <div class="sheet-handle"></div>
-  <div class="sheet-header" id="sheet-header"></div>
-  <div class="sheet-options-label">WATCH ON</div>
-  <div id="sheet-options"></div>
-  <div class="sheet-cancel" onclick="ssCloseSheet()">Cancel</div>
-</div>
 
 <!-- ════════════════════════════════════════════
      MOBILE BOTTOM NAV — provided by shared chrome (#ss-nav)
@@ -636,322 +629,15 @@ async function loadRealClips() {
   return true;
 }
 
-const litState   = {};
-let currentClip  = 0;
-let progressTimers = {};
-let isPaused = false;
-
-/* ── BUILD FEED ─── */
-function buildFeed() {
-  const feed = document.getElementById('feed');
-  feed.innerHTML = '';
-
-  SHOWS.forEach((show, i) => {
-    const card = document.createElement('div');
-    card.className = 'clip' + (i === 0 ? ' active' : '');
-    card.id = `clip-${i}`;
-    card.innerHTML = `
-      <div class="clip-bg" style="background:${show.bg}"></div>
-      <div class="clip-vignette"></div>
-      <div class="clip-grain"></div>
-      <div class="clip-logo-float">
-        <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
-      </div>
-      <div class="muted-badge" id="muted-${i}" onclick="toggleMute(${i})">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-        Tap for sound
-      </div>
-      <div class="clip-tap" id="tap-${i}">
-        <div class="clip-pause-icon" id="pause-icon-${i}">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        </div>
-      </div>
-      <div class="fire-burst" id="burst-${i}">
-        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path fill="#EA3B32" d="M40 6C40 6 26 22 26 34a14 14 0 0 0 28 0c0-5.5-2.8-11-5-15C46 24 47 30 43 34c-1.5 2-3 3-3 3S32 32 32 26c0-8 8-20 8-20z"/>
-          <path fill="#FF4D42" d="M40 46c-7.7 0-14 6.3-14 14s6.3 14 14 14 14-6.3 14-14-6.3-14-14-14z"/>
-          <circle cx="40" cy="60" r="6" fill="#FFB800" opacity="0.7"/>
-        </svg>
-      </div>
-      <!-- Mobile action rail -->
-      <div class="mobile-action-rail" id="m-rail-${i}">
-        <div class="m-act-btn" id="m-lit-${i}" onclick="toggleLit(${i})">
-          <div class="m-act-icon">
-            <svg class="m-fire-outline" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
-            <svg class="m-fire-filled" width="30" height="30" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
-          </div>
-          <span class="m-act-label" id="m-lit-count-${i}">—</span>
-        </div>
-        <div class="m-act-btn" id="m-save-${i}" data-save-id="${show.id}" onclick="toggleSave(${i}, this)">
-          <div class="m-act-icon">
-            <svg class="m-save-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-            <svg class="m-save-filled"  width="28" height="28" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <span class="m-act-label">Save</span>
-        </div>
-        <div class="m-act-btn" onclick="ssShare(SHOWS[${i}])">
-          <div class="m-act-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          </div>
-          <span class="m-act-label">Share</span>
-        </div>
-      </div>
-      <!-- Mobile Watch It button -->
-      <button class="mobile-watch-btn" id="m-watch-${i}"
-        style="background:${show.platColor}; --btn-rgb:${show.platRgb}"
-        onclick="ssOpenSheet(SHOWS[${i}])">
-        <div class="mobile-watch-btn-inner">
-          <div class="mobile-watch-plat-logo">${show.platforms[0].label}</div>
-          <div class="mobile-watch-text">
-            <span class="mobile-watch-text-main">Watch It</span>
-            <span class="mobile-watch-text-sub">on ${show.platLabel}</span>
-          </div>
-          <div class="mobile-watch-arrow">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </div>
-        </div>
-      </button>
-      <!-- Bottom content -->
-      <div class="clip-bottom">
-        <div class="creator-row">
-          <div class="creator-avatar" style="background:${show.creator.bg}" data-curator="${show.creator.name}" data-curator-name="${show.creator.name}" data-curator-letter="${show.creator.letter}" data-curator-bg="${show.creator.bg}">${show.creator.letter}</div>
-          <span class="creator-name" data-curator="${show.creator.name}" data-curator-name="${show.creator.name}" data-curator-letter="${show.creator.letter}" data-curator-bg="${show.creator.bg}">@${show.creator.name}</span>
-          <span class="creator-follow" data-follow="${show.creator.name}" data-follow-plus data-follow-name="${show.creator.name}" data-follow-letter="${show.creator.letter}" data-follow-bg="${show.creator.bg}">+ Follow</span>
-        </div>
-        <div class="tag-row">
-          ${show.genre.map(g => `<span class="tag">${g}</span>`).join('')}
-          <span class="tag">${show.lang}</span>
-        </div>
-        <div class="caption">${show.caption}</div>
-      </div>
-      <!-- Progress bar -->
-      <div class="clip-progress" id="prog-wrap-${i}">
-        <div class="clip-progress-fill" id="prog-${i}" style="width:0%"></div>
-      </div>
-    `;
-    feed.appendChild(card);
-    attachDoubleTap(card.querySelector(`#tap-${i}`), i);
-  });
-
-  // Feed end card
-  const end = document.createElement('div');
-  end.className = 'feed-end';
-  end.innerHTML = `
-    <div class="feed-end-icon">🎬</div>
-    <div class="feed-end-title">YOU'VE SEEN IT <em>ALL</em></div>
-    <p class="feed-end-sub">More clips are being added every day. Check back tomorrow.</p>
-    <button class="btn-refresh" onclick="ssScrollToTop('feed')">Back to Top</button>
-  `;
-  feed.appendChild(end);
-  if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(feed);
-  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(feed);
-}
-
-function attachDoubleTap(el, idx) {
-  let lastTap = 0, tapTimer = null;
-  el.addEventListener('click', (e) => {
-    const now = Date.now(), gap = now - lastTap;
-    lastTap = now;
-    if (gap < 300 && gap > 0) {
-      clearTimeout(tapTimer);
-      triggerBurst(e, idx);
-      if (!litState[idx]) toggleLit(idx);
-    } else {
-      tapTimer = setTimeout(() => handleTap(idx), 310);
-    }
-  });
-}
-
-function triggerBurst(e, idx) {
-  const burst = document.getElementById(`burst-${idx}`);
-  if (!burst) return;
-  const clip = document.getElementById(`clip-${idx}`);
-  const rect = clip.getBoundingClientRect();
-  burst.style.left = (e.clientX - rect.left) + 'px';
-  burst.style.top  = (e.clientY - rect.top) + 'px';
-  burst.classList.remove('pop');
-  void burst.offsetWidth;
-  burst.classList.add('pop');
-  setTimeout(() => burst.classList.remove('pop'), 720);
-}
-
-function flashCTA(idx) {
-  const pill = document.getElementById('rail-watch-pill');
-  if (pill) {
-    pill.classList.remove('fire-flash'); void pill.offsetWidth; pill.classList.add('fire-flash');
-    pill.addEventListener('animationend', () => pill.classList.remove('fire-flash'), { once: true });
-  }
-  const mWatch = document.getElementById(`m-watch-${idx}`);
-  if (mWatch) {
-    mWatch.classList.remove('fire-flash'); void mWatch.offsetWidth; mWatch.classList.add('fire-flash');
-    mWatch.addEventListener('animationend', (e) => {
-      if (e.animationName === 'mobileCtaFireFlash') mWatch.classList.remove('fire-flash');
-    }, { once: true });
-  }
-}
-
-function syncRail(idx) {
-  const show = SHOWS[idx];
-  if (!show) return;
-
-  // Desktop
-  const litBtn   = document.getElementById('rail-lit');
-  const litCount = document.getElementById('rail-lit-count');
-  if (litCount) litCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
-  if (litBtn)   litState[idx] ? litBtn.classList.add('lit') : litBtn.classList.remove('lit');
-
-  // Desktop save button — update data-save-id so ssSyncAllSaveBtns works,
-  // then sync its visual state from shared storage
-  const saveBtn = document.getElementById('rail-save');
-  if (saveBtn) {
-    saveBtn.setAttribute('data-save-id', show.id);
-    const isSaved = ssIsClipSaved(show.id);
-    isSaved ? saveBtn.classList.add('saved') : saveBtn.classList.remove('saved');
-    // wire its click to the shared system with the correct show
-    saveBtn.onclick = () => ssToggleSave(show, saveBtn);
-  }
-
-  const pill  = document.getElementById('rail-watch-pill');
-  const plat  = document.getElementById('rail-watch-pill-plat');
-  if (pill) { pill.style.background = show.platColor; pill.style.setProperty('--pill-rgb', show.platRgb); }
-  if (plat) plat.textContent = show.platLabel;
-
-  // Mobile — sync the per-clip save button from shared storage
-  const mLit   = document.getElementById(`m-lit-${idx}`);
-  const mCount = document.getElementById(`m-lit-count-${idx}`);
-  if (mCount) mCount.textContent = fmtFires(show.litCount + (litState[idx] ? 1 : 0));
-  if (mLit)   litState[idx] ? mLit.classList.add('lit') : mLit.classList.remove('lit');
-
-  // Sync ALL mobile save buttons from shared storage
-  ssSyncAllSaveBtns();
-}
-
-function animateRailIn() {
-  const rail = document.getElementById('action-rail');
-  if (!rail) return;
-  rail.classList.remove('entering'); void rail.offsetWidth; rail.classList.add('entering');
-  rail.addEventListener('animationend', () => rail.classList.remove('entering'), { once: true });
-}
-
-function initScrollObserver() {
-  const feed = document.getElementById('feed');
-  const clips = document.querySelectorAll('.clip');
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const id = entry.target.id;
-      if (!id || !id.startsWith('clip-')) return;
-      const idx = parseInt(id.split('-')[1]);
-      if (isNaN(idx)) return;
-      if (entry.isIntersecting) {
-        entry.target.classList.add('active');
-        currentClip = idx; isPaused = false;
-        const pw = document.getElementById(`prog-wrap-${idx}`);
-        if (pw) pw.classList.remove('visible');
-        startProgress(idx); syncRail(idx); animateRailIn();
-      } else {
-        entry.target.classList.remove('active');
-        stopProgress(idx);
-      }
-    });
-  }, { root: feed, threshold: 0.6 });
-  clips.forEach(c => { if (c.id && c.id.startsWith('clip-')) observer.observe(c); });
-}
-
-function startProgress(idx) {
-  stopProgress(idx);
-  const bar = document.getElementById(`prog-${idx}`);
-  if (!bar) return;
-  let pct = parseFloat(bar.style.width) || 0;
-  progressTimers[idx] = setInterval(() => {
-    pct += 0.25;
-    if (pct > 100) { pct = 100; stopProgress(idx); }
-    bar.style.width = pct + '%';
-  }, 40);
-}
-function stopProgress(idx) {
-  if (progressTimers[idx]) { clearInterval(progressTimers[idx]); delete progressTimers[idx]; }
-}
-
-function navigateFeed(dir) {
-  const newIdx = currentClip + dir;
-  if (newIdx < 0 || newIdx >= SHOWS.length) return;
-  document.getElementById(`clip-${newIdx}`)?.scrollIntoView({ behavior: 'smooth' });
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowDown' || e.key === 'j') navigateFeed(1);
-  if (e.key === 'ArrowUp'   || e.key === 'k') navigateFeed(-1);
-});
-
-function handleTap(idx) {
-  isPaused = !isPaused;
-  const icon = document.getElementById(`pause-icon-${idx}`);
-  const pw   = document.getElementById(`prog-wrap-${idx}`);
-  if (isPaused) {
-    icon.classList.add('show');
-    if (pw) pw.classList.add('visible');
-    stopProgress(idx);
-    setTimeout(() => icon.classList.remove('show'), 900);
-  } else {
-    icon.classList.remove('show');
-    if (pw) pw.classList.remove('visible');
-    startProgress(idx);
-  }
-}
-
-function toggleMute(idx) {
-  const badge = document.getElementById(`muted-${idx}`);
-  if (badge) { badge.style.opacity = '0'; setTimeout(() => badge.remove(), 300); }
-  ssToast('🔊 Sound on');
-}
-
-function toggleLit(idx) {
-  const show = SHOWS[idx];
-  if (!show) return;
-  litState[idx] = !litState[idx];
-  const litBtn = document.getElementById('rail-lit');
-  if (litBtn) {
-    const icon = litBtn.querySelector('.act-icon');
-    icon.classList.remove('pulse'); void icon.offsetWidth; icon.classList.add('pulse');
-    setTimeout(() => icon.classList.remove('pulse'), 450);
-  }
-  const mLit = document.getElementById(`m-lit-${idx}`);
-  if (mLit) {
-    mLit.classList.remove('pulse'); void mLit.offsetWidth; mLit.classList.add('pulse');
-    setTimeout(() => mLit.classList.remove('pulse'), 450);
-  }
-  if (litState[idx]) setTimeout(() => flashCTA(idx), 120);
-  syncRail(idx);
-  // Persist fire to DB (real clips only; guests/mock no-op safely).
-  if (typeof _ssDbFire === 'function') _ssDbFire(show.id, litState[idx]);
-}
-
-function toggleSave(idx, btnEl) {
-  const show = SHOWS[idx];
-  if (!show) return;
-  // btnEl may be the mobile button; desktop rail button handled separately
-  ssToggleSave(show, btnEl || null);
-}
-
-function positionRail() {
-  const col  = document.getElementById('clip-column');
-  const rail = document.getElementById('action-rail');
-  if (!col || !rail) return;
-  const rect = col.getBoundingClientRect();
-  rail.style.left = (rect.right + 16) + 'px';
-}
-
 // ── INIT ──
+// Load data, then hand the Feed to the shared Clip_Engine. The engine renders
+// the per-clip frames into #feed, drives playback/gestures/progress/sound, owns
+// the mobile per-clip rail + the fixed desktop #action-rail (positionRail), the
+// IntersectionObserver, keyboard nav, and window.navigateFeed (#nav-arrows).
 (async function initFeed() {
   await loadRealClips();   // swap mock → real DB clips if available
-  buildFeed();
-  ssSyncAllSaveBtns();   // restore saved states on page load
-  initScrollObserver();
-  startProgress(0);
-  syncRail(0);
-  requestAnimationFrame(() => { positionRail(); animateRailIn(); });
+  ClipEngine.mountInline(document.getElementById('feed'), SHOWS);
 })();
-window.addEventListener('resize', positionRail);
 </script>
 </body>
-</html>
+</html>

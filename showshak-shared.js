@@ -1143,6 +1143,41 @@ let _ssvPrevScroll = null;    // saved body overflow
 let _ssvObserver   = null;
 let _ssvHistoryActive = false;// true while our back-to-close history entry is live
 
+// ── Shared engine playback state (used by ClipEngine) ──────────────
+// One Media_Surface + one Progress_Bar per clip, indexed like _ssvClips.
+let _ssvSurfaces   = [];      // Media_Surface instances, one per clip
+let _ssvBars       = [];      // Progress_Bar instances, one per clip
+let _ssvActiveIdx  = -1;      // index of the currently-active (playing) clip
+// INLINE first-clip muted-autoplay flag. FULLSCREEN opens are always
+// gesture-initiated so this stays false here; INLINE mode (later task)
+// flips it on for the first clip until the first user interaction.
+let _inlineAwaitingGesture = false;
+
+/* resolveMuted(mode) — the single sound-resolution rule (design: Sound model).
+   INLINE while awaiting the first gesture → forced muted (autoplay policy);
+   otherwise (and always for FULLSCREEN) → the persisted Mute_Preference. */
+function _ssvResolveMuted(mode) {
+  if (mode === 'INLINE' && _inlineAwaitingGesture) return true;
+  return ssGetMutePref();
+}
+
+/* ── INLINE-mode engine state ───────────────────────────────────────
+   The INLINE host (the Feed's #feed) keeps its OWN surface/clip/active
+   state, SEPARATE from the FULLSCREEN viewer's _ssv* state, because both
+   can be mounted at once (the inline Feed stays in the DOM behind an open
+   fullscreen viewer). ClipEngine.fire/togglePause/setActive are mode-aware:
+   passing mode === 'INLINE' routes them to these arrays + the Feed's DOM
+   id/rail scheme (see _inline* helpers below); the default (FULLSCREEN)
+   path is byte-for-byte unchanged. */
+let _inlineClips     = [];     // normalized clips currently in the inline Feed
+let _inlineSurfaces  = [];     // Media_Surface instances, one per inline clip
+let _inlineBars      = [];     // Progress_Bar instances, one per inline clip
+let _inlineFired     = new Set();  // inline clip indices fired this session
+let _inlineActiveIdx = -1;     // index of the currently-active inline clip
+let _inlineObserver  = null;   // IntersectionObserver for the inline host
+let _inlineResizeBound = false;        // guard: bind the resize handler once
+let _inlineInteractionCleanup = null;  // tears down the first-gesture listeners
+
 /* ── Normalizer: any page schema → canonical clip ── */
 function _ssvNormalize(raw) {
   if (!raw) return null;
@@ -1240,12 +1275,34 @@ function _ssvBuildList(clicked, list) {
       scroll-snap-align: start; scroll-snap-stop: always;
       overflow: hidden; flex-shrink: 0;
     }
+    /* Media_Surface mount point — the surface attaches its gradient/<video>
+       node here. Sits below the tap zone (z 10) and chrome. */
+    .ssv-media { position: absolute; inset: 0; z-index: 0; }
     .ssv-bg {
       position: absolute; inset: 0;
       background-size: cover; background-position: center;
       transform: scale(1.04); transition: transform 0.6s var(--ease-smooth);
     }
     .ssv-clip.active .ssv-bg { transform: scale(1); }
+
+    /* Progress bar (Progress_Bar component) — thin bar across the top of the
+       clip, driven by the Media_Surface. Never intercepts taps. */
+    .ssv-clip .ss-progress {
+      position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 36;
+      background: rgba(255,255,255,0.18); pointer-events: none;
+    }
+    .ssv-clip .ss-progress-fill {
+      height: 100%; width: 0%;
+      background: rgba(255,255,255,0.95);
+      box-shadow: 0 0 6px rgba(255,255,255,0.5);
+      transition: width 0.12s linear;
+    }
+
+    /* Pause affordance: dim the clip slightly when single-tap paused. */
+    .ssv-clip.ssv-paused .ssv-media::after {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(0,0,0,0.28);
+    }
     .ssv-vig {
       position: absolute; inset: 0; pointer-events: none;
       background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.35) 100%);
@@ -1279,6 +1336,23 @@ function _ssvBuildList(clicked, list) {
     }
     .ssv-close:hover  { background: rgba(0,0,0,0.7); transform: scale(1.06); }
     .ssv-close:active { transform: scale(0.92); }
+
+    /* Mute corner control (single shared sound toggle — replaces the old
+       "Tap for sound" badge). Shows the "on" icon by default; the "off"
+       (crossed) icon when muted. */
+    .ssv-mute {
+      position: absolute; top: 14px; right: 14px; z-index: 40;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; backdrop-filter: blur(8px);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .ssv-mute:hover  { background: rgba(0,0,0,0.7); transform: scale(1.06); }
+    .ssv-mute:active { transform: scale(0.92); }
+    .ssv-mute .ssv-mute-off { display: none; }
+    .ssv-mute.muted .ssv-mute-on  { display: none; }
+    .ssv-mute.muted .ssv-mute-off { display: block; }
 
     /* Top "showing related" pill */
     .ssv-top-pill {
@@ -1397,6 +1471,10 @@ function _ssvBuildList(clicked, list) {
     <div class="ssv-close" onclick="ssCloseClip()" aria-label="Go back">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </div>
+    <div class="ssv-mute" id="ssv-mute" onclick="ssvToggleMute()" aria-label="Mute">
+      <svg class="ssv-mute-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      <svg class="ssv-mute-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+    </div>
     <div class="ssv-top-pill">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
       More like this
@@ -1413,15 +1491,573 @@ const _SSV_SAVE_OUT  = `<svg class="sout" width="26" height="26" viewBox="0 0 24
 const _SSV_SAVE_FILL = `<svg class="sfill" width="26" height="26" viewBox="0 0 24 24" fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
 const _SSV_SHARE     = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`;
 
-/* ── Render one clip ────────────────────────────── */
-function _ssvClipHTML(c, i) {
+/* ════════════════════════════════════════════════
+   CLIP ENGINE — single shared clip player
+   ─────────────────────────────────────────────────
+   The one place Fire, single-tap pause, and active-surface playback are
+   defined. FULLSCREEN uses it today; INLINE (later task) reuses the same
+   methods. It talks to clips ONLY through the Media_Surface contract
+   (_ssvSurfaces) and persists through the existing DB wiring (_ssDbFire).
+════════════════════════════════════════════════ */
+const ClipEngine = {
+
+  /* fire(idx, x, y) — the SINGLE Fire definition (merges the old
+     _ssvToggleFire + _ssvFireOn). Guest-gated, turns fire ON idempotently,
+     pulses the rail flame, bursts a flame at the tap point (or clip centre
+     when x/y are absent), flashes the Watch It CTA, and persists via
+     _ssDbFire. */
+  fire(idx, x, y, mode) {
+    // Guest gate first: a Fire is a reaction → prompt sign-up before any write.
+    if (typeof ssGuestGuard === 'function' && ssGuestGuard('fire')) return;
+
+    // INLINE host uses the Feed's own DOM ids/rail scheme. (See _inlineFire.)
+    if (mode === 'INLINE') { _inlineFire(idx, x, y); return; }
+
+    const clip = _ssvClips[idx];
+    if (!clip) return;
+
+    const already = _ssvFired.has(idx);
+    if (!already) _ssvFired.add(idx);   // idempotent: only ever turns ON
+
+    // Rail flame: lit state + pulse animation + count.
+    const btn = document.getElementById(`ssv-fire-${idx}`);
+    if (btn) {
+      btn.classList.add('lit');
+      const ico = btn.querySelector('.ssv-ico');
+      if (ico) { ico.classList.remove('pulse'); void ico.offsetWidth; ico.classList.add('pulse'); }
+    }
+    const count = document.getElementById(`ssv-fire-count-${idx}`);
+    if (count) count.textContent = fmtFires(clip.fires + 1);
+
+    // Fire-burst at the tap point (relative to the clip), or centred.
+    const burst = document.getElementById(`ssv-burst-${idx}`);
+    const clipEl = document.getElementById(`ssv-clip-${idx}`);
+    if (burst && clipEl) {
+      const r = clipEl.getBoundingClientRect();
+      const bx = (x != null) ? (x - r.left) : (r.width / 2);
+      const by = (y != null) ? (y - r.top)  : (r.height / 2);
+      burst.style.left = bx + 'px';
+      burst.style.top  = by + 'px';
+      burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
+    }
+
+    // Fire energy → flash the Watch It CTA on this clip.
+    const watch = document.querySelector(`#ssv-clip-${idx} .ssv-watch`);
+    if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => { watch.style.filter = ''; }, 360); }
+
+    // Persist only on the first (idempotent) transition to fired.
+    if (!already) _ssDbFire(clip.id, true);
+  },
+
+  /* togglePause(idx) — single-tap pause/resume of the active surface. */
+  togglePause(idx, mode) {
+    if (mode === 'INLINE') { _inlineTogglePause(idx); return; }
+    const surface = _ssvSurfaces[idx];
+    if (!surface) return;
+    const clipEl = document.getElementById(`ssv-clip-${idx}`);
+    if (surface._ssPaused) {
+      surface._ssPaused = false;
+      surface.play().catch(() => {});
+      if (clipEl) clipEl.classList.remove('ssv-paused');
+    } else {
+      surface._ssPaused = true;
+      surface.pause();
+      if (clipEl) clipEl.classList.add('ssv-paused');
+    }
+  },
+
+  /* setActive(idx) — make clip `idx` the playing one. Pauses the previous
+     surface, applies the resolved Mute_Preference, and plays with an
+     autoplay-rejection → muted-retry fallback. Progress is already wired to
+     the bar at mount time. `mode` defaults to FULLSCREEN. */
+  setActive(idx, mode) {
+    const m = (mode === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
+
+    // INLINE host: separate state + the Feed's DOM ids/rail. (See _inlineSetActive.)
+    if (m === 'INLINE') { _inlineSetActive(idx); return; }
+
+    if (_ssvActiveIdx === idx) return;
+
+    const prev = _ssvSurfaces[_ssvActiveIdx];
+    if (prev) { prev.pause(); prev._ssPaused = false; }
+    const prevEl = document.getElementById(`ssv-clip-${_ssvActiveIdx}`);
+    if (prevEl) prevEl.classList.remove('ssv-paused');
+
+    _ssvActiveIdx = idx;
+    const surface = _ssvSurfaces[idx];
+    if (!surface) return;
+
+    const muted = _ssvResolveMuted(m);
+    surface.setMuted(muted);
+    surface._ssPaused = false;
+    surface.play().catch(() => {
+      // Autoplay-with-audio rejected → retry muted (keeps playback alive).
+      surface.setMuted(true);
+      surface.play().catch(() => {});
+    });
+  },
+
+  /* mountInline(container, clips, opts) — the INLINE render mode. Rebuilds the
+     Feed on the shared engine: renders the ordered clips into `container`
+     (#feed) reusing the Feed's existing scroll-snap `.clip` / `.clip-column`
+     layout and class names, gives each clip a Media_Surface + Progress_Bar,
+     wires the unified gesture handler, drives the active clip with an
+     IntersectionObserver, owns the mobile per-clip rail + the fixed desktop
+     #action-rail (positionRail), and the arrow/j/k keyboard navigation.
+
+     The first clip plays MUTED (browser autoplay policy) via
+     _inlineAwaitingGesture until the first user interaction (tap/scroll/key),
+     which then applies the persisted Mute_Preference. No-ops if container or
+     clips are absent. */
+  mountInline(container, clips, opts) {
+    if (!container || !Array.isArray(clips) || !clips.length) return;  // no-op guard
+
+    // Tear down any previous inline mount (no surface/observer/timer leaks).
+    _inlineSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
+    if (_inlineObserver) { _inlineObserver.disconnect(); _inlineObserver = null; }
+    if (typeof _inlineInteractionCleanup === 'function') { _inlineInteractionCleanup(); _inlineInteractionCleanup = null; }
+
+    // Ordering goes ONLY through the Recommendation_Seam (Req 7.5). For the
+    // Feed, the "clicked" clip is simply the first clip — ssClipOrdering keeps
+    // it first and de-dupes the rest, so the Feed's natural order is preserved.
+    _inlineClips    = ssClipOrdering(clips[0], clips);
+    _inlineSurfaces = [];
+    _inlineBars     = [];
+    _inlineFired    = new Set();
+    _inlineActiveIdx = -1;
+    // First clip is forced muted until the first user interaction (Req 4.2).
+    _inlineAwaitingGesture = true;
+
+    // Render the clip frames (Feed's existing classes/ids).
+    container.innerHTML = _inlineClips.map((c, i) => _inlineClipHTML(c, i)).join('');
+
+    // Build one Media_Surface + one Progress_Bar per clip, wire progress + gestures.
+    // The engine speaks ONLY the Media_Surface contract here — no medium logic.
+    const inlineEngine = {
+      // Adapter so the shared gesture handler routes to the INLINE host.
+      fire:        (i, x, y) => ClipEngine.fire(i, x, y, 'INLINE'),
+      togglePause: (i)       => ClipEngine.togglePause(i, 'INLINE'),
+    };
+    _inlineClips.forEach((clip, i) => {
+      const card    = document.getElementById(`clip-${i}`);
+      const mediaEl = document.getElementById(`clip-media-${i}`);
+      if (!card || !mediaEl) return;
+      const surface = ssCreateSurface(clip, { bgClass: 'clip-bg' });
+      surface.mount(mediaEl);
+      const bar = ssMakeProgressBar(card);
+      surface.onTimeupdate(p => bar.set(p));
+      _inlineSurfaces[i] = surface;
+      _inlineBars[i] = bar;
+      const tapZone = document.getElementById(`tap-${i}`);
+      if (tapZone) ssAttachGestures(tapZone, i, inlineEngine);
+    });
+
+    // Wire the fixed desktop #action-rail's controls to the engine (acting on
+    // the active clip). Save's data-save-id + state are refreshed in _inlineSyncRail.
+    _inlineWireDesktopRail();
+
+    // First clip active + playback, then the observer for the rest.
+    container.scrollTop = 0;
+    document.getElementById('clip-0')?.classList.add('active');
+    ClipEngine.setActive(0, 'INLINE');   // plays clip 0 (muted: awaiting gesture)
+    _inlineSetupObserver(container);
+
+    // Clear the first-clip muted lock on the first interaction (tap/scroll/key)
+    // and apply the persisted Mute_Preference to the active surface (Req 4.3).
+    _inlineInteractionCleanup = _inlineBindFirstInteraction(container);
+
+    // Keyboard navigation (Arrow/j/k) — moved off the Feed into the engine.
+    document.addEventListener('keydown', _inlineKeydown);
+    window.navigateFeed = _inlineNavigate;   // back the Feed's #nav-arrows onclick
+
+    // Position the desktop rail relative to the clip column (load + resize).
+    requestAnimationFrame(() => { _inlinePositionRail(); _inlineAnimateRailIn(); });
+    if (!_inlineResizeBound) { window.addEventListener('resize', _inlinePositionRail); _inlineResizeBound = true; }
+
+    // Make in-feed Save/Follow buttons + curator links real and synced.
+    ssSyncAllSaveBtns();
+    if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(container);
+    if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(container);
+  },
+};
+// Expose globally so inline onclick handlers (rail flame) resolve it.
+window.ClipEngine = ClipEngine;
+
+/* Mute corner control helpers. The live re-apply subscription
+   (ssOnMuteChange) is registered at the end of this file, AFTER the
+   Mute_Preference module is defined. */
+function _ssvPaintMuteBtn(muted) {
+  const btn = document.getElementById('ssv-mute');
+  if (!btn) return;
+  btn.classList.toggle('muted', !!muted);
+  btn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+}
+function ssvToggleMute() {
+  const next = !ssGetMutePref();
+  ssSetMutePref(next);   // persists + fires ssOnMuteChange (re-applies + repaints)
+}
+
+/* ════════════════════════════════════════════════
+   INLINE MODE — helpers (the Feed's DOM id/rail scheme)
+   ─────────────────────────────────────────────────
+   These drive ClipEngine in INLINE mode. They operate on the Feed's EXISTING
+   markup classes/ids so the engine-rendered Feed looks/behaves exactly like
+   today's bespoke player once Task 7 wires it.
+
+   INLINE element/id map (vs the FULLSCREEN ssv-* scheme):
+     clip frame        #clip-${i}           (.clip[.active])          ← ssv-clip-${i}
+     media mount       #clip-media-${i}     (surface mounts .clip-bg) ← ssv-media-${i}
+     tap/gesture zone  #tap-${i}            (.clip-tap)               ← ssv-tap-${i}
+     pause indicator   #pause-icon-${i}     (.clip-pause-icon.show)   ← .ssv-paused
+     fire burst        #burst-${i}          (.fire-burst.pop)         ← ssv-burst-${i} (.go)
+     progress bar      .ss-progress (appended via ssMakeProgressBar)  ← same component
+     mobile fire       #m-lit-${i} / count #m-lit-count-${i} (.lit)   ← ssv-fire-${i}
+     mobile save       #m-save-${i} (data-save-id)                    ← ssv-save
+     mobile Watch It   #m-watch-${i} (.fire-flash on fire)            ← .ssv-watch
+     desktop rail      #action-rail (ONE shared rail, positionRail):  ← per-clip .ssv-rail
+                         fire #rail-lit + count #rail-lit-count (.lit)
+                         save #rail-save (data-save-id)
+                         share (3rd .act-btn, no id)
+                         Watch It #rail-watch + pill #rail-watch-pill / #rail-watch-pill-plat
+   The desktop rail is a single fixed element shared across clips and is
+   re-synced to the active clip by _inlineSyncRail (mirrors the old syncRail).
+════════════════════════════════════════════════ */
+
+/* Build one inline clip frame (Feed classes/ids). The background is NOT
+   hardcoded — the Media_Surface mounts a .clip-bg into #clip-media-${i}; the
+   Progress_Bar is appended in JS via ssMakeProgressBar. Title and view/follower
+   counts are never rendered on the clip body (Req 10.1, 10.4). */
+function _inlineClipHTML(c, i) {
+  const fired = _inlineFired.has(i);
+  const tags = [...(c.genre || []), c.lang].filter(Boolean)
+    .map(t => `<span class="tag">${t}</span>`).join('');
+  const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
+  const platAbbr = (c.platforms && c.platforms[0] && c.platforms[0].label) || c.platAbbr;
+  return `
+    <div class="clip${i === 0 ? ' active' : ''}" id="clip-${i}" data-ss-idx="${i}">
+      <div class="clip-media" id="clip-media-${i}"></div>
+      <div class="clip-vignette"></div>
+      <div class="clip-grain"></div>
+      <div class="clip-logo-float">
+        <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+      </div>
+      <button class="clip-expand" id="clip-expand-${i}" aria-label="Open fullscreen"
+        onclick="event.stopPropagation(); ssOpenClip(_inlineClips[${i}], _inlineClips)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      </button>
+      <div class="clip-tap" id="tap-${i}">
+        <div class="clip-pause-icon" id="pause-icon-${i}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </div>
+      </div>
+      <div class="fire-burst" id="burst-${i}">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#EA3B32" d="M40 6C40 6 26 22 26 34a14 14 0 0 0 28 0c0-5.5-2.8-11-5-15C46 24 47 30 43 34c-1.5 2-3 3-3 3S32 32 32 26c0-8 8-20 8-20z"/>
+          <path fill="#FF4D42" d="M40 46c-7.7 0-14 6.3-14 14s6.3 14 14 14 14-6.3 14-14-6.3-14-14-14z"/>
+          <circle cx="40" cy="60" r="6" fill="#FFB800" opacity="0.7"/>
+        </svg>
+      </div>
+      <div class="mobile-action-rail" id="m-rail-${i}">
+        <div class="m-act-btn" id="m-lit-${i}" onclick="event.stopPropagation(); ClipEngine.fire(${i}, null, null, 'INLINE')">
+          <div class="m-act-icon">
+            <svg class="m-fire-outline" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+            <svg class="m-fire-filled" width="30" height="30" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
+          </div>
+          <span class="m-act-label" id="m-lit-count-${i}">${fmtFires(c.fires + (fired ? 1 : 0))}</span>
+        </div>
+        <div class="m-act-btn" id="m-save-${i}" data-save-id="${c.id}" onclick="event.stopPropagation(); ssToggleSave(_inlineClips[${i}], this)">
+          <div class="m-act-icon">
+            <svg class="m-save-outline" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <svg class="m-save-filled"  width="28" height="28" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <span class="m-act-label">Save</span>
+        </div>
+        <div class="m-act-btn" onclick="event.stopPropagation(); ssShare(_inlineClips[${i}])">
+          <div class="m-act-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </div>
+          <span class="m-act-label">Share</span>
+        </div>
+      </div>
+      <button class="mobile-watch-btn" id="m-watch-${i}"
+        style="background:${c.platColor}; --btn-rgb:${c.platRgb}"
+        onclick="event.stopPropagation(); ssOpenSheet(_inlineClips[${i}])">
+        <div class="mobile-watch-btn-inner">
+          <div class="mobile-watch-plat-logo">${platAbbr}</div>
+          <div class="mobile-watch-text">
+            <span class="mobile-watch-text-main">Watch It</span>
+            <span class="mobile-watch-text-sub">on ${c.platLabel}</span>
+          </div>
+          <div class="mobile-watch-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </button>
+      <div class="clip-bottom">
+        <div class="creator-row">
+          <div class="creator-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${c.creator.letter}</div>
+          <span class="creator-name" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
+          <span class="creator-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
+        </div>
+        <div class="tag-row">${tags}</div>
+        <div class="caption">${caption}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* INLINE fire — the Feed's fire visuals, driven by the single ClipEngine.fire.
+   Idempotent ON (matches the unified Fire definition). Updates the per-clip
+   mobile rail + the shared desktop rail (only when this clip is active),
+   bursts the flame, flashes the Watch It CTA, and persists via _ssDbFire. */
+function _inlineFire(idx, x, y) {
+  const clip = _inlineClips[idx];
+  if (!clip) return;
+  const already = _inlineFired.has(idx);
+  if (!already) _inlineFired.add(idx);   // idempotent: only ever turns ON
+
+  // Mobile per-clip flame: lit state + pulse + count.
+  const mLit = document.getElementById(`m-lit-${idx}`);
+  if (mLit) {
+    mLit.classList.add('lit');
+    const ico = mLit.querySelector('.m-act-icon');
+    if (ico) { ico.classList.remove('pulse'); void ico.offsetWidth; ico.classList.add('pulse'); }
+  }
+  const mCount = document.getElementById(`m-lit-count-${idx}`);
+  if (mCount) mCount.textContent = fmtFires(clip.fires + 1);
+
+  // Desktop shared rail flame — only meaningful when this clip is the active one.
+  if (idx === _inlineActiveIdx) {
+    const litBtn = document.getElementById('rail-lit');
+    if (litBtn) {
+      litBtn.classList.add('lit');
+      const ico = litBtn.querySelector('.act-icon');
+      if (ico) { ico.classList.remove('pulse'); void ico.offsetWidth; ico.classList.add('pulse'); }
+    }
+    const railCount = document.getElementById('rail-lit-count');
+    if (railCount) railCount.textContent = fmtFires(clip.fires + 1);
+  }
+
+  // Fire-burst at the tap point (relative to the clip), or centred.
+  const burst = document.getElementById(`burst-${idx}`);
+  const clipEl = document.getElementById(`clip-${idx}`);
+  if (burst && clipEl) {
+    const r = clipEl.getBoundingClientRect();
+    burst.style.left = ((x != null) ? (x - r.left) : (r.width / 2)) + 'px';
+    burst.style.top  = ((y != null) ? (y - r.top)  : (r.height / 2)) + 'px';
+    burst.classList.remove('pop'); void burst.offsetWidth; burst.classList.add('pop');
+    setTimeout(() => burst.classList.remove('pop'), 720);
+  }
+
+  // Fire energy → flash the Watch It CTA (mobile button + desktop pill if active).
+  _inlineFlashCTA(idx);
+
+  // Persist only on the first (idempotent) transition to fired.
+  if (!already && typeof _ssDbFire === 'function') _ssDbFire(clip.id, true);
+}
+
+/* Flash the Watch It CTA (mirrors the Feed's flashCTA). */
+function _inlineFlashCTA(idx) {
+  if (idx === _inlineActiveIdx) {
+    const pill = document.getElementById('rail-watch-pill');
+    if (pill) {
+      pill.classList.remove('fire-flash'); void pill.offsetWidth; pill.classList.add('fire-flash');
+      pill.addEventListener('animationend', () => pill.classList.remove('fire-flash'), { once: true });
+    }
+  }
+  const mWatch = document.getElementById(`m-watch-${idx}`);
+  if (mWatch) {
+    mWatch.classList.remove('fire-flash'); void mWatch.offsetWidth; mWatch.classList.add('fire-flash');
+    mWatch.addEventListener('animationend', (e) => {
+      if (e.animationName === 'mobileCtaFireFlash') mWatch.classList.remove('fire-flash');
+    }, { once: true });
+  }
+}
+
+/* INLINE single-tap pause/resume of the active surface. Shows the Feed's
+   pause indicator while paused. */
+function _inlineTogglePause(idx) {
+  const surface = _inlineSurfaces[idx];
+  if (!surface) return;
+  const icon = document.getElementById(`pause-icon-${idx}`);
+  if (surface._ssPaused) {
+    surface._ssPaused = false;
+    surface.play().catch(() => {});
+    if (icon) icon.classList.remove('show');
+  } else {
+    surface._ssPaused = true;
+    surface.pause();
+    if (icon) icon.classList.add('show');
+  }
+}
+
+/* INLINE setActive — pause the previous surface, play this one with the
+   resolved Mute_Preference (autoplay-rejection → muted retry), and re-sync the
+   shared desktop rail to this clip. The .active class is toggled by the
+   observer (mirrors the FULLSCREEN host). */
+function _inlineSetActive(idx) {
+  if (_inlineActiveIdx === idx) return;
+
+  const prev = _inlineSurfaces[_inlineActiveIdx];
+  if (prev) { prev.pause(); prev._ssPaused = false; }
+  const prevIcon = document.getElementById(`pause-icon-${_inlineActiveIdx}`);
+  if (prevIcon) prevIcon.classList.remove('show');
+
+  _inlineActiveIdx = idx;
+  const surface = _inlineSurfaces[idx];
+  if (!surface) return;
+
+  const muted = _ssvResolveMuted('INLINE');
+  surface.setMuted(muted);
+  surface._ssPaused = false;
+  surface.play().catch(() => {
+    surface.setMuted(true);
+    surface.play().catch(() => {});
+  });
+
+  _inlineSyncRail(idx);
+  _inlineAnimateRailIn();
+}
+
+/* Sync the single fixed desktop #action-rail to the active clip (mirrors the
+   Feed's old syncRail). The mobile rail is per-clip so it needs no sync. */
+function _inlineSyncRail(idx) {
+  const clip = _inlineClips[idx];
+  if (!clip) return;
+  const fired = _inlineFired.has(idx);
+
+  const litBtn   = document.getElementById('rail-lit');
+  const litCount = document.getElementById('rail-lit-count');
+  if (litCount) litCount.textContent = fmtFires(clip.fires + (fired ? 1 : 0));
+  if (litBtn) litBtn.classList.toggle('lit', fired);
+
+  // Save: update data-save-id so ssSyncAllSaveBtns works, sync visual state,
+  // and (re)wire its click to the shared Save with the correct clip.
+  const saveBtn = document.getElementById('rail-save');
+  if (saveBtn) {
+    saveBtn.setAttribute('data-save-id', clip.id);
+    saveBtn.classList.toggle('saved', ssIsClipSaved(clip.id));
+    saveBtn.onclick = () => ssToggleSave(clip, saveBtn);
+  }
+
+  const pill = document.getElementById('rail-watch-pill');
+  const plat = document.getElementById('rail-watch-pill-plat');
+  if (pill) { pill.style.background = clip.platColor; pill.style.setProperty('--pill-rgb', clip.platRgb); }
+  if (plat) plat.textContent = clip.platLabel;
+
+  ssSyncAllSaveBtns();   // keep mobile per-clip save buttons in sync too
+}
+
+/* Wire the fixed desktop rail's fire / share / Watch It controls to the engine,
+   acting on whatever clip is active. (Save is wired per-active-clip in
+   _inlineSyncRail because it needs the clip object + data-save-id.) */
+function _inlineWireDesktopRail() {
+  const rail = document.getElementById('action-rail');
+  if (!rail) return;
+  const litBtn = document.getElementById('rail-lit');
+  if (litBtn) litBtn.onclick = () => ClipEngine.fire(_inlineActiveIdx, null, null, 'INLINE');
+  // Share is the .act-btn with no id (not rail-lit / not rail-save).
+  rail.querySelectorAll('.act-btn').forEach(btn => {
+    if (btn.id !== 'rail-lit' && btn.id !== 'rail-save') {
+      btn.onclick = () => ssShare(_inlineClips[_inlineActiveIdx]);
+    }
+  });
+  const watch = document.getElementById('rail-watch');
+  if (watch) watch.onclick = () => ssOpenSheet(_inlineClips[_inlineActiveIdx]);
+}
+
+/* INLINE active-clip observer (threshold 0.6) — drives ClipEngine.setActive
+   for the inline host, mirroring _ssvSetupObserver for FULLSCREEN. */
+function _inlineSetupObserver(container) {
+  if (_inlineObserver) _inlineObserver.disconnect();
+  _inlineObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        container.querySelectorAll('.clip.active').forEach(el => el.classList.remove('active'));
+        entry.target.classList.add('active');
+        const idx = parseInt(entry.target.dataset.ssIdx, 10);
+        if (!isNaN(idx)) ClipEngine.setActive(idx, 'INLINE');
+      }
+    });
+  }, { root: container, threshold: 0.6 });
+  container.querySelectorAll('.clip').forEach(c => _inlineObserver.observe(c));
+}
+
+/* Bind one-shot first-interaction listeners (tap/scroll/key). The first one to
+   fire clears the inline muted-autoplay lock and applies the persisted
+   Mute_Preference to the active surface (Req 4.3). Returns a cleanup fn. */
+function _inlineBindFirstInteraction(container) {
+  function clear() {
+    detach();
+    if (!_inlineAwaitingGesture) return;
+    _inlineAwaitingGesture = false;
+    const surface = _inlineSurfaces[_inlineActiveIdx];
+    if (surface) surface.setMuted(ssGetMutePref());
+  }
+  function detach() {
+    container.removeEventListener('scroll', clear);
+    container.removeEventListener('pointerdown', clear);
+    document.removeEventListener('keydown', clear);
+  }
+  container.addEventListener('scroll', clear, { passive: true });
+  container.addEventListener('pointerdown', clear);
+  document.addEventListener('keydown', clear);
+  return detach;
+}
+
+/* INLINE keyboard nav — ArrowDown/j → next, ArrowUp/k → previous (moved off
+   the Feed into the engine). */
+function _inlineKeydown(e) {
+  if (e.key === 'ArrowDown' || e.key === 'j') _inlineNavigate(1);
+  if (e.key === 'ArrowUp'   || e.key === 'k') _inlineNavigate(-1);
+}
+
+/* Navigate the inline Feed by `dir` (±1). Backs the Feed's #nav-arrows. */
+function _inlineNavigate(dir) {
+  if (!_inlineClips.length) return;
+  const newIdx = _inlineActiveIdx + dir;
+  if (newIdx < 0 || newIdx >= _inlineClips.length) return;
+  document.getElementById(`clip-${newIdx}`)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+/* Position the fixed desktop rail just right of the clip column (load + resize),
+   bringing the Feed's positionRail behavior into the engine. */
+function _inlinePositionRail() {
+  const col  = document.getElementById('clip-column');
+  const rail = document.getElementById('action-rail');
+  if (!col || !rail) return;
+  const rect = col.getBoundingClientRect();
+  rail.style.left = (rect.right + 16) + 'px';
+}
+
+/* Replay the desktop rail's entrance animation. */
+function _inlineAnimateRailIn() {
+  const rail = document.getElementById('action-rail');
+  if (!rail) return;
+  rail.classList.remove('entering'); void rail.offsetWidth; rail.classList.add('entering');
+  rail.addEventListener('animationend', () => rail.classList.remove('entering'), { once: true });
+}
+
+/* ── Render one clip ──────────────────────────────
+   Mode-aware: `mode` is 'INLINE' | 'FULLSCREEN' (default FULLSCREEN). It
+   selects the class set; FULLSCREEN preserves the existing .ssv-feed/.ssv-rail
+   layout and ids. The clip body renders a Media_Surface mount point
+   (`.ssv-media`, the surface attaches its gradient/<video> node here) and a
+   Progress_Bar container is added in JS via ssMakeProgressBar after render —
+   no hardcoded gradient div. `clip.title` and view/follower counts are never
+   rendered on the clip body (title is revealed only in the Watch It sheet). */
+function _ssvClipHTML(c, i, mode) {
+  const m = (mode === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
+  // Class set per mode. FULLSCREEN keeps every existing ssv-* class + id so the
+  // immersion layer is byte-for-byte unchanged; INLINE adds a modifier hook.
+  const rootCls = m === 'INLINE' ? 'ssv-clip ssv-clip--inline' : 'ssv-clip';
   const fired = _ssvFired.has(i);
   const tags = [...(c.genre || []), c.lang].filter(Boolean)
     .map(t => `<span class="tag">${t}</span>`).join('');
   const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
   return `
-    <div class="ssv-clip" id="ssv-clip-${i}" data-ssv-idx="${i}">
-      <div class="ssv-bg" style="background:${c.bg}"></div>
+    <div class="${rootCls}" id="ssv-clip-${i}" data-ssv-idx="${i}">
+      <div class="ssv-media" id="ssv-media-${i}"></div>
       <div class="ssv-vig"></div>
 
       <div class="ssv-tap" id="ssv-tap-${i}"></div>
@@ -1430,7 +2066,7 @@ function _ssvClipHTML(c, i) {
       </div>
 
       <div class="ssv-rail">
-        <div class="ssv-act ssv-fire ${fired ? 'lit' : ''}" id="ssv-fire-${i}" onclick="_ssvToggleFire(${i})">
+        <div class="ssv-act ssv-fire ${fired ? 'lit' : ''}" id="ssv-fire-${i}" onclick="event.stopPropagation(); ClipEngine.fire(${i})">
           <div class="ssv-ico">${_SSV_FIRE_OUT}${_SSV_FIRE_FILL}</div>
           <span class="ssv-lbl" id="ssv-fire-count-${i}">${fmtFires(c.fires + (fired ? 1 : 0))}</span>
         </div>
@@ -1479,12 +2115,38 @@ function ssOpenClip(clipOrId, list) {
   }
   if (!clicked) return;
 
-  _ssvClips = _ssvBuildList(clicked, list);
+  // Ordering goes ONLY through the Recommendation_Seam (swap its body later
+  // for a recommendation feed without touching engine code).
+  _ssvClips = ssClipOrdering(clicked, list);
   _ssvFired = new Set();
 
   const feed = document.getElementById('ssv-feed');
   if (!feed) return;
-  feed.innerHTML = _ssvClips.map((c, i) => _ssvClipHTML(c, i)).join('');
+
+  // Tear down any surfaces from a previous open (no timer leaks).
+  _ssvSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
+  _ssvSurfaces = [];
+  _ssvBars = [];
+  _ssvActiveIdx = -1;
+
+  feed.innerHTML = _ssvClips.map((c, i) => _ssvClipHTML(c, i, 'FULLSCREEN')).join('');
+
+  // Build one Media_Surface + one Progress_Bar per clip, and wire progress.
+  // The engine speaks ONLY the Media_Surface contract here — no medium logic.
+  _ssvClips.forEach((clip, i) => {
+    const mediaEl = document.getElementById(`ssv-media-${i}`);
+    const clipEl  = document.getElementById(`ssv-clip-${i}`);
+    if (!mediaEl || !clipEl) return;
+    const surface = ssCreateSurface(clip, { bgClass: 'ssv-bg' });
+    surface.mount(mediaEl);
+    const bar = ssMakeProgressBar(clipEl);
+    surface.onTimeupdate(p => bar.set(p));
+    _ssvSurfaces[i] = surface;
+    _ssvBars[i] = bar;
+    // Unified gesture model: single tap → pause/resume, double tap → fire+burst.
+    const tapZone = document.getElementById(`ssv-tap-${i}`);
+    if (tapZone) ssAttachGestures(tapZone, i, ClipEngine);
+  });
 
   // Lock background scroll
   _ssvPrevScroll = document.body.style.overflow;
@@ -1497,6 +2159,9 @@ function ssOpenClip(clipOrId, list) {
   feed.scrollTop = 0;
   _ssvSetupObserver(feed);
   document.getElementById('ssv-clip-0')?.classList.add('active');
+  // FULLSCREEN opens are gesture-initiated → start playback (sound per pref).
+  _ssvPaintMuteBtn(ssGetMutePref());
+  ClipEngine.setActive(0, 'FULLSCREEN');
   ssSyncAllSaveBtns();
   ssWireFollowButtons(feed);   // make in-viewer Follow buttons real + synced
   ssWireCuratorLinks(feed);    // tap curator name/avatar -> their profile
@@ -1511,67 +2176,6 @@ function ssOpenClip(clipOrId, list) {
 
   document.addEventListener('keydown', _ssvKeydown);
   _ssvAttachSwipe(feed);
-  _ssvAttachDoubleTap(feed);
-}
-
-/* ── Double-tap / double-click to fire (Instagram-style) ──────────
-   Works inside the universal viewer, so it behaves identically on
-   Discover, Watchlist and Profile clips — not just the Feed. The tap
-   zone (.ssv-tap) sits below the rail/Watch It, so those still work.
-   Double tap fires (never un-fires) and plays a heart-style burst at
-   the tap point. A single tap is left alone (no pause UI here). */
-function _ssvAttachDoubleTap(feed) {
-  let lastTap = 0, lastX = 0, lastY = 0;
-
-  const onZone = (e) => {
-    const zone = e.target.closest && e.target.closest('.ssv-tap');
-    if (!zone) return null;
-    const clipEl = zone.closest('.ssv-clip');
-    return clipEl ? { idx: parseInt(clipEl.dataset.ssvIdx, 10), zone } : null;
-  };
-
-  // Touch: detect two quick taps near the same point.
-  feed.addEventListener('touchend', (e) => {
-    const hit = onZone(e);
-    if (!hit) return;
-    const t = e.changedTouches[0];
-    const now = Date.now();
-    const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
-    if (now - lastTap < 300 && near) {
-      e.preventDefault();
-      _ssvFireOn(hit.idx, t.clientX, t.clientY, hit.zone);
-      lastTap = 0;
-    } else {
-      lastTap = now; lastX = t.clientX; lastY = t.clientY;
-    }
-  }, { passive: false });
-
-  // Desktop: native double-click.
-  feed.addEventListener('dblclick', (e) => {
-    const hit = onZone(e);
-    if (!hit) return;
-    _ssvFireOn(hit.idx, e.clientX, e.clientY, hit.zone);
-  });
-}
-
-/* Fire a clip via double-tap: only turns fire ON (never off), syncs the
-   rail button, flashes the Watch It CTA, and bursts a flame at (x,y). */
-function _ssvFireOn(i, x, y, zone) {
-  // Guest gate: double-tap-to-fire is a reaction → prompt sign-up first.
-  if (typeof ssGuestGuard === 'function' && ssGuestGuard('fire')) return;
-  if (!_ssvFired.has(i)) _ssvToggleFire(i);   // toggle on (no-op visual if already lit)
-
-  // Burst at the tap point, positioned relative to the clip.
-  const burst = document.getElementById(`ssv-burst-${i}`);
-  if (burst && zone) {
-    const r = zone.getBoundingClientRect();
-    burst.style.left = (x - r.left) + 'px';
-    burst.style.top  = (y - r.top)  + 'px';
-    burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
-  }
-  // Fire energy → flash the Watch It CTA on this clip.
-  const watch = document.querySelector(`#ssv-clip-${i} .ssv-watch`);
-  if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => watch.style.filter = '', 360); }
 }
 
 /* ── Swipe-anywhere to go back (Instagram-style) ──────────────────
@@ -1663,6 +2267,11 @@ function _ssvTeardownViewer() {
   document.body.style.overflow = _ssvPrevScroll || '';
   if (_ssvObserver) { _ssvObserver.disconnect(); _ssvObserver = null; }
   document.removeEventListener('keydown', _ssvKeydown);
+  // Destroy every Media_Surface so its rAF/timer is cancelled (no leaks).
+  _ssvSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
+  _ssvSurfaces = [];
+  _ssvBars = [];
+  _ssvActiveIdx = -1;
   // Re-sync any save buttons on the underlying page
   setTimeout(ssSyncAllSaveBtns, 50);
 }
@@ -1708,6 +2317,10 @@ function _ssvSetupObserver(feed) {
       if (entry.isIntersecting) {
         feed.querySelectorAll('.ssv-clip.active').forEach(el => el.classList.remove('active'));
         entry.target.classList.add('active');
+        // Drive engine playback: pause the previous surface, play this one
+        // with the resolved Mute_Preference. (FULLSCREEN host.)
+        const idx = parseInt(entry.target.dataset.ssvIdx, 10);
+        if (!isNaN(idx)) ClipEngine.setActive(idx, 'FULLSCREEN');
       }
     });
   }, { root: feed, threshold: 0.6 });
@@ -1715,29 +2328,8 @@ function _ssvSetupObserver(feed) {
 }
 
 /* ── Fire toggle inside the viewer ──────────────── */
-function _ssvToggleFire(i) {
-  const clip = _ssvClips[i];
-  if (!clip) return;
-  const fired = !_ssvFired.has(i);
-  fired ? _ssvFired.add(i) : _ssvFired.delete(i);
-
-  const btn = document.getElementById(`ssv-fire-${i}`);
-  if (btn) {
-    btn.classList.toggle('lit', fired);
-    const ico = btn.querySelector('.ssv-ico');
-    if (ico) { ico.classList.remove('pulse'); void ico.offsetWidth; ico.classList.add('pulse'); }
-  }
-  const count = document.getElementById(`ssv-fire-count-${i}`);
-  if (count) count.textContent = fmtFires(clip.fires + (fired ? 1 : 0));
-
-  _ssDbFire(clip.id, fired);   // persist to DB (fire-and-forget)
-
-  // Fire energy → flash the Watch It CTA on this clip
-  if (fired) {
-    const watch = document.querySelector(`#ssv-clip-${i} .ssv-watch`);
-    if (watch) { watch.style.filter = 'brightness(1.5) saturate(1.3)'; setTimeout(() => watch.style.filter = '', 360); }
-  }
-}
+/* (Removed) _ssvToggleFire + _ssvFireOn are now the single ClipEngine.fire
+   definition above; the rail flame and double-tap both call ClipEngine.fire. */
 
 
 
@@ -2523,3 +3115,204 @@ function _ssvToggleFire(i) {
     document.body.style.overflow = '';
   }
 })();
+
+/* ════════════════════════════════════════════════
+   UNIFIED CLIP PLAYER — shared engine primitives
+   ────────────────────────────────────────────────
+   These primitives are the foundation of the single shared Clip_Engine
+   powering both the inline Feed and the fullscreen viewer. The FULLSCREEN
+   viewer is now wired onto them (ssCreateSurface + ssMakeProgressBar +
+   ssAttachGestures + ssClipOrdering, driven by the ClipEngine object); the
+   old _ssvAttachDoubleTap/_ssvFireOn/_ssvToggleFire have been removed. A
+   later task repoints the Feed (INLINE mode) onto the same primitives.
+════════════════════════════════════════════════ */
+
+/**
+ * Media_Surface — the contract the Clip_Engine speaks to.
+ * Implementations: GradientSurface (now), VideoSurface (future, Mux <video>).
+ * The engine NEVER branches on surface type; it only calls these methods
+ * and subscribes to these callbacks.
+ *
+ *   mount(containerEl)   build & attach the medium's DOM node, returns the node
+ *   play()               start/resume playback (returns a Promise)
+ *   pause()              pause playback
+ *   setMuted(isMuted)    audio on/off (no-op audio for gradient)
+ *   isMuted()            -> boolean
+ *   getProgress()        -> number in [0,1]
+ *   seek(fraction)       jump to fraction in [0,1]
+ *   onTimeupdate(cb)     cb(progress:0..1) fired as playback advances
+ *   onEnded(cb)          cb() fired when the clip reaches its end
+ *   destroy()            stop timers/listeners, detach DOM
+ */
+var MediaSurfaceContract = {
+  mount: function (containerEl) {},   // build & attach the medium's DOM node
+  play: function () {},               // start/resume playback (returns Promise)
+  pause: function () {},              // pause playback
+  setMuted: function (isMuted) {},    // audio on/off (no-op audio for gradient)
+  isMuted: function () {},            // -> boolean
+  getProgress: function () {},        // -> number in [0,1]
+  seek: function (fraction) {},       // jump to fraction in [0,1]
+  onTimeupdate: function (cb) {},     // cb(progress:0..1) fired as playback advances
+  onEnded: function (cb) {},          // cb() fired when the clip reaches its end
+  destroy: function () {},            // stop timers/listeners, detach DOM
+};
+
+/**
+ * GradientSurface — today's Media_Surface. Wraps a CSS-gradient <div> and
+ * drives progress from a requestAnimationFrame timer against a fixed synthetic
+ * duration, so getProgress()/onTimeupdate behave like real media.
+ */
+function GradientSurface(clip, opts) {
+  var DURATION_MS = (opts && opts.durationMs) || 16000; // ~ Feed 40ms*0.25%
+  var el = null, raf = null, startedAt = 0, elapsedBase = 0;
+  var muted = true, ended = false;
+  var onTick = [], onEnd = [];
+
+  function loop(now) {
+    var elapsed = elapsedBase + (now - startedAt);
+    var p = Math.max(0, Math.min(1, elapsed / DURATION_MS));
+    onTick.forEach(function (cb) { cb(p); });
+    if (p >= 1) { ended = true; onEnd.forEach(function (cb) { cb(); }); return; }
+    raf = requestAnimationFrame(loop);
+  }
+
+  return {
+    mount: function (container) {
+      el = document.createElement('div');
+      el.className = (opts && opts.bgClass) || 'clip-bg';
+      el.style.background = clip.bg;
+      container.appendChild(el);
+      return el;
+    },
+    play: function () {
+      if (ended) return Promise.resolve();
+      startedAt = performance.now();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(loop);
+      return Promise.resolve();            // mirrors video.play() Promise
+    },
+    pause: function () {
+      cancelAnimationFrame(raf);
+      elapsedBase += performance.now() - startedAt;
+    },
+    setMuted: function (m) { muted = !!m; },   // gradient has no audio track
+    isMuted: function () { return muted; },
+    getProgress: function () {
+      return Math.max(0, Math.min(1, elapsedBase / DURATION_MS));
+    },
+    seek: function (f) { elapsedBase = Math.max(0, Math.min(1, f)) * DURATION_MS; },
+    onTimeupdate: function (cb) { onTick.push(cb); },
+    onEnded: function (cb) { onEnd.push(cb); },
+    destroy: function () { cancelAnimationFrame(raf); if (el) el.remove(); el = null; },
+  };
+}
+
+/**
+ * ssCreateSurface — the single factory. The ONLY place that decides which
+ * Media_Surface a clip gets. Adding VideoSurface later is a one-line switch
+ * here; the engine never branches on surface type elsewhere.
+ */
+function ssCreateSurface(clip, opts) {
+  return (clip && clip.muxPlaybackId)
+    ? VideoSurface(clip, opts)      // future seam (Mux <video>) — not built yet
+    : GradientSurface(clip, opts);  // today
+}
+
+/* ── Mute_Preference ─────────────────────────────
+   Persisted muted-state module backed by localStorage (distinct from the
+   Stacks/Following sessionStorage so the sound choice survives tab close).
+   Default: sound ON (muted === false). Falls back to an in-memory value in
+   private/blocked mode so sound still toggles for the session. */
+var SS_MUTE_KEY = 'ss_mute_pref_v1';
+var _ssMuteListeners = [];
+var _ssMuteFallback = false;          // in-memory fallback (default: sound ON)
+
+function ssGetMutePref() {
+  try { return JSON.parse(localStorage.getItem(SS_MUTE_KEY)) === true; }
+  catch (e) { return _ssMuteFallback; }   // private/blocked -> in-memory
+}
+function ssSetMutePref(muted) {
+  try { localStorage.setItem(SS_MUTE_KEY, JSON.stringify(!!muted)); }
+  catch (e) { _ssMuteFallback = !!muted; } // private mode -> in-memory
+  _ssMuteListeners.forEach(function (fn) { try { fn(!!muted); } catch (e) {} });
+}
+function ssOnMuteChange(fn) {
+  if (typeof fn === 'function') _ssMuteListeners.push(fn);
+}
+
+/**
+ * ssMakeProgressBar — the single Progress_Bar factory, driven by Media_Surface
+ * progress, used in both INLINE and FULLSCREEN modes. Produces
+ * .ss-progress > .ss-progress-fill and exposes set(fraction) (clamped 0..1)
+ * and el.
+ */
+function ssMakeProgressBar(container) {
+  var wrap = document.createElement('div');
+  wrap.className = 'ss-progress';
+  var fill = document.createElement('div');
+  fill.className = 'ss-progress-fill';
+  fill.style.width = '0%';
+  wrap.appendChild(fill);
+  container.appendChild(wrap);
+  return {
+    set: function (fraction) {
+      fill.style.width = (Math.max(0, Math.min(1, fraction)) * 100) + '%';
+    },
+    el: wrap,
+  };
+}
+// Wiring (same in both modes):  surface.onTimeupdate(function (p) { progressBar.set(p); });
+
+/**
+ * ssAttachGestures — the unified Gesture_Handler used by both modes.
+ *   single tap (deferred ~310ms) -> engine.togglePause(idx)
+ *   double tap  (gap < 300ms, within 40px) -> engine.fire(idx, x, y)
+ * Binds click + touchend. The FULLSCREEN viewer wires this per tap zone
+ * (ssOpenClip); the old _ssvAttachDoubleTap has been removed.
+ */
+function ssAttachGestures(tapZoneEl, idx, engine) {
+  var lastTap = 0, timer = null, lastX = 0, lastY = 0;
+  function onTap(x, y) {
+    var now = Date.now(), gap = now - lastTap;
+    var near = Math.abs(x - lastX) < 40 && Math.abs(y - lastY) < 40;
+    lastTap = now; lastX = x; lastY = y;
+    if (gap > 0 && gap < 300 && near) {        // DOUBLE -> fire + burst
+      clearTimeout(timer);
+      engine.fire(idx, x, y);                  // guest-gated inside engine.fire
+    } else {                                    // maybe SINGLE -> defer
+      timer = setTimeout(function () { engine.togglePause(idx); }, 310);
+    }
+  }
+  tapZoneEl.addEventListener('click', function (e) { onTap(e.clientX, e.clientY); });
+  tapZoneEl.addEventListener('touchend', function (e) {
+    var t = e.changedTouches[0]; if (t) onTap(t.clientX, t.clientY);
+  }, { passive: true });
+}
+
+/**
+ * ssClipOrdering — the Recommendation_Seam. The ONLY ordering entry point the
+ * engine uses. Today it delegates to _ssvBuildList (start clip + genre-related
+ * + rest); swap its body later (e.g. fetch a recommendation feed) without
+ * touching engine internals.
+ */
+function ssClipOrdering(clicked, list) {
+  return _ssvBuildList(clicked, list);   // today: genre-segment ordering
+}
+
+/* ── Mute_Preference live re-apply ───────────────
+   Registered AFTER the Mute_Preference module (above) so _ssMuteListeners
+   exists. Whenever the preference changes (from the corner mute control in
+   either mode), re-apply it to the active surface and repaint the mute icon. */
+ssOnMuteChange(function (muted) {
+  if (typeof _ssvSurfaces !== 'undefined') {
+    var surface = _ssvSurfaces[_ssvActiveIdx];
+    if (surface) surface.setMuted(muted);
+  }
+  // INLINE host: re-apply to its active surface too (unless still awaiting the
+  // first gesture, where the first clip stays forced-muted).
+  if (typeof _inlineSurfaces !== 'undefined' && !_inlineAwaitingGesture) {
+    var inlineSurface = _inlineSurfaces[_inlineActiveIdx];
+    if (inlineSurface) inlineSurface.setMuted(muted);
+  }
+  if (typeof _ssvPaintMuteBtn === 'function') _ssvPaintMuteBtn(muted);
+});
