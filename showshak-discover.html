@@ -536,6 +536,7 @@ html, body { overflow: hidden; }
         <div class="sec-sub">· filter what you have</div>
       </div>
       <div class="platform-row" id="platform-row"></div>
+      <div class="clips-row" id="platform-clips-row"></div>
 
       <div class="sec-head">
         <div class="sec-title">For <em>You</em></div>
@@ -714,6 +715,20 @@ function buildForYou() {
     const wrap = document.createElement('div');
     wrap.innerHTML = clipCardHTML(clip, 'sm');
     grid.appendChild(wrap.firstElementChild);
+  });
+}
+
+/* Horizontal scrollable clip frames shown under the "By Platform" chips —
+   completes the platform section so it reads like Featured. Uses the same
+   large card frames; once live data lands this can be platform-aware. */
+function buildPlatformClips() {
+  const row = document.getElementById('platform-clips-row');
+  if (!row) return;
+  row.innerHTML = '';
+  [...CLIPS].sort(() => Math.random() - 0.5).slice(0, 8).forEach(clip => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = clipCardHTML(clip, 'lg');
+    row.appendChild(wrap.firstElementChild);
   });
 }
 
@@ -947,7 +962,7 @@ input.addEventListener('blur', () => {
 input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e); input.blur(); } });
 
 // INIT
-(async function(){ await discoverLoadRealClips(); buildMoods(); buildFeatured(); buildPlatforms(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); })();
+(async function(){ await discoverLoadRealClips(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); })();
 function _discover_old_init(){
 buildMoods();
 buildFeatured();
