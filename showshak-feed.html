@@ -605,6 +605,7 @@ html, body { overflow: hidden; }
      SHARED JS
 ════════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
 <script src="showshak-supabase.js"></script>
 <script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
@@ -623,9 +624,10 @@ let SHOWS = SSData.feedShows();
    DB id so fires/saves/follows link by foreign key. Falls back to the
    mock SHOWS silently if logged out / offline / no clips yet. */
 async function loadRealClips() {
-  const base = (typeof ssLoadClips === "function") ? await ssLoadClips(50) : [];
-  if (!base.length) return false;
-  SHOWS = ssClipsForFeed(base);
+  // First window only (~SS_CLIP_WINDOW); the pager fetches more on scroll.
+  const win = (typeof ssLoadClipWindow === "function") ? await ssLoadClipWindow(0) : [];
+  if (!win.length) return false;
+  SHOWS = win;
   return true;
 }
 
@@ -635,8 +637,11 @@ async function loadRealClips() {
 // the mobile per-clip rail + the fixed desktop #action-rail (positionRail), the
 // IntersectionObserver, keyboard nav, and window.navigateFeed (#nav-arrows).
 (async function initFeed() {
-  await loadRealClips();   // swap mock → real DB clips if available
-  ClipEngine.mountInline(document.getElementById('feed'), SHOWS);
+  const real = await loadRealClips();   // swap mock → real DB clips if available
+  const feedEl = document.getElementById('feed');
+  ClipEngine.mountInline(feedEl, SHOWS);
+  // Start the DB-backed sliding-window pager only for real clips (mock has no pages).
+  if (real && typeof ssStartFeedPager === "function") ssStartFeedPager(feedEl, SHOWS.length);
 })();
 </script>
 </body>

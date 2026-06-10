@@ -398,6 +398,8 @@ html, body { overflow: hidden; }
   border: 1px solid var(--border2); border-radius: 5px;
   padding: 2px 7px; font-size: 8px; font-weight: 800; color: var(--red); letter-spacing: 0.5px;
 }
+/* Processing badge on a clip still uploading/encoding at Mux (not yet live) */
+.g-proc-badge { color: #FFB020; border-color: rgba(255,176,32,0.42); }
 
 /* Clips / Fires grid */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -994,6 +996,7 @@ html, body { overflow: hidden; }
 <!-- MOBILE NAV — provided by shared chrome (#ss-nav) -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
 <script src="showshak-supabase.js"></script>
 <script src="showshak-shared.js"></script>
 <script>
@@ -1606,7 +1609,9 @@ function renderPrimary() {
   }
   el.innerHTML = `<div class="grid">${list.map((c,i)=>`
     <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
-      ${owner && c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':'')}
+      ${owner && c.status === 'processing'
+          ? '<div class="g-mine-badge g-proc-badge">● PROCESSING</div>'
+          : (owner && c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':''))}
       <div class="g-thumb">
         <div class="g-bg" style="background:${c.bg}"></div>
         <div class="g-vig"></div>

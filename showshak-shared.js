@@ -808,32 +808,54 @@ function ssResolveWatchOptions(clip, region, subscribedPlatformIds) {
 }
 window.ssResolveWatchOptions = ssResolveWatchOptions;
 
-async function ssLoadClips(limit){
+/* Pure Content_Row → Clip mapper (no Supabase, no DOM, no network).
+   Filters to live, non-deleted rows then applies the row→clip Mux projection.
+   Kept pure so it is Node-testable on arbitrary row arrays; ssLoadClips
+   delegates its filter + projection here (Req 4.1, 4.2, 4.3, 4.4). The
+   status/deleted_at guard mirrors the SQL pre-filter so the helper is correct
+   even when fed rows that did not pass through the query (Req 2.3, 12.3). */
+function ssMapContentRowsToClips(rows){
+  if(!rows || !rows.length) return [];
+  return rows.filter(function(row){
+    // Only live, non-deleted rows survive (Req 4.3, 2.3, 12.3).
+    return row && row.status === "live" && (row.deleted_at == null);
+  }).map(function(row){
+    var meta=row.meta||{}, p=row.platform||{}, t=row.title||{}, cr=row.creator||{};
+    var mood=[]; try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){}
+    var uname=cr.username||"curator";
+    return {
+      id: row.id,
+      title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
+      caption: row.description||"", fires: row.fires_count||0,
+      genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
+      bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
+      // Mux playback fields: null muxPlaybackId → GradientSurface fallback (Req 4.2, 4.4).
+      muxPlaybackId: row.mux_playback_id || null,
+      poster: row.thumbnail_url || null,
+      url: row.url || null,
+      durationSec: row.duration_sec || null,
+      platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
+      platAbbr: p.abbr||(p.name?p.name.charAt(0):"▶"), platRgb: _ssHexRgb(p.color),
+      // Watch It cache (region-keyed Provider_Cache) + curator fallback platform.
+      providers: t.providers || {},
+      cachedAt: t.cached_at || null,
+      curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
+      creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
+    };
+  });
+}
+
+async function ssLoadClips(limit, offset){
   if(!window.ssDB) return [];
+  var n = limit||50, off = offset||0;
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
-      .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).limit(limit||50);
+      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).range(off, off + n - 1);
     if(res.error || !res.data || !res.data.length) return [];
-    return res.data.map(function(row){
-      var meta=row.meta||{}, p=row.platform||{}, t=row.title||{}, cr=row.creator||{};
-      var mood=[]; try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){}
-      var uname=cr.username||"curator";
-      return {
-        id: row.id,
-        title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
-        caption: row.description||"", fires: row.fires_count||0,
-        genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
-        bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
-        platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
-        platAbbr: p.abbr||(p.name?p.name.charAt(0):"▶"), platRgb: _ssHexRgb(p.color),
-        // Watch It cache (region-keyed Provider_Cache) + curator fallback platform.
-        providers: t.providers || {},
-        cachedAt: t.cached_at || null,
-        curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
-        creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
-      };
-    });
+    // Filter + projection delegated to the pure helper (the SQL filter above
+    // remains an efficient DB-side pre-filter; the helper re-enforces it).
+    return ssMapContentRowsToClips(res.data);
   }catch(e){ return []; }
 }
 /* FEED shape: titles shown, raw cache carried for the Watch It sheet resolver. */
@@ -841,13 +863,15 @@ function ssClipsForFeed(base){ return base.map(function(c){ return {
   id:c.id, title:(c.title||"").toUpperCase(), year:c.year, genre:c.genre, lang:c.lang,
   season:c.season, synopsis:c.synopsis, caption:c.caption, creator:c.creator, litCount:c.fires,
   providers:c.providers, curatorPlat:c.curatorPlat,
+  muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   platLabel:(c.curatorPlat&&c.curatorPlat.name)||c.platLabel, platColor:(c.curatorPlat&&c.curatorPlat.color)||c.platColor, platRgb:c.platRgb, bg:c.bg }; }); }
 /* DISCOVER shape: title hidden, mood[] kept, raw cache carried for the resolver. */
 function ssClipsForDiscover(base){ return base.map(function(c){ return {
   id:c.id, caption:c.caption, genre:c.genre, lang:c.lang, platLabel:c.platLabel, platColor:c.platColor,
   platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, bg:c.bg, mood:c.mood,
+  muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
-window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover;
+window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
 
 /* ── Button UI sync ────────────────────────────── */
 // Call after any page renders its save buttons so they
@@ -1735,27 +1759,10 @@ const ClipEngine = {
     // Render the clip frames (Feed's existing classes/ids).
     container.innerHTML = _inlineClips.map((c, i) => _inlineClipHTML(c, i)).join('');
 
-    // Build one Media_Surface + one Progress_Bar per clip, wire progress + gestures.
-    // The engine speaks ONLY the Media_Surface contract here — no medium logic.
-    _inlineClips.forEach((clip, i) => {
-      const card    = document.getElementById(`clip-${i}`);
-      const mediaEl = document.getElementById(`clip-media-${i}`);
-      if (!card || !mediaEl) return;
-      const surface = ssCreateSurface(clip, { bgClass: 'clip-bg' });
-      surface.mount(mediaEl);
-      const bar = ssMakeProgressBar(card);
-      surface.onTimeupdate(p => bar.set(p));
-      _inlineSurfaces[i] = surface;
-      _inlineBars[i] = bar;
-      // FEED MODEL: a single tap on the clip OPENS the full Clip Viewer, which
-      // is the one place all actions + single-tap-pause + double-tap-fire live.
-      // The frame keeps autoplaying inline; the rail buttons act directly (they
-      // stopPropagation, so they never reach this handler).
-      const tapZone = document.getElementById(`tap-${i}`);
-      if (tapZone) tapZone.addEventListener('click', function () {
-        ssOpenClip(_inlineClips[i], _inlineClips);
-      });
-    });
+    // Build one Media_Surface + one Progress_Bar per clip via the shared
+    // per-clip wiring (_inlineWireClip), which appendInline reuses for the
+    // sliding window. The engine speaks ONLY the Media_Surface contract here.
+    _inlineClips.forEach((clip, i) => _inlineWireClip(i));
 
     // Wire the fixed desktop #action-rail's controls to the engine (acting on
     // the active clip). Save's data-save-id + state are refreshed in _inlineSyncRail.
@@ -1784,9 +1791,82 @@ const ClipEngine = {
     if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(container);
     if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(container);
   },
+
+  /* appendInline(container, newClips) — ADDITIVE sliding-window growth (Req 9.4).
+     Appends newly-fetched clips to the existing inline Feed WITHOUT a rebuild:
+     de-dupes by id, appends their frames' HTML at the correct indices, and
+     wires each with the SAME per-clip wiring as mountInline (_inlineWireClip).
+     No scroll reset and no teardown, so playback continues seamlessly. */
+  appendInline(container, newClips) {
+    if (!container || !Array.isArray(newClips) || !newClips.length) return;
+    const startIdx = _inlineClips.length;
+    const have = new Set(_inlineClips.map(c => String(c.id)));
+    const fresh = newClips.filter(c => c && !have.has(String(c.id)));
+    if (!fresh.length) return;
+    _inlineClips = _inlineClips.concat(fresh);
+    container.insertAdjacentHTML('beforeend',
+      fresh.map((c, k) => _inlineClipHTML(c, startIdx + k)).join(''));
+    fresh.forEach((c, k) => _inlineWireClip(startIdx + k));
+    // Observe the newly appended frames so the active-clip observer drives them.
+    if (_inlineObserver) fresh.forEach((c, k) => {
+      const node = document.getElementById(`clip-${startIdx + k}`);
+      if (node) _inlineObserver.observe(node);
+    });
+    // Make the new Save/Follow/curator controls real + synced.
+    ssSyncAllSaveBtns();
+    if (typeof ssWireFollowButtons === 'function') ssWireFollowButtons(container);
+    if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(container);
+  },
+
+  /* pruneInlineSurfaces() — ADDITIVE bounded-concurrency step (Req 9.5).
+     Keeps only the sliding band of mounted Media_Surfaces around the active
+     clip (ssMountedPlayerSet): re-mounts any in-band clip that was pruned and
+     destroys out-of-band players, so the number of live <mux-player>s stays
+     bounded no matter how many windows have been appended. Contract-only — it
+     never branches on surface type. */
+  pruneInlineSurfaces(activeIdx) {
+    const a = (activeIdx == null) ? _inlineActiveIdx : activeIdx;
+    const keep = ssMountedPlayerSet(a, _inlineClips.length, SS_MAX_LIVE_PLAYERS);
+    const keepSet = new Set(keep);
+    keep.forEach(i => { if (!_inlineSurfaces[i]) _inlineWireClip(i); });
+    for (let i = 0; i < _inlineSurfaces.length; i++) {
+      if (!keepSet.has(i) && _inlineSurfaces[i]) {
+        try { _inlineSurfaces[i].destroy(); } catch (e) {}
+        _inlineSurfaces[i] = null;
+      }
+    }
+  },
 };
 // Expose globally so inline onclick handlers (rail flame) resolve it.
 window.ClipEngine = ClipEngine;
+
+/* _inlineWireClip(i) — the per-clip wiring shared by mountInline + appendInline.
+   (Re)builds the Media_Surface for clip i, attaches its Progress_Bar, and binds
+   the single-tap → open-viewer handler once. Idempotent: safe to call again
+   when a pruned clip scrolls back into the mounted band (reuses the existing
+   bar; guards the tap listener so it binds only once). Contract-only. */
+function _inlineWireClip(i) {
+  const card    = document.getElementById(`clip-${i}`);
+  const mediaEl = document.getElementById(`clip-media-${i}`);
+  if (!card || !mediaEl) return;
+  if (_inlineSurfaces[i]) { try { _inlineSurfaces[i].destroy(); } catch (e) {} }
+  const surface = ssCreateSurface(_inlineClips[i], { bgClass: 'clip-bg' });
+  surface.mount(mediaEl);
+  const bar = _inlineBars[i] || ssMakeProgressBar(card);
+  surface.onTimeupdate(p => bar.set(p));
+  _inlineSurfaces[i] = surface;
+  _inlineBars[i] = bar;
+  // FEED MODEL: a single tap OPENS the full Clip Viewer (where all actions +
+  // single-tap-pause + double-tap-fire live). Rail buttons stopPropagation, so
+  // they never reach this handler. Bound once per frame.
+  const tapZone = document.getElementById(`tap-${i}`);
+  if (tapZone && !tapZone.dataset.ssTapBound) {
+    tapZone.dataset.ssTapBound = '1';
+    tapZone.addEventListener('click', function () {
+      ssOpenClip(_inlineClips[i], _inlineClips);
+    });
+  }
+}
 
 /* Mute corner control helpers. The live re-apply subscription
    (ssOnMuteChange) is registered at the end of this file, AFTER the
@@ -2077,11 +2157,72 @@ function _inlineSetupObserver(container) {
         container.querySelectorAll('.clip.active').forEach(el => el.classList.remove('active'));
         entry.target.classList.add('active');
         const idx = parseInt(entry.target.dataset.ssIdx, 10);
-        if (!isNaN(idx)) ClipEngine.setActive(idx, 'INLINE');
+        if (!isNaN(idx)) {
+          ClipEngine.pruneInlineSurfaces(idx);   // mount the band around the new active, drop the rest (Req 9.5)
+          ClipEngine.setActive(idx, 'INLINE');
+          _inlineMaybeLoadNext(idx);             // sliding-window fetch at the +6 leading edge (Req 9.3)
+        }
       }
     });
   }, { root: container, threshold: 0.6 });
   container.querySelectorAll('.clip').forEach(c => _inlineObserver.observe(c));
+}
+
+/* ── Feed sliding-window pager (Req 9) ─────────────────────────────
+   DB-backed windowed loading that grows the inline Feed as the viewer
+   advances; ClipEngine.pruneInlineSurfaces then bounds mounted players.
+   No-ops for the mock/offline feed (the pager is simply never started). */
+let _feedPagerActive   = false;
+let _feedWindowStart   = 0;       // rendered index where the latest window starts
+let _feedNextOffset    = 0;       // DB offset for the next window fetch
+let _feedFetchInFlight = false;   // single-flight guard (Req 9.3)
+let _feedNoMore        = false;   // set once a short/empty page comes back
+let _feedContainer     = null;
+
+/* Fetch one window (~SS_CLIP_WINDOW clips) from the DB, in Feed shape. */
+async function ssLoadClipWindow(offset) {
+  if (typeof ssLoadClips !== 'function') return [];
+  const base = await ssLoadClips(SS_CLIP_WINDOW, offset);
+  return (typeof ssClipsForFeed === 'function') ? ssClipsForFeed(base) : base;
+}
+
+/* Fetch + append the next window. Guarded so it fires once per window (Req 9.4). */
+async function loadNextWindow() {
+  if (!_feedPagerActive || _feedFetchInFlight || _feedNoMore) return;
+  _feedFetchInFlight = true;
+  try {
+    const next = await ssLoadClipWindow(_feedNextOffset);
+    if (!next || !next.length) { _feedNoMore = true; return; }
+    _feedWindowStart = _inlineClips.length;            // the new window begins here
+    ClipEngine.appendInline(_feedContainer, next);     // seamless append (no scroll reset)
+    _feedNextOffset += SS_CLIP_WINDOW;
+    if (next.length < SS_CLIP_WINDOW) _feedNoMore = true;  // last (partial) page
+  } catch (e) { /* swallow — the pager simply stops growing */ }
+  finally { _feedFetchInFlight = false; }
+}
+
+/* Observer hook: decide whether to fetch the next window (Req 9.3). */
+function _inlineMaybeLoadNext(activeIdx) {
+  if (!_feedPagerActive) return;
+  if (ssShouldFetchNextWindow(activeIdx, _feedWindowStart, _inlineClips.length, _feedFetchInFlight)) {
+    loadNextWindow();
+  }
+}
+
+/* Start the windowed pager AFTER the first window is already mounted.
+   initialCount = how many DB rows the first window consumed (its offset base). */
+function ssStartFeedPager(container, initialCount) {
+  _feedPagerActive   = true;
+  _feedContainer     = container;
+  _feedWindowStart   = 0;
+  _feedNextOffset    = initialCount || 0;
+  _feedFetchInFlight = false;
+  _feedNoMore        = false;
+}
+if (typeof window !== 'undefined') {
+  window.ssLoadClipWindow = ssLoadClipWindow;
+  window.loadNextWindow   = loadNextWindow;
+  window.ssStartFeedPager = ssStartFeedPager;
 }
 
 /* Bind one-shot first-interaction listeners (tap/scroll/key). The first one to
@@ -2507,10 +2648,14 @@ function _ssvSetupObserver(feed) {
      The local fallback keeps index.html's onboarding users un-gated
      until they're migrated to real accounts. */
   function ssIsSignedUp() {
-    if (_ssSession) return true;
+    if (_ssSession) return true;                                       // a REAL Supabase session
     try {
-      if (sessionStorage.getItem(SIGNED_UP_KEY) === '1') return true;
-      if (localStorage.getItem(PROFILE_KEY)) return true;
+      if (sessionStorage.getItem(SIGNED_UP_KEY) === '1') return true;  // explicit post-login flag
+      // NOTE: the index.html onboarding prefs (PROFILE_KEY) are intentionally
+      // NO LONGER treated as "signed up" — they're just saved taste picks. Only a
+      // real Supabase session (or the explicit flag above) counts. This is what
+      // makes the guest gate fire on Fire/Save/Follow and lets the landing page
+      // hand off to REAL auth instead of faking a login. (Was the root-cause bug.)
     } catch (e) {}
     return false;
   }
@@ -2806,6 +2951,28 @@ function _ssvSetupObserver(feed) {
   });
   // Start once the body exists (shared.js runs at end of body).
   _mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+  /* ── Auth deep-link from the landing page ──
+     index.html's onboarding sign-in hands off here with ?auth=google|apple|email.
+     We strip the param first (so OAuth's redirect returns clean and we don't loop),
+     then trigger the REAL auth: providers go straight to Supabase OAuth, email opens
+     the inline email form. Guests only — a signed-in user is never re-prompted. */
+  (function _ssAuthDeepLink() {
+    let a = null;
+    try { a = new URLSearchParams(window.location.search).get('auth'); } catch (e) {}
+    if (!a) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      p.delete('auth');
+      const clean = window.location.pathname + (p.toString() ? '?' + p.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    } catch (e) {}
+    if (ssIsSignedUp()) return;
+    a = String(a).toLowerCase();
+    if (a === 'email') { _ssOpenSignupSheet('save'); _ssShowEmailForm(); }
+    else if (a === 'google' || a === 'apple') { _ssGuestDoSignup(a); }
+    else { _ssOpenSignupSheet('save'); }
+  })();
 })();
 
 
@@ -3312,14 +3479,226 @@ function GradientSurface(clip, opts) {
 }
 
 /**
+ * VideoSurface — the Mux Media_Surface. Wraps a <mux-player> custom element
+ * (an HTMLMediaElement-like API: play()/pause(), .muted, .currentTime,
+ * .duration, and timeupdate/ended/error events) and maps it to the
+ * MediaSurfaceContract. The Clip_Engine NEVER branches on this type;
+ * ssCreateSurface returns it whenever a clip has a muxPlaybackId.
+ * Progress/seek/mute math is delegated to the pure ss* helpers so behaviour is
+ * identical with or without a DOM (Req 5.x, 6.x, 7.x, 12.4).
+ */
+function VideoSurface(clip, opts) {
+  var el = null, ended = false;
+  var onTick = [], onEnd = [];
+  var muted = true, errored = false;
+
+  function handleTimeupdate() {
+    var p = ssClipProgress(el && el.currentTime, el && el.duration);
+    onTick.forEach(function (cb) { cb(p); });
+  }
+  function handleEnded() {
+    if (ended) return;
+    ended = true;
+    onEnd.forEach(function (cb) { cb(); });
+  }
+  function handleError() {
+    // Player failed to load video (Req 12.4): keep the poster visible and let
+    // the engine advance by synthesizing an 'ended' after a short grace.
+    errored = true;
+    setTimeout(function () { handleEnded(); }, 600);
+  }
+
+  return {
+    mount: function (container) {
+      el = document.createElement('mux-player');
+      el.setAttribute('playback-id', clip.muxPlaybackId);
+      el.setAttribute('stream-type', 'on-demand');
+      el.setAttribute('playsinline', '');
+      el.setAttribute('preload', 'auto');  // mounted = look-ahead band → buffer ahead (Req 9.2)
+      el.muted = muted;
+      // Poster from the Mux image CDN when present, else paint the clip's
+      // gradient as the loading background so the frame is never blank (Req 7).
+      if (clip.poster) el.setAttribute('poster', clip.poster);
+      else container.style.background = clip.bg || '#000';
+      // Match GradientSurface's mount node so the feed/viewer CSS is unchanged.
+      el.className = (opts && opts.bgClass) || 'clip-bg';
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.addEventListener('timeupdate', handleTimeupdate);
+      el.addEventListener('ended', handleEnded);
+      el.addEventListener('error', handleError);
+      container.appendChild(el);
+      return el;
+    },
+    play: function () { return el ? (el.play() || Promise.resolve()) : Promise.resolve(); },
+    pause: function () { if (el) { try { el.pause(); } catch (e) {} } },
+    setMuted: function (m) { muted = !!m; if (el) el.muted = muted; },
+    isMuted: function () { return el ? !!el.muted : muted; },
+    getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
+    seek: function (f) { if (el && isFinite(el.duration)) el.currentTime = ssSeekToTime(f, el.duration); },
+    onTimeupdate: function (cb) { onTick.push(cb); },
+    onEnded: function (cb) { onEnd.push(cb); },
+    destroy: function () {
+      if (el) {
+        el.removeEventListener('timeupdate', handleTimeupdate);
+        el.removeEventListener('ended', handleEnded);
+        el.removeEventListener('error', handleError);
+        try { el.pause(); } catch (e) {}
+        el.remove();
+      }
+      el = null; onTick = []; onEnd = [];
+    },
+  };
+}
+
+/**
  * ssCreateSurface — the single factory. The ONLY place that decides which
- * Media_Surface a clip gets. Adding VideoSurface later is a one-line switch
- * here; the engine never branches on surface type elsewhere.
+ * Media_Surface a clip gets. The engine never branches on surface type
+ * elsewhere; both arms satisfy the same MediaSurfaceContract.
  */
 function ssCreateSurface(clip, opts) {
   return (clip && clip.muxPlaybackId)
-    ? VideoSurface(clip, opts)      // future seam (Mux <video>) — not built yet
-    : GradientSurface(clip, opts);  // today
+    ? VideoSurface(clip, opts)      // real Mux video (HLS via <mux-player>)
+    : GradientSurface(clip, opts);  // gradient fallback (no playback id)
+}
+
+/* ── Pure surface math (DOM-free, Node-testable) ─────────────────
+   The testable primitives behind VideoSurface.getProgress/seek/setMuted.
+   They take plain numbers / a stub media object { currentTime, duration,
+   muted } and carry no DOM or global dependency, so the Node property
+   tests can require them directly. VideoSurface (the Mux <mux-player>
+   wrapper) calls these so its math is identical with or without a DOM. */
+
+/**
+ * ssClipProgress(currentTime, duration) — playback position as a fraction in
+ * [0,1]. Returns 0 when duration is 0, undefined, or otherwise non-finite, and
+ * clamps the result so it never escapes [0,1] (Req 5.4, 6.5).
+ */
+function ssClipProgress(currentTime, duration) {
+  var d = Number(duration);
+  if (!isFinite(d) || d <= 0) return 0;        // no/invalid duration → 0
+  var t = Number(currentTime);
+  if (!isFinite(t)) return 0;                  // no/invalid time → 0
+  return Math.max(0, Math.min(1, t / d));      // clamp to [0,1]
+}
+
+/**
+ * ssSeekToTime(fraction, duration) — the target playback time for a seek.
+ * Clamps fraction to [0,1] and returns fraction * duration. Returns 0 for an
+ * invalid duration (0/undefined/non-finite) so the seek is a safe no-op rather
+ * than producing NaN (Req 5.5).
+ */
+function ssSeekToTime(fraction, duration) {
+  var d = Number(duration);
+  if (!isFinite(d) || d <= 0) return 0;        // invalid duration → no-op time
+  var f = Number(fraction);
+  if (!isFinite(f)) f = 0;                      // invalid fraction → start
+  f = Math.max(0, Math.min(1, f));             // clamp to [0,1]
+  return f * d;
+}
+
+/**
+ * ssSetMediaMuted(media, m) — set the muted flag on a stub media object
+ * { currentTime, duration, muted }. Coerces to a real boolean and returns the
+ * media object (Req 6.4). Safe on a null media.
+ */
+function ssSetMediaMuted(media, m) {
+  if (media) media.muted = !!m;
+  return media;
+}
+
+/**
+ * ssGetMediaMuted(media) — read the muted flag back as a boolean; false when
+ * there is no media (Req 6.4).
+ */
+function ssGetMediaMuted(media) {
+  return media ? !!media.muted : false;
+}
+
+/**
+ * ssMuteRoundTrip(media, m) — apply a muted state then read it back. The pure
+ * round-trip primitive behind VideoSurface.setMuted/isMuted: for any media and
+ * any value m, ssMuteRoundTrip(media, m) === !!m (Req 6.4).
+ */
+function ssMuteRoundTrip(media, m) {
+  return ssGetMediaMuted(ssSetMediaMuted(media, m));
+}
+
+/* ── Windowed / sliding-window preload math (DOM-free, Node-testable) ──
+   Pure decision helpers behind the feed pager (task 7.3). They take plain
+   numbers and carry no DOM/global dependency so the Node property tests can
+   require them directly (Req 9.1, 9.3, 9.5). */
+
+/* Feed paging knobs. */
+var SS_CLIP_WINDOW = 10;       // clips fetched per window (Req 9.1/9.3)
+var SS_PRELOAD_AHEAD = 2;      // look-ahead band set to preload="auto" (Req 9.2)
+var SS_MAX_LIVE_PLAYERS = 4;   // cap on concurrently mounted players (Req 9.5)
+
+/**
+ * ssShouldFetchNextWindow(activeIdx, windowStart, totalLoaded, inFlight) —
+ * decide whether to fetch the next window. True once the active clip reaches
+ * windowStart + 6 (six into the current window), only when no fetch is already
+ * in flight, the active clip is within what's loaded, and the active clip is at
+ * the leading edge of what's loaded (so it fires once per window, not for old
+ * windows the viewer scrolled back into) (Req 9.3).
+ */
+function ssShouldFetchNextWindow(activeIdx, windowStart, totalLoaded, inFlight) {
+  if (inFlight) return false;
+  if (activeIdx < 0 || activeIdx >= totalLoaded) return false;
+  var threshold = (windowStart || 0) + 6;
+  // Only trigger near the leading edge of loaded clips (within the last window).
+  return activeIdx >= threshold && activeIdx >= totalLoaded - SS_CLIP_WINDOW;
+}
+
+/**
+ * ssMountedPlayerSet(activeIdx, totalLoaded, maxLive) — the bounded set of clip
+ * indices whose surface should stay mounted: a sliding band around the active
+ * index (one behind, the rest ahead) of size at most maxLive (Req 9.5).
+ * Returns a sorted array of in-range indices; size is always ≤ maxLive.
+ */
+function ssMountedPlayerSet(activeIdx, totalLoaded, maxLive) {
+  var cap = (maxLive && maxLive > 0) ? maxLive : SS_MAX_LIVE_PLAYERS;
+  if (!totalLoaded || totalLoaded <= 0 || activeIdx < 0 || activeIdx >= totalLoaded) return [];
+  var band = Math.min(cap, totalLoaded);
+  var start = activeIdx - 1;                      // bias one behind the active clip
+  if (start + band > totalLoaded) start = totalLoaded - band;  // fit against the end
+  if (start < 0) start = 0;
+  // Guarantee the active clip is inside [start, start+band) so it stays mounted.
+  if (activeIdx < start) start = activeIdx;
+  else if (activeIdx >= start + band) start = activeIdx - band + 1;
+  if (start < 0) start = 0;
+  var set = [];
+  for (var i = start; i < totalLoaded && set.length < band; i++) set.push(i);
+  return set;
+}
+
+/* Expose consistently with the other ss* helpers (window in the browser),
+   plus a guarded CommonJS export so the Node property tests can require these
+   pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
+if (typeof window !== 'undefined') {
+  window.ssClipProgress = ssClipProgress;
+  window.ssSeekToTime = ssSeekToTime;
+  window.ssSetMediaMuted = ssSetMediaMuted;
+  window.ssGetMediaMuted = ssGetMediaMuted;
+  window.ssMuteRoundTrip = ssMuteRoundTrip;
+  window.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
+  window.ssMountedPlayerSet = ssMountedPlayerSet;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports.ssClipProgress = ssClipProgress;
+  module.exports.ssSeekToTime = ssSeekToTime;
+  module.exports.ssSetMediaMuted = ssSetMediaMuted;
+  module.exports.ssGetMediaMuted = ssGetMediaMuted;
+  module.exports.ssMuteRoundTrip = ssMuteRoundTrip;
+  module.exports.ssMapContentRowsToClips = ssMapContentRowsToClips;
+  module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
+  module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
+  module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;
+  module.exports.SS_PRELOAD_AHEAD = SS_PRELOAD_AHEAD;
+  module.exports.SS_MAX_LIVE_PLAYERS = SS_MAX_LIVE_PLAYERS;
+  module.exports.ssCreateSurface = ssCreateSurface;
+  module.exports.VideoSurface = VideoSurface;
+  module.exports.GradientSurface = GradientSurface;
 }
 
 /* ── Mute_Preference ─────────────────────────────

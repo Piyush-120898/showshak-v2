@@ -424,8 +424,8 @@ body { background: var(--bg); }
   <div class="up-success-burst">
     <svg width="44" height="44" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
   </div>
-  <div class="up-success-title">YOU'RE <em>LIVE</em></div>
-  <p class="up-success-sub">Your recommendation is posted. The right people are about to discover it.</p>
+  <div class="up-success-title">CLIP <em>PROCESSING</em></div>
+  <p class="up-success-sub">Your clip is uploading &amp; encoding. It’ll go live automatically once Mux finishes — no need to post again.</p>
   <div class="up-success-actions">
     <button class="up-btn up-btn-ghost" onclick="upPostAnother()">Post another</button>
     <button class="up-btn up-btn-primary" onclick="upGoProfile()">View my clips</button>
@@ -449,6 +449,7 @@ let step = 1;
 
 const draft = {
   videoUrl: null,     // object URL (session only)
+  file: null,         // the actual File object, kept for the direct-to-Mux upload at publish
   fileName: null,
   show: null,         // { name, year, genre[], platLabel, platColor, platAbbr, platRgb, bg }
   pitch: '',
@@ -538,6 +539,7 @@ function upHandleFile(e) {
   if (!file) return;
   if (draft.videoUrl) URL.revokeObjectURL(draft.videoUrl);
   draft.videoUrl = URL.createObjectURL(file);
+  draft.file = file;          // retained for the direct-to-Mux upload at publish (Req 1.4)
   draft.fileName = file.name;
 
   const vid = document.getElementById('up-video');
@@ -663,35 +665,118 @@ function buildReview() {
 }
 
 /* ════════════════════════════════════════════════
+   DIRECT-TO-MUX UPLOAD (with progress)
+════════════════════════════════════════════════ */
+/* ssPutWithProgress(uploadUrl, file, onProgress) — PUT the raw file bytes
+   straight to a Mux direct-upload URL (browser → Mux; the bytes never pass
+   through Supabase). Uses XMLHttpRequest because it exposes upload.onprogress
+   (fetch does not). Resolves on a 2xx, rejects otherwise. onProgress(pct) is
+   called with an integer 0..100 (Req 1.4, 1.5). */
+function ssPutWithProgress(uploadUrl, file, onProgress) {
+  return new Promise(function (resolve, reject) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    if (file && file.type) xhr.setRequestHeader('Content-Type', file.type);
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable && typeof onProgress === 'function') {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error('upload_failed_' + xhr.status));
+    };
+    xhr.onerror = function () { reject(new Error('upload_network_error')); };
+    xhr.onabort = function () { reject(new Error('upload_aborted')); };
+    xhr.send(file);
+  });
+}
+
+/* ════════════════════════════════════════════════
    PUBLISH → persist to sessionStorage
 ════════════════════════════════════════════════ */
-function publish() {
+async function publish() {
   const s = draft.show || {};
-  const clip = {
-    id: 'my_' + Date.now(),
-    bg: s.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
-    videoUrl: draft.videoUrl || null,           // session-only object URL
-    title: s.name || '',
-    year: s.year || '',
-    genre: s.genre || [],
-    lang: s.lang || '',
-    platLabel: s.platLabel || 'Streaming',
-    platColor: s.platColor || '#EA3B32',
-    platAbbr: s.platAbbr || '▶',
-    platRgb: s.platRgb || '234,59,50',
-    platforms: [{ name: s.platLabel || 'Streaming', color: s.platColor || '#EA3B32', label: s.platAbbr || '▶', sub: 'Available to stream', included: true }],
-    caption: draft.pitch || '',
-    vibes: draft.vibes.slice(),
-    fires: 0,
-    mine: true,
-    createdAt: Date.now(),
-  };
+
+  // Guard: only an authenticated curator can publish (Req 11.3). Guests get
+  // nothing minted or inserted.
+  const me = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+  if (!me) { ssToast('Sign in to post your clip'); return; }
+  if (!draft.file) { ssToast('Add a clip first'); return; }
+
+  const postBtn = document.getElementById('up-next');
+  const restoreBtn = () => { if (postBtn) { postBtn.disabled = false; postBtn.textContent = 'Post Clip 🔥'; } };
+  const setBusy = (txt) => { if (postBtn) { postBtn.disabled = true; postBtn.textContent = txt; } };
+
+  // 1) Mint a Mux direct-upload URL via the auth-gated Edge Function (Req 1.1).
+  //    functions.invoke automatically attaches the curator's session JWT.
+  setBusy('Starting…');
+  let up = null;
+  try {
+    const res = await window.ssDB.functions.invoke('mux-upload-url', { body: {} });
+    if (!res.error && res.data) up = res.data;
+  } catch (e) { up = null; }
+  if (!up || !up.uploadUrl || !up.uploadId) {       // mint failed / function unreachable (Req 12.1/12.5)
+    ssToast('Upload couldn’t start — please try again');
+    restoreBtn();
+    return;
+  }
+
+  // 2) Upload the bytes straight to Mux with progress (Req 1.4 / 1.5).
+  //    Bytes go browser → Mux; they never pass through Supabase.
+  try {
+    await ssPutWithProgress(up.uploadUrl, draft.file, (pct) => setBusy('Uploading… ' + pct + '%'));
+  } catch (e) {                                      // upload failed before completion (Req 12.1)
+    ssToast('Upload failed — please try again');
+    restoreBtn();
+    return;
+  }
+
+  // 3) Record the clip as 'processing'. The mux-webhook flips it to 'live'
+  //    once Mux finishes encoding; the feed only shows 'live' clips, so this
+  //    row stays out of the feed until then (Req 2.1 / 2.5). RLS requires
+  //    creator_id = auth.uid(), which the curator's JWT satisfies.
+  setBusy('Finishing…');
+  const ins = await window.ssDB.from('content').insert({
+    creator_id: me.id,
+    title_id: s.titleId || null,        // mock catalog → null until TMDB-backed titles exist
+    platform_id: s.platformId || null,
+    description: draft.pitch || '',
+    status: 'processing',
+    meta: {
+      mux_upload_id: up.uploadId,
+      vibes: draft.vibes.slice(),
+      lang: s.lang || '',
+      season: s.season || '',
+      bg: s.bg || '',
+    },
+  });
+  if (ins.error) {                                   // insert failed (Req 12.5) — no success state
+    ssToast('Couldn’t save your clip — please try again');
+    restoreBtn();
+    return;
+  }
+
+  // Success: the clip is processing and will go live automatically.
+  // Mirror it into the instant UI layer (sessionStorage) so the profile's
+  // My Clips shows it RIGHT AWAY with a Processing badge — the DB row inserted
+  // above is the source of truth, and the feed shows it only once the webhook
+  // flips it to 'live'. (Same instant-layer + DB-truth pattern as saves/stacks.)
   try {
     const arr = JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]');
-    arr.unshift(clip);
+    arr.unshift({
+      id: 'my_' + Date.now(),
+      bg: s.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+      title: s.name || '', year: s.year || '', genre: s.genre || [], lang: s.lang || '',
+      platLabel: s.platLabel || 'Streaming', platColor: s.platColor || '#EA3B32',
+      platAbbr: s.platAbbr || '▶', platRgb: s.platRgb || '234,59,50',
+      caption: draft.pitch || '', vibes: draft.vibes.slice(),
+      fires: 0, mine: true, status: 'processing', createdAt: Date.now(),
+    });
     sessionStorage.setItem('ss_my_clips_v1', JSON.stringify(arr));
-  } catch (e) { console.warn('ShowShak: could not save clip', e); }
+  } catch (e) {}
 
+  restoreBtn();
   document.getElementById('up-success').classList.add('show');
 }
 

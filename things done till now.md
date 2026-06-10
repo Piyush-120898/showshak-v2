@@ -111,7 +111,7 @@ These are the rules we've been operating by. Keep following them.
 ✅ Step 4b  Follows → persist to DB
 ✅ Step 4c  Saves / Stacks → persist to DB (mirror + hydrate)
 ✅ Step 2   Titles + Watch It (TMDB) — real availability data (cache-first ingest) ✅ DONE
-⬜ Step 3   Clips + real video (Mux) — the emotional core
+⬜ Step 3   Clips + real video (Mux) — CODE-COMPLETE ✅; founder activation pending (Mux acct/deploy/secrets/migration) — see §12
 ⬜ Step 5   Events + analytics rollups (creator cockpit, RLS-gated)
 ⬜ Step 6   Moderation/DMCA, notifications (digest), search
 ⬜ Step 7   Harden (RLS audit, indexes) → PWA layer (+ Cloudflare, custom domain)
@@ -395,3 +395,125 @@ touches TMDB.
 - `unified-clip-player/` — the one-engine consolidation.
 - `watch-it-availability/` — the TMDB cache-first Watch It feature.
 (Each has requirements.md / design.md / tasks.md if deeper detail is needed.)
+
+---
+
+## 12. Step 3 — Real video via Mux (CODE-COMPLETE; activation pending)
+
+This section captures the Mux video work. The **code is fully written, wired,
+and verified** (no diagnostics; pure-helper property suite green). What remains
+is **founder-only activation** (Mux account, function deploy, secrets, migration
+apply) and the live end-to-end test — none of which an agent can do.
+
+### 12.1 What it does
+Replaces the gradient-only mock clips with **real short-form video via Mux**,
+played by the `<mux-player>` web component behind the **existing**
+`MediaSurfaceContract`. The clip engine, gestures, mute, progress bar, and the
+Fire/Save/Share/Watch It rail are unchanged — `VideoSurface` simply replaces the
+gradient medium behind them. Gradient and video clips coexist in one continuous
+feed. It's a TikTok/Reels-style player (windowed preload, bounded players) that
+works in today's static PWA and carries forward to a native app (the Mux
+*playback id*, not the player widget, is the portable contract).
+
+### 12.2 The pipeline (how a clip becomes real video)
+```
+curator picks file → publish():
+  1. mux-upload-url Edge Function mints a Mux direct-upload URL (auth-gated)
+  2. browser PUTs the bytes straight to Mux (progress bar; never via Supabase)
+  3. INSERT content row, status='processing'  (RLS: creator_id = auth.uid())
+Mux encodes → fires video.asset.ready →
+  4. mux-webhook Edge Function verifies the signature, then flips the row to
+     'live' + stores mux_playback_id / thumbnail_url / duration_sec (idempotent)
+feed:
+  5. ssLoadClips returns only 'live' clips with their Mux fields
+  6. ssCreateSurface(clip.muxPlaybackId) → VideoSurface(<mux-player>) plays it
+```
+
+### 12.3 What was built (file by file)
+- **`supabase/migrations/0012_content_insert_and_mux.sql`** (NEW, additive):
+  grant + RLS insert policy `content_insert_own` (`creator_id = auth.uid()`);
+  documents the `mux_upload_id`-in-`meta` and `meta.seed` conventions. The
+  `content` table already had every Mux column (from 0001), so this is the only
+  DB change — additive, applied directly per `SCHEMA_CHANGE_PROCESS.md`.
+- **`showshak-shared.js`**:
+  - `ssLoadClips` now selects `mux_playback_id/url/thumbnail_url/duration_sec`,
+    maps `muxPlaybackId`/`poster`, and takes an `offset` arg (`.range()` paging).
+  - `ssMapContentRowsToClips` — pure, Node-testable row→clip filter+map.
+  - `ssClipsForFeed` / `ssClipsForDiscover` carry the Mux fields through.
+  - `VideoSurface(clip, opts)` — the one missing primitive: full
+    `MediaSurfaceContract` over `<mux-player>` (poster/gradient loading state,
+    `error`→advance so a bad load never stalls the feed). `ssCreateSurface`
+    now routes to it; the engine still never branches on surface type.
+  - Pure surface helpers `ssClipProgress` / `ssSeekToTime` / `ssMuteRoundTrip`.
+  - Sliding-window pager: `ssShouldFetchNextWindow` + `ssMountedPlayerSet`
+    (pure) + `ClipEngine.appendInline` / `pruneInlineSurfaces` +
+    `ssLoadClipWindow` / `loadNextWindow` / `ssStartFeedPager`. Window of ~10,
+    fetch next at the +6 leading edge, bounded mounted players
+    (`SS_MAX_LIVE_PLAYERS = 4`), `preload="auto"` on the mounted band.
+- **`showshak-feed.html`**: loads the first window, mounts via the engine, and
+  starts the DB-backed pager (mock/offline stays a no-op).
+- **`showshak-{feed,discover,watchlist,profile}.html`**: `<mux-player@3>` CDN
+  `<script>` added (the pages that can open the clip viewer).
+- **`showshak-upload.html`**: real `publish()` — auth guard, mint via
+  `ssDB.functions.invoke('mux-upload-url')`, `ssPutWithProgress` (XHR direct
+  upload, live %), insert `content` as `processing`, "CLIP PROCESSING" success
+  screen. Mirrors the processing clip into the sessionStorage instant-UI layer.
+- **`showshak-profile.html`**: amber `● PROCESSING` badge on My Clips rows whose
+  `status === 'processing'` (feed still excludes them).
+- **Edge Functions (NEW — the project's first):**
+  `supabase/functions/_shared/cors.ts`, `_shared/mux.ts` (Basic-auth + direct
+  upload helper), `_shared/verify-signature.ts` (HMAC-SHA256 verify, 5-min
+  replay window), `mux-upload-url/index.ts` (auth-gated mint), and
+  `mux-webhook/index.ts` (signature-verified, idempotent flip via service role).
+- **Tests (NEW):** `tests/pure-helpers.test.js` (Node, no framework — 7
+  properties, ≥200 iters each, **all green**) and
+  `supabase/functions/_shared/verify-signature.test.ts` (Deno — signature +
+  idempotency; runs under `deno test`, not run locally as Deno isn't installed).
+
+### 12.4 War stories / lessons (this session)
+- **You can unit-test browser-coupled helpers in Node by stubbing the DOM.**
+  `showshak-shared.js` runs DOM setup at load (`document.body.insertAdjacentHTML`,
+  inject IIFEs, `MutationObserver`), so the Node test installs a tiny no-op
+  `window`/`document`/`MutationObserver`/`IntersectionObserver` stub BEFORE
+  `require()`. The pure helpers then test cleanly. (Also: `global.navigator`/
+  `location` are getter-only in modern Node — assign defensively.)
+- **PBT earned its keep:** the bounded-players property (Property 10) caught a
+  real edge-case bug — `ssMountedPlayerSet` could drop the ACTIVE clip when the
+  cap was tiny. Fixed so the active index is always inside the band. (The live
+  app uses cap=4 so it never hit it, but the helper is now correct for any cap.)
+- **Don't interpolate the upload id as a column:** stored in `content.meta`
+  (`meta->>'mux_upload_id'`) so no new column — keeps the migration additive.
+- **`mux-webhook` deploys with `--no-verify-jwt`** (Mux isn't a Supabase user;
+  it authenticates by signing the body, which the function verifies itself).
+  `mux-upload-url` keeps JWT verification ON.
+
+### 12.5 STILL TO DO — founder-only activation (an agent can't do these)
+These are the only things between "code-complete" and "real video flowing":
+1. **Create/confirm a Mux account.** In the Mux dashboard add the webhook URL
+   (`<project>.functions.supabase.co/.../mux-webhook` i.e.
+   `…/functions/v1/mux-webhook`) and copy its **signing secret**.
+2. **Deploy the functions:** `supabase functions deploy mux-upload-url` and
+   `supabase functions deploy mux-webhook --no-verify-jwt`.
+3. **Set function secrets:** `supabase secrets set MUX_TOKEN_ID=… MUX_TOKEN_SECRET=…
+   MUX_WEBHOOK_SECRET=… APP_ORIGIN=https://<app>` (SUPABASE_URL /
+   SUPABASE_SERVICE_ROLE_KEY are injected by the runtime).
+4. **Apply `0012_content_insert_and_mux.sql`** in the Supabase SQL editor
+   (additive/SAFE).
+Then run the **end-to-end test** (task 11.1): upload a clip → see it
+`processing` (excluded from feed + badged in My Clips) → webhook flips it `live`
+→ it plays as real video in the feed.
+
+### 12.6 Deferred (by design) / next up
+- **Real `title_id`/`platform_id` on upload:** the upload show-picker is still
+  the mock catalog, so `publish()` inserts `title_id: null` for now (the schema
+  allows it). It fills in once curators pick TMDB-backed titles.
+- **Posters:** Mux's image CDN (`image.mux.com`) is used for thumbnails and is
+  NOT India-blocked (unlike TMDB images), so posters work without a proxy.
+- **Recommended next milestone after activation: Step 5 — events + analytics
+  rollups** (make the profile cockpit numbers real), then Step 6 (moderation/
+  notifications/search) and Step 7 (harden + PWA layer).
+
+### 12.7 Spec created this session (in `.kiro/specs/`)
+- `mux-video-clips/` — this feature (requirements.md / design.md / tasks.md).
+  All implementation + checkpoints + property tests done; manual verification
+  (§11 of the spec) and founder setup (§12 of the spec) remain.

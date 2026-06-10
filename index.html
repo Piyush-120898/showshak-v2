@@ -1046,17 +1046,7 @@ function buildPlatforms() {
 
 /* ── AUTH ────────────────────────────────────── */
 function handleAuth(el, method) {
-  document.querySelectorAll('#auth-stack .auth-btn').forEach(b => {
-    b.disabled = true; b.style.opacity = '0.4';
-  });
-  el.disabled = false; el.style.opacity = '1';
-  el.innerHTML = `✓ &nbsp;Signed in with ${method}`;
-  el.style.background = 'rgba(234,59,50,0.12)';
-  el.style.borderColor = 'var(--red)';
-  el.style.color = 'var(--red)';
-
-  // Persist the basic profile gathered during onboarding so the app can
-  // personalise from day one (genres, subscribed platforms, auth method).
+  // Save the onboarding taste picks so the REAL account can read them after login.
   try {
     const profile = {
       genres:    [...selG].map(i => GENRES[i] && GENRES[i][1]).filter(Boolean),
@@ -1067,10 +1057,14 @@ function handleAuth(el, method) {
     localStorage.setItem('ss_user_profile_v1', JSON.stringify(profile));
   } catch (e) { /* storage unavailable — proceed anyway */ }
 
-  setTimeout(() => {
-    closeOnboarding();
-    document.getElementById('success-overlay').classList.add('open');
-  }, 900);
+  // Brief visual ack, then hand off to the REAL Supabase auth in the app:
+  // showshak-feed.html reads ?auth= and (showshak-shared.js) runs the real
+  // Google OAuth / email sign-in. No more mock login.
+  document.querySelectorAll('#auth-stack .auth-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; });
+  el.disabled = false; el.style.opacity = '1';
+  el.innerHTML = `Connecting to ${method}…`;
+  const m = String(method).toLowerCase();   // 'google' | 'apple' | 'email'
+  setTimeout(() => { window.location.href = 'showshak-feed.html?auth=' + encodeURIComponent(m); }, 500);
 }
 
 /* ── SUCCESS ─────────────────────────────────── */
