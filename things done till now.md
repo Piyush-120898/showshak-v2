@@ -9,7 +9,9 @@
 > ShowShak project report — continue from where it ends, following the same
 > principles."*
 >
-> Last updated: after Step 4 (fires + follows persisting to the database).
+> Last updated: after Step 2 (Watch It — real availability via TMDB), plus a
+> unified clip player, a clean per-user profile, and the TMDB ingest pipeline.
+> **See Section 11 at the very bottom for everything done in the latest session.**
 
 ---
 
@@ -108,7 +110,7 @@ These are the rules we've been operating by. Keep following them.
 ✅ Step 4a  Fires  → persist to DB
 ✅ Step 4b  Follows → persist to DB
 ✅ Step 4c  Saves / Stacks → persist to DB (mirror + hydrate)
-⬜ Step 2   Titles + Watch It (TMDB) — real availability data
+✅ Step 2   Titles + Watch It (TMDB) — real availability data (cache-first ingest) ✅ DONE
 ⬜ Step 3   Clips + real video (Mux) — the emotional core
 ⬜ Step 5   Events + analytics rollups (creator cockpit, RLS-gated)
 ⬜ Step 6   Moderation/DMCA, notifications (digest), search
@@ -277,3 +279,119 @@ safely.
 ---
 
 *Keep this file updated as we complete each step — it's the project's memory.*
+
+
+---
+
+## 11. Latest session — clip player, clean profile, Watch It (TMDB)
+
+This section captures everything done after Step 4. Read it together with
+`overview` to continue with full context.
+
+### 11.1 Unified clip player (one engine everywhere)
+- **Problem fixed:** the Feed had its OWN bespoke player AND the universal
+  fullscreen viewer had a second one — Fire/Save/Watch It existed twice, so
+  DB wiring was duplicated and drifted.
+- **Now:** a single `ClipEngine` in `showshak-shared.js` powers BOTH the inline
+  Feed and the fullscreen viewer. Built on a `Media_Surface` abstraction
+  (`ssCreateSurface` → `GradientSurface` today; a `VideoSurface` seam is ready
+  for Mux video later — the engine never branches on medium type).
+- Shared, defined-once: `ssMakeProgressBar` (progress bar everywhere),
+  `ssAttachGestures` (single-tap = pause/resume, quick double-tap = fire — with
+  a touch/click de-dupe so one tap isn't counted twice), the action rail,
+  the sound model, and `ssClipOrdering` (a Recommendation_Seam wrapping
+  `_ssvBuildList` so a real recommendation feed can slot in later).
+- **Sound model:** `Mute_Preference` persisted in `localStorage`
+  (`ss_mute_pref_v1`). Fullscreen opens WITH sound (gesture-initiated); the
+  inline Feed's first clip starts muted until first interaction, then unmutes.
+- **Feed model (confirmed with founder):** Feed frames keep autoplaying inline,
+  but a SINGLE TAP opens the fullscreen Viewer — all actions/gestures live in
+  the Viewer. Removed the "you've seen it all" end card and the "tap for sound"
+  badge. Feed now uses the SHARED Watch It sheet (dropped its bespoke one).
+- Verified manually in-browser (no automated test harness in this project).
+
+### 11.2 Clip-open + gesture bug fixes (post-ship)
+- **Discover/Watchlist clips wouldn't open:** real DB clips have UUID ids, and
+  the card markup pasted the id into inline `onclick` unquoted → invalid JS.
+  Fixed by quoting ids and using `String(c.id)===` comparisons (UUID- and
+  int-safe) across Discover (`clipCardHTML`, results, save btns) and Watchlist
+  (rec grid). Profile was already safe (passes objects by index).
+- Gesture handler rewritten so a genuine QUICK double-tap fires (not two slow
+  clicks) and the synthetic touch+click no longer double-counts.
+
+### 11.3 Clean per-user profile (no mock for signed-in users)
+- `showshak-profile.html` now has a single gate `isSignedInOwn()`. When a real
+  user is signed in and viewing THEIR OWN profile, every surface reads REAL,
+  account-linked data: credentials (Following = real follows, Stacks = real
+  stacks, Clips = real uploads, Followers = live DB count), My Clips grid,
+  Collections (real Stacks), History (empty state), hero wall, and
+  cockpit/analytics (0 for a new account). A brand-new user sees zeros/empty
+  and it fills in live via `ssOnFollowingChange` / `ssOnStacksChange`.
+- Logged-out visitors and the `?curator=` public view KEEP the demo/mock so the
+  page is never blank.
+- Still-needs-a-backend (currently shows 0 / empty, correct for a new user):
+  fires-received, watch-it taps, reach, weekly chart (Step 5 events/rollups),
+  and watch history (no watch-log table yet).
+
+### 11.4 Step 2 — Watch It real availability via TMDB (DONE)
+**The constraint:** TMDB (api/website/images) is ISP/DNS-blocked in India. So
+the architecture is **cache-first**: the browser NEVER calls TMDB; it only reads
+cached data from Supabase (Mumbai). A local Node script is the ONLY thing that
+touches TMDB.
+
+- **Producer (NEW):** `data/ingest-tmdb.js` — a standalone Node script the
+  FOUNDER runs locally on a TMDB-reachable network (VPN / Cloudflare DNS /
+  mobile hotspot). It links each `titles` row to TMDB (search by name+year,
+  subtitle-tolerant matching), fetches region-aware FLATRATE providers, maps
+  them onto our `platforms` catalog, and writes `titles.providers` (JSONB keyed
+  by region, e.g. `{ "IN": [ {provider_name, provider_id, logo_path, type,
+  platform_id, catalog_name, color, abbr} ] }`) + `titles.tmdb_id` +
+  `titles.cached_at`. Uses the Supabase **service-role** key. Idempotent;
+  `--force` re-links everything. Polite delay; per-title try/catch + summary.
+- **Consumer (frontend, in `showshak-shared.js`):** `ssLoadClips()` now also
+  pulls `title.providers`/`cached_at` + `platform_id`. One resolver
+  `ssResolveWatchOptions(clip, region, subs)` turns the cache into the Watch It
+  sheet options: region providers → branded options, "✓ In your plan" first
+  (via `ssGetSubscribedPlatformIds()`), else fallback to the curator's platform,
+  else a neutral "Not available to stream in your region" message.
+  `ssGetRegion()` = `users.region` (default 'IN'). `ssOpenSheet` is now async.
+- **Result of the ingest run:** all 8 seed titles linked with real IN providers
+  (Squid Game/Stranger Things/Sacred Games → Netflix; The Last of Us/The Bear →
+  JioHotstar; Panchayat/Mirzapur → Prime Video; Scam 1992 → SonyLIV).
+
+#### How to re-run the ingest (founder, when titles change)
+1. Be on a TMDB-reachable network (VPN / Cloudflare DNS 1.1.1.1 / hotspot).
+2. `data/.env` (gitignored) holds `TMDB_API_KEY`, `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`. Copy from `data/.env.example` if missing.
+3. `cd data && npm install @supabase/supabase-js` (once). Needs Node 18+.
+4. `node data/ingest-tmdb.js`  (or `--force` to redo all). Re-run if the
+   hotspot drops some calls ("fetch failed") — it's idempotent and resumes.
+
+### 11.5 New war stories / lessons (this session)
+- **`service_role` was permission-denied on `platforms`/`titles`.** Our DB was
+  set to "lock every table by default," which also withheld grants from
+  service_role. Fix = migration **`0011_grant_service_role.sql`** (grant
+  service_role full DML on `public` + default privileges — Supabase's standard
+  posture, SAFE/additive). Run once in the Supabase SQL editor.
+- **Don't interpolate raw ids into inline `onclick`.** UUIDs aren't valid bare
+  JS — always quote + compare with `String()`.
+- **TMDB title matching** must tolerate subtitles ("Scam 1992" vs "Scam 1992:
+  The Harshad Mehta Story") — the matcher accepts when the target's tokens are
+  a subset of the candidate's.
+- **`data/.env` must never be committed** (gitignored). The service-role + TMDB
+  keys live ONLY there; the shipped app uses the anon key + reads the cache.
+
+### 11.6 Deferred (by design) / next up
+- **Watch It deep-links + attribution:** the sheet currently toasts; real
+  universal-link deep-links into Netflix/Prime + click attribution are later.
+- **Posters/synopsis from TMDB images:** skipped — `image.tmdb.org` is also
+  India-blocked; would need a proxy (e.g. a Cloudflare Worker) later.
+- **Recommended next milestone: Step 3 — real video via Mux** (needs a Mux
+  account + upload→transcode→playback pipeline; the `VideoSurface` seam in the
+  clip engine is already there to receive it). Then Step 5 (events + analytics
+  rollups) to make the profile cockpit numbers real.
+
+### 11.7 Specs created this session (in `.kiro/specs/`)
+- `unified-clip-player/` — the one-engine consolidation.
+- `watch-it-availability/` — the TMDB cache-first Watch It feature.
+(Each has requirements.md / design.md / tasks.md if deeper detail is needed.)
