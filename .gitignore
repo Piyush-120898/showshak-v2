@@ -1,0 +1,20 @@
+# ───────────────────────────────────────────────────────────────
+# ShowShak — ignored files
+# ───────────────────────────────────────────────────────────────
+
+# Local environment / secrets (NEVER commit real keys)
+# Used by data/ingest-tmdb.js (TMDB key + Supabase service-role key).
+data/.env
+.env
+.env.local
+.env.*.local
+
+# Node dependencies (ingest installs @supabase/supabase-js here)
+node_modules/
+data/node_modules/
+
+# Logs and OS cruft
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

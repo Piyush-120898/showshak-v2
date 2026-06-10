@@ -88,7 +88,7 @@ window.addEventListener('pageshow', (e) => {
 /* ════════════════════════════════════════════════
    WATCH IT SHEET
 ════════════════════════════════════════════════ */
-function ssOpenSheet(show) {
+async function ssOpenSheet(show) {
   if (!show) return;
 
   const header = document.getElementById('sheet-header');
@@ -110,9 +110,23 @@ function ssOpenSheet(show) {
     `;
   }
 
+  // Open the overlay immediately (runs synchronously before the first await)
+  // so the sheet appears at once; options resolve via the cached lookups below.
+  document.getElementById('watch-sheet-overlay')?.classList.add('open');
+  document.getElementById('watch-sheet')?.classList.add('open');
+
+  // Resolve region + subscriptions (cached), run the resolver, then render
+  // either the option list or the neutral fallback message (R6.2).
   const opts = document.getElementById('sheet-options');
-  if (opts && show.platforms) {
-    opts.innerHTML = show.platforms.map(p => `
+  if (!opts) return;
+  const region = await ssGetRegion();
+  const subs   = await ssGetSubscribedPlatformIds();
+  const res    = ssResolveWatchOptions(show, region, subs);
+
+  if (res.message) {
+    opts.innerHTML = '<div class="sheet-empty">' + res.message + '</div>';
+  } else {
+    opts.innerHTML = res.options.map(p => `
       <div class="sheet-option" onclick="ssHandleWatchNow('${p.name}', '${show.title}')">
         <div class="sheet-plat-logo" style="background:${p.color}">${p.label}</div>
         <div class="sheet-option-info">
@@ -124,9 +138,6 @@ function ssOpenSheet(show) {
       </div>
     `).join('');
   }
-
-  document.getElementById('watch-sheet-overlay')?.classList.add('open');
-  document.getElementById('watch-sheet')?.classList.add('open');
 }
 
 function ssCloseSheet() {
@@ -709,11 +720,99 @@ async function ssHydrateStacks() {
    (callers keep their mock data), so guests/offline still work.
    ════════════════════════════════════════════════ */
 function _ssHexRgb(h){ var m=String(h||"").replace("#","").match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m?(parseInt(m[1],16)+","+parseInt(m[2],16)+","+parseInt(m[3],16)):"234,59,50"; }
+
+/* ════════════════════════════════════════════════
+   WATCH IT — region + subscription resolution (cached)
+   ─────────────────────────────────────────────────────
+   Both caches are invalidated on auth state change (see the guest
+   gate's onAuthStateChange handler) so sign-in/out re-resolves. */
+let _ssRegion = null, _ssSubIds = null;
+
+// users.region for the signed-in user; default 'IN' for guests/unknown/error (R9).
+async function ssGetRegion() {
+  if (_ssRegion) return _ssRegion;
+  try {
+    const me = window.ssCurrentUser && window.ssCurrentUser();
+    if (me && window.ssDB) {
+      const { data } = await window.ssDB.from('users').select('region').eq('id', me.id).single();
+      _ssRegion = (data && data.region) || 'IN';
+    } else { _ssRegion = 'IN'; }
+  } catch (e) { _ssRegion = 'IN'; }   // R9.2 default
+  return _ssRegion;
+}
+
+// Set of platform_id the signed-in user holds; empty Set for guests/error (R8.2, R8.3).
+async function ssGetSubscribedPlatformIds() {
+  if (_ssSubIds) return _ssSubIds;
+  _ssSubIds = new Set();
+  try {
+    const me = window.ssCurrentUser && window.ssCurrentUser();
+    if (me && window.ssDB) {
+      const { data } = await window.ssDB.from('user_subscriptions')
+        .select('platform_id').eq('user_id', me.id).is('deleted_at', null);
+      (data || []).forEach(function (r) { _ssSubIds.add(r.platform_id); });
+    }
+  } catch (e) { /* R8.3 — swallow, leave set empty */ }
+  return _ssSubIds;
+}
+window.ssGetRegion = ssGetRegion;
+window.ssGetSubscribedPlatformIds = ssGetSubscribedPlatformIds;
+
+/* The one resolver that turns a clip's cached providers into sheet options.
+   Feed, Discover, and the unified viewer all funnel through it so Watch It
+   behaves identically everywhere. It never throws on missing providers,
+   region, or subs (R6.3, R8.3). */
+function ssResolveWatchOptions(clip, region, subscribedPlatformIds) {
+  region = region || 'IN';
+  const subs = subscribedPlatformIds || new Set();
+  const regionProviders = (clip && clip.providers && clip.providers[region]) || [];
+
+  // 1. Region has cached flatrate providers → map each to a sheet option.
+  if (regionProviders.length) {
+    const options = regionProviders.map(function (e) {
+      const matched  = !!e.color;                                       // catalog-matched → branded (R11.1)
+      const included = !!(e.platform_id && subs.has(e.platform_id));    // R5.2
+      return {
+        name:        e.catalog_name || e.provider_name,
+        color:       matched ? e.color : 'var(--ss-neutral, #2a2a2a)',  // R11.2 neutral default
+        label:       e.abbr || (e.provider_name ? e.provider_name.charAt(0) : '▶'),
+        sub:         included ? 'In your plan' : 'Available to stream',
+        included:    included,
+        platform_id: e.platform_id || null
+      };
+    });
+    // R5.3 — In_Your_Plan first, otherwise stable order.
+    options.sort(function (a, b) { return (b.included ? 1 : 0) - (a.included ? 1 : 0); });
+    return { options: options, fallback: false, message: null };
+  }
+
+  // 2. Fallback chain — curator's chosen platform as a single option (R6.1).
+  if (clip && clip.curatorPlat) {
+    const cp = clip.curatorPlat;
+    const included = !!(cp.platform_id && subs.has(cp.platform_id));
+    return {
+      options: [{
+        name:  cp.name,
+        color: cp.color || 'var(--ss-neutral, #2a2a2a)',
+        label: cp.abbr || (cp.name ? cp.name.charAt(0) : '▶'),
+        sub:   included ? 'In your plan' : 'Available to stream',
+        included: included,
+        platform_id: cp.platform_id || null
+      }],
+      fallback: true, message: null
+    };
+  }
+
+  // 3. Neutral message — nothing cached, no curator platform (R6.2).
+  return { options: [], fallback: true, message: 'Not available to stream in your region' };
+}
+window.ssResolveWatchOptions = ssResolveWatchOptions;
+
 async function ssLoadClips(limit){
   if(!window.ssDB) return [];
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis), platform:platform_id(name,color,abbr)")
+      .select("id, description, fires_count, meta, status, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).limit(limit||50);
     if(res.error || !res.data || !res.data.length) return [];
     return res.data.map(function(row){
@@ -728,21 +827,26 @@ async function ssLoadClips(limit){
         bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
         platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
         platAbbr: p.abbr||(p.name?p.name.charAt(0):"▶"), platRgb: _ssHexRgb(p.color),
+        // Watch It cache (region-keyed Provider_Cache) + curator fallback platform.
+        providers: t.providers || {},
+        cachedAt: t.cached_at || null,
+        curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
         creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
       };
     });
   }catch(e){ return []; }
 }
-/* FEED shape: titles shown, full platforms[] for the Watch It sheet. */
+/* FEED shape: titles shown, raw cache carried for the Watch It sheet resolver. */
 function ssClipsForFeed(base){ return base.map(function(c){ return {
   id:c.id, title:(c.title||"").toUpperCase(), year:c.year, genre:c.genre, lang:c.lang,
   season:c.season, synopsis:c.synopsis, caption:c.caption, creator:c.creator, litCount:c.fires,
-  platforms: c.platLabel? [{name:c.platLabel,color:c.platColor,label:c.platAbbr,sub:"Available to stream",included:false}] : [],
-  platLabel:c.platLabel, platColor:c.platColor, platRgb:c.platRgb, bg:c.bg }; }); }
-/* DISCOVER shape: title hidden, mood[] kept. */
+  providers:c.providers, curatorPlat:c.curatorPlat,
+  platLabel:(c.curatorPlat&&c.curatorPlat.name)||c.platLabel, platColor:(c.curatorPlat&&c.curatorPlat.color)||c.platColor, platRgb:c.platRgb, bg:c.bg }; }); }
+/* DISCOVER shape: title hidden, mood[] kept, raw cache carried for the resolver. */
 function ssClipsForDiscover(base){ return base.map(function(c){ return {
   id:c.id, caption:c.caption, genre:c.genre, lang:c.lang, platLabel:c.platLabel, platColor:c.platColor,
-  platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, bg:c.bg, mood:c.mood }; }); }
+  platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, bg:c.bg, mood:c.mood,
+  providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover;
 
 /* ── Button UI sync ────────────────────────────── */
@@ -2383,6 +2487,9 @@ function _ssvSetupObserver(feed) {
     window.ssDB.auth.onAuthStateChange((_event, session) => {
       const wasLoggedOut = !_ssSession;
       _ssSession = session || null;
+      // Watch It region + subscription caches must re-resolve after any
+      // sign-in / sign-out / token change.
+      _ssRegion = null; _ssSubIds = null;
       if (session) {
         _ssCloseSignupSheet();
         // Only react on a genuine new login (not token refreshes on every page).
