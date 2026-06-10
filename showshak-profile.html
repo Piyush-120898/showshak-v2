@@ -1065,6 +1065,41 @@ const isPublic  = () => face === 'public';
 const isCurator = () => face === 'owner' || face === 'public';
 const isUserOwn = () => face === 'user';
 
+/* ── REAL-DATA GATE ─────────────────────────────────
+   `_signedIn` is set true by hydrateOwnProfile() once a real Supabase
+   session resolves. isSignedInOwn() is the single switch every render
+   function checks to decide REAL-vs-MOCK: it's true ONLY when we're
+   viewing OUR OWN profile (not ?curator=<someone>) AND a real account
+   is signed in. A brand-new signed-in user therefore sees clean, empty,
+   account-linked data; logged-out visitors and the ?curator= public view
+   keep the existing demo/mock so the page is never blank. */
+let _signedIn = false;
+function isSignedInOwn() { return _signedIn && !_params.get('curator'); }
+
+/* Tasteful default brand gradients for the hero backdrop of a brand-new
+   signed-in user who has no clips yet (so the wall is never empty/flat). */
+const DEFAULT_WALL_GRADS = [
+  'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+  'linear-gradient(160deg,#100008,#1a0010,#080005,#000)',
+  'linear-gradient(160deg,#050510,#0a0a20,#080808,#000)',
+];
+
+/* Map the user's REAL Stacks (shared store) → the shelf/collection card
+   shape this page renders. New stacks default to 'private' visibility. */
+function ownCollections() {
+  const stacks = (typeof ssGetStacks === 'function') ? ssGetStacks() : [];
+  return stacks.map(s => ({
+    id: s.id,
+    name: s.name || 'Untitled',
+    count: (s.clips || []).length,
+    vis: 'private',
+    thumbs: (s.clips || []).slice(0, 3).map(c => c.bg).filter(Boolean),
+  }));
+}
+/* Collections source for the CURRENT view: real Stacks for the signed-in
+   own profile, mock for logged-out/public demo. */
+function currentCollections() { return isSignedInOwn() ? ownCollections() : MOCK_COLLECTIONS; }
+
 /* Curator 7-day watch history (user utility) */
 const MOCK_HISTORY = [
   { id:1, bg:'linear-gradient(160deg,#100008,#1a0010,#080005,#000)', platColor:'#E50914', platAbbr:'N', fires:3200, caption:'Front Man reveal. You will not be okay.', when:'2h ago' },
@@ -1078,8 +1113,21 @@ const MOCK_HISTORY = [
 /* ── HERO WALL (built from the curator's own clips) ── */
 function renderWall() {
   const wall = document.getElementById('hero-wall');
-  const tiles = [...MOCK_CLIPS, ...MOCK_CLIPS].slice(0, 18);
-  wall.innerHTML = tiles.map(c => `<div style="background:${c.bg}"></div>`).join('');
+  let grads;
+  if (isSignedInOwn()) {
+    // Signed-in own profile: build from REAL posted clips. A brand-new
+    // user with no clips gets a clean default brand backdrop (not mock).
+    const mine = getMyClips();
+    grads = mine.length ? mine.map(c => c.bg) : null;
+  } else {
+    // Logged-out / public ?curator= demo keeps the rich mock wall.
+    grads = [...MOCK_CLIPS, ...MOCK_CLIPS].map(c => c.bg);
+  }
+  if (!grads || !grads.length) {
+    grads = Array.from({ length: 18 }, (_, i) => DEFAULT_WALL_GRADS[i % DEFAULT_WALL_GRADS.length]);
+  }
+  const tiles = grads.slice(0, 18);
+  wall.innerHTML = tiles.map(g => `<div style="background:${g}"></div>`).join('');
 }
 
 /* ── HEADER ── */
@@ -1357,6 +1405,21 @@ function renderHeader() {
    User (own)    : Stacks + Following (functional doors, no vanity #). */
 function renderCreds() {
   const el = document.getElementById('creds');
+  const own = isSignedInOwn();
+  // For the signed-in own profile, every credential reflects REAL,
+  // account-linked data. A brand-new user therefore reads 0 / 0 / 0
+  // across the board — never the mock vanity numbers. For logged-out and
+  // the ?curator= public view we keep the stashed PROFILE numbers.
+  const liveVal = (k) => {
+    if (!own) return PROFILE[k];
+    switch (k) {
+      case 'following':   return (typeof ssGetFollowing === 'function') ? ssGetFollowing().length : 0;
+      case 'stacks':      return (typeof ssGetStacks === 'function') ? ssGetStacks().length : 0;
+      case 'clipsPosted': return getMyClips().length;
+      case 'followers':   return PROFILE.followers || 0;   // real count cached by fetchOwnFollowers(); 0 for a new user
+      default:            return PROFILE[k] || 0;
+    }
+  };
   const data = isPublic()
     ? [['followers','Followers',true],['clipsPosted','Clips',false]]
     : isOwner()
@@ -1364,7 +1427,7 @@ function renderCreds() {
     : [['stacks','Stacks',true],['following','Following',false]];
   el.innerHTML = data.map(([k,label,accent]) => `
     <div class="cred">
-      <div class="cred-num">${accent?'<em>':''}${fmtFires(PROFILE[k])}${accent?'</em>':''}</div>
+      <div class="cred-num">${accent?'<em>':''}${fmtFires(liveVal(k))}${accent?'</em>':''}</div>
       <div class="cred-label">${label}</div>
     </div>`).join('');
 }
@@ -1372,19 +1435,24 @@ function renderCreds() {
 /* ── HIGHLIGHTS / COLLECTIONS shelf ──────────────────
    Public face: ONLY public collections, no share/new buttons.
    Owner/User : everything, with visibility chips + share + "new". */
-function publicCollectionCount() { return MOCK_COLLECTIONS.filter(c => c.vis === 'public').length; }
+function publicCollectionCount() { return currentCollections().filter(c => c.vis === 'public').length; }
 function renderShelf() {
   const el = document.getElementById('shelf');
   const pub = isPublic();
-  const list = pub ? MOCK_COLLECTIONS.filter(c => c.vis === 'public') : MOCK_COLLECTIONS;
+  // Signed-in own profile → real Stacks; logged-out/public demo → mock.
+  const source = currentCollections();
+  const list = pub ? source.filter(c => c.vis === 'public') : source;
 
-  if (pub && !list.length) {
-    el.innerHTML = `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No shared stacks yet</div><div class="empty-d">When this curator shares a collection, it shows up here.</div></div>`;
+  if (!list.length) {
+    const msg = pub
+      ? `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No shared stacks yet</div><div class="empty-d">When this curator shares a collection, it shows up here.</div></div>`
+      : `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack and it becomes a shareable collection right here.</div></div>`;
+    el.innerHTML = msg;
     return;
   }
 
   const cards = list.map(c => {
-    const t = c.thumbs;
+    const t = c.thumbs && c.thumbs.length ? c.thumbs : DEFAULT_WALL_GRADS;
     return `
     <div class="coll" onclick="ssToast('▶ Opening “${c.name}” collection')">
       <div class="coll-stack">
@@ -1417,7 +1485,16 @@ function renderShelf() {
 function renderCockpit() {
   const el = document.getElementById('cockpit');
   if (!isOwner()) { el.classList.remove('show'); el.innerHTML = ''; return; }
-  const reach = PROFILE.clipsPosted * 820;
+  // Signed-in owner → real numbers. These analytics aren't tracked on the
+  // frontend yet, so a real account correctly reads 0 until a backend
+  // source is wired. Logged-out/demo owner keeps the mock showcase.
+  const own = isSignedInOwn();
+  const fires = own ? 0 : PROFILE.firesReceived;
+  const taps  = own ? 0 : PROFILE.watchItTaps;
+  const reach = own ? 0 : PROFILE.clipsPosted * 820;
+  const trend = (txt) => own
+    ? `<div class="an-trend" style="color:var(--gray2)">No change yet</div>`
+    : `<div class="an-trend">${txt}</div>`;
   el.classList.add('show');
   el.innerHTML = `
     <div class="cockpit-head">
@@ -1428,9 +1505,9 @@ function renderCockpit() {
       </span>
     </div>
     <div class="an-grid" style="margin-bottom:0">
-      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(PROFILE.firesReceived)}</em></div><div class="an-label">Fires</div><div class="an-trend">↑ 12% this week</div></div>
-      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(PROFILE.watchItTaps)}</div><div class="an-label">Watch Its</div><div class="an-trend">↑ 8% this week</div></div>
-      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(reach)}</div><div class="an-label">Reach</div><div class="an-trend">↑ 21% this week</div></div>
+      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(fires)}</em></div><div class="an-label">Fires</div>${trend('↑ 12% this week')}</div>
+      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(taps)}</div><div class="an-label">Watch Its</div>${trend('↑ 8% this week')}</div>
+      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(reach)}</div><div class="an-label">Reach</div>${trend('↑ 21% this week')}</div>
     </div>`;
 }
 
@@ -1448,7 +1525,7 @@ function renderTabs() {
     bar.innerHTML = `
       <button class="tab tab-create ${t==='create'?'active':''}" onclick="switchTab('create')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create</button>
       <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">My Clips <span class="tab-c">${myClipsCount()}</span></button>
-      <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${MOCK_COLLECTIONS.length}</span></button>
+      <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Collections <span class="tab-c">${currentCollections().length}</span></button>
       <button class="tab ${t==='analytics'?'active':''}" onclick="switchTab('analytics')">Analytics</button>
       <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${followingCount()}</span></button>`;
   } else if (isPublic()) {
@@ -1473,7 +1550,11 @@ function getMyClips() {
   try { return JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]'); }
   catch { return []; }
 }
-function myClipsCount() { return getMyClips().length + MOCK_CLIPS.length; }
+function myClipsCount() {
+  // Signed-in own profile counts REAL uploads only (0 for a new user).
+  // Logged-out/public demo keeps the mock count so the showcase isn't empty.
+  return isSignedInOwn() ? getMyClips().length : (getMyClips().length + MOCK_CLIPS.length);
+}
 
 /* ── CREATE LAUNCHPAD (owner-only) ── */
 function renderCreate() {
@@ -1514,10 +1595,16 @@ function goUpload() {
 function renderPrimary() {
   const el = document.getElementById('primary');
   const mine = getMyClips();
-  const list = [...mine, ...MOCK_CLIPS];
-  window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the merged array
+  // Signed-in own profile shows REAL uploads ONLY. Logged-out / public
+  // ?curator= demo keeps merging the mock clips so the grid isn't empty.
+  const list = isSignedInOwn() ? mine : [...mine, ...MOCK_CLIPS];
+  window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the array
   const owner = isOwner();
-  el.innerHTML = list.length ? `<div class="grid">${list.map((c,i)=>`
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-ic">🎬</div><div class="empty-t">No clips yet</div><div class="empty-d">Your posted clips will appear here. Tap Create to share your first recommendation.</div></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="grid">${list.map((c,i)=>`
     <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
       ${owner && c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':'')}
       <div class="g-thumb">
@@ -1526,7 +1613,7 @@ function renderPrimary() {
         <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
       </div>
       <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Recommendation'}</div>
-    </div>`).join('')}</div>` : '';
+    </div>`).join('')}</div>`;
 }
 
 /* ── HISTORY (user only) — 7-day recently watched, re-find utility ──
@@ -1534,8 +1621,11 @@ function renderPrimary() {
    and the algorithm won't show it again", without re-rationing fire. */
 function renderHistory() {
   const el = document.getElementById('history');
-  window._PROFILE_HISTORY = MOCK_HISTORY;
-  if (!MOCK_HISTORY.length) {
+  // No real watch-history source is wired yet, so a signed-in user starts
+  // clean. Logged-out demo keeps the mock history so the page isn't blank.
+  const list = isSignedInOwn() ? [] : MOCK_HISTORY;
+  window._PROFILE_HISTORY = list;
+  if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">🕑</div><div class="empty-t">Nothing here yet</div><div class="empty-d">Clips you watch show up here for 7 days, so you can always find your way back.</div></div>`;
     return;
   }
@@ -1545,7 +1635,7 @@ function renderHistory() {
       <button class="hist-clear" onclick="clearHistory()">Clear history</button>
     </div>
     <div class="hist-note">Last 7 days · so you can pick up where you left off</div>
-    <div class="grid">${MOCK_HISTORY.map((c,i)=>`
+    <div class="grid">${list.map((c,i)=>`
       <div class="g-card" onclick="ssOpenClip(_PROFILE_HISTORY[${i}], _PROFILE_HISTORY)">
         <div class="g-thumb">
           <div class="g-bg" style="background:${c.bg}"></div>
@@ -1564,12 +1654,18 @@ function clearHistory() {
 /* ── STACKS / COLLECTIONS tab (full list with manage) ── */
 function renderStacks() {
   const el = document.getElementById('stacks');
+  // Signed-in own profile → real Stacks; logged-out/public demo → mock.
+  const list = currentCollections();
+  if (!list.length) {
+    el.innerHTML = `<div class="sec-t">Your <em>Collections</em></div><div class="empty-state"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack from any clip and they'll gather here as shareable collections.</div></div>`;
+    return;
+  }
   el.innerHTML = `
     <div class="sec-t">Your <em>Collections</em></div>
-    <div class="grid">${MOCK_COLLECTIONS.map(c=>`
+    <div class="grid">${list.map(c=>`
       <div class="g-card" onclick="ssToast('▶ Opening “${c.name}”')">
         <div class="g-thumb">
-          <div class="g-bg" style="background:${c.thumbs[0]}"></div>
+          <div class="g-bg" style="background:${(c.thumbs && c.thumbs[0]) || DEFAULT_WALL_GRADS[0]}"></div>
           <div class="g-vig"></div>
           <div class="coll-vis ${c.vis}" style="position:absolute;top:8px;right:8px" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>
           <div class="g-fires">${c.count} clips</div>
@@ -1650,28 +1746,42 @@ function unfollowFromList(handle, btn) {
 
 /* ── ANALYTICS ── */
 function renderAnalytics() {
-  const max = Math.max(...CHART), days=['M','T','W','T','F','S','S'], peak=CHART.indexOf(max);
-  document.getElementById('analytics').innerHTML = `
-    <div class="an-grid">
-      <div class="an-card"><div class="an-icon">👥</div><div class="an-val"><em>${fmtFires(PROFILE.followers)}</em></div><div class="an-label">Followers</div><div class="an-trend">↑ 6% this week</div></div>
-      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(PROFILE.firesReceived)}</em></div><div class="an-label">Total Fires</div><div class="an-trend">↑ 12% this week</div></div>
-      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(PROFILE.watchItTaps)}</div><div class="an-label">Watch It Taps</div><div class="an-trend">↑ 8% this week</div></div>
-      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(PROFILE.clipsPosted*820)}</div><div class="an-label">Total Reach</div><div class="an-trend">↑ 21% this week</div></div>
-    </div>
-    <div class="an-chart">
-      <div class="an-chart-t">Fires this week</div>
-      <div class="an-bars">${CHART.map((v,i)=>`<div class="an-bcol"><div class="an-bar ${i===peak?'peak':''}" style="height:${Math.round(v/max*100)}%"></div><div class="an-day">${days[i]}</div></div>`).join('')}</div>
-    </div>
-    <div class="an-sec-t">Top <em>Performing</em> Clips</div>
-    ${MOCK_CLIPS.slice(0,5).map((c,i)=>`
+  // Signed-in owner → real numbers (0 until a backend analytics source is
+  // wired) and a flat chart. Logged-out/demo keeps the mock showcase.
+  const own = isSignedInOwn();
+  const chart = own ? [0,0,0,0,0,0,0] : CHART;
+  const fires = own ? 0 : PROFILE.firesReceived;
+  const taps  = own ? 0 : PROFILE.watchItTaps;
+  const reach = own ? 0 : PROFILE.clipsPosted * 820;
+  const max = Math.max(...chart, 1), days=['M','T','W','T','F','S','S'], peak=chart.indexOf(Math.max(...chart));
+  const trend = (txt) => own
+    ? `<div class="an-trend" style="color:var(--gray2)">No change yet</div>`
+    : `<div class="an-trend">${txt}</div>`;
+  const perfClips = own ? getMyClips().slice(0,5) : MOCK_CLIPS.slice(0,5);
+  const perfBlock = (own && !perfClips.length)
+    ? `<div class="empty-state" style="padding:28px 22px"><div class="empty-ic">📊</div><div class="empty-t">No data yet</div><div class="empty-d">Once you post clips and people react, your top performers show up here.</div></div>`
+    : perfClips.map((c,i)=>`
       <div class="perf-row">
         <div class="perf-rank ${i===0?'top':''}">${i+1}</div>
         <div class="perf-thumb"><div class="perf-thumb-bg" style="background:${c.bg}"></div></div>
         <div class="perf-info">
-          <div class="perf-cap">${c.caption}</div>
-          <div class="perf-stats"><span class="perf-fires">${FIRE_SVG} ${fmtFires(c.fires)} fires</span><span>▶ ${fmtFires(Math.round(c.fires*0.18))} watch its</span></div>
+          <div class="perf-cap">${(c.caption||'').replace(/<[^>]+>/g,'')}</div>
+          <div class="perf-stats"><span class="perf-fires">${FIRE_SVG} ${fmtFires(c.fires||0)} fires</span><span>▶ ${fmtFires(Math.round((c.fires||0)*0.18))} watch its</span></div>
         </div>
-      </div>`).join('')}`;
+      </div>`).join('');
+  document.getElementById('analytics').innerHTML = `
+    <div class="an-grid">
+      <div class="an-card"><div class="an-icon">👥</div><div class="an-val"><em>${fmtFires(PROFILE.followers || 0)}</em></div><div class="an-label">Followers</div>${trend('↑ 6% this week')}</div>
+      <div class="an-card"><div class="an-icon">🔥</div><div class="an-val"><em>${fmtFires(fires)}</em></div><div class="an-label">Total Fires</div>${trend('↑ 12% this week')}</div>
+      <div class="an-card"><div class="an-icon">▶</div><div class="an-val">${fmtFires(taps)}</div><div class="an-label">Watch It Taps</div>${trend('↑ 8% this week')}</div>
+      <div class="an-card"><div class="an-icon">📡</div><div class="an-val">${fmtFires(reach)}</div><div class="an-label">Total Reach</div>${trend('↑ 21% this week')}</div>
+    </div>
+    <div class="an-chart">
+      <div class="an-chart-t">Fires this week</div>
+      <div class="an-bars">${chart.map((v,i)=>`<div class="an-bcol"><div class="an-bar ${(!own && i===peak)?'peak':''}" style="height:${Math.round(v/max*100)}%"></div><div class="an-day">${days[i]}</div></div>`).join('')}</div>
+    </div>
+    <div class="an-sec-t">Top <em>Performing</em> Clips</div>
+    ${perfBlock}`;
 }
 
 /* ── BECOME A CURATOR FLOW ── */
@@ -1987,9 +2097,20 @@ if (_params.get('curator')) {
    so the page never breaks. */
 async function hydrateOwnProfile() {
   if (_params.get('curator')) return;                 // viewing someone else → skip
-  if (!window.ssDB || !window.ssCurrentUser) return;  // no backend → keep mock
-  const user = window.ssCurrentUser();
-  if (!user) return;                                  // guest → keep mock
+  if (!window.ssDB) return;                           // no backend → keep mock
+  // Resolve the real session by AWAITING getSession — this avoids racing
+  // the async session bootstrap in shared.js (ssCurrentUser() can be null
+  // for a beat after load). Falls back to the cached helper.
+  let user = null;
+  try {
+    if (window.ssDB.auth) {
+      const { data } = await window.ssDB.auth.getSession();
+      user = data && data.session ? data.session.user : null;
+    }
+  } catch (e) { /* ignore — fall back below */ }
+  if (!user && typeof window.ssCurrentUser === 'function') user = window.ssCurrentUser();
+  if (!user) return;                                  // guest → keep mock, stay logged-out
+  _signedIn = true;                                   // flip the real-data gate ON
   try {
     const { data, error } = await window.ssDB
       .from('users')
@@ -2010,10 +2131,42 @@ async function hydrateOwnProfile() {
   } catch (e) { /* keep mock on any failure */ }
 }
 
+/* ── REAL FOLLOWERS COUNT ───────────────────────────
+   Count the rows in `follows` where this user is the creator. A brand-new
+   user has none → 0. The result is cached on PROFILE.followers and the
+   creds/cockpit/analytics are re-rendered so they reflect reality once the
+   async count lands. No-ops (keeps 0) for guests / offline. */
+async function fetchOwnFollowers() {
+  if (!isSignedInOwn() || !window.ssDB) return;
+  try {
+    const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+    if (!user) return;
+    const { count, error } = await window.ssDB
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('creator_id', user.id)
+      .is('deleted_at', null);
+    if (!error && typeof count === 'number') {
+      PROFILE.followers = count;
+      renderCreds();
+      renderCockpit();
+      renderAnalytics();
+    }
+  } catch (e) { /* keep 0 on any failure */ }
+}
+
 (async function boot() {
   await hydrateOwnProfile();
+  // Brand-new signed-in user: start every account-linked number CLEAN so
+  // the mock vanity figures never flash. Real values fill in live.
+  if (isSignedInOwn()) {
+    PROFILE.followers     = 0;
+    PROFILE.firesReceived = 0;
+    PROFILE.watchItTaps   = 0;
+  }
   renderWall();
   renderAll();
+  fetchOwnFollowers();   // async → re-renders creds/cockpit/analytics when it resolves
 })();
 
 // Keep the Following list + public Follow button live if following changes
@@ -2021,7 +2174,20 @@ async function hydrateOwnProfile() {
 if (typeof ssOnFollowingChange === 'function') {
   ssOnFollowingChange(() => {
     renderFollowing();
+    renderCreds();   // keep the live Following/own counts in sync
+    renderTabs();    // keep the Following tab badge in sync
     if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
+  });
+}
+
+// Keep Collections (shelf + tab + Stacks count) live when the user saves a
+// clip into a Stack from anywhere — so the profile fills up in real time.
+if (typeof ssOnStacksChange === 'function') {
+  ssOnStacksChange(() => {
+    renderShelf();
+    renderStacks();
+    renderCreds();   // own "Stacks" credential
+    renderTabs();    // Collections tab badge
   });
 }
 
