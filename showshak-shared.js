@@ -873,6 +873,52 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
 
+/* ── MY CLIPS (owner profile) ───────────────────────────────────
+   Loads the SIGNED-IN user's OWN clips straight from the DB, scoped to
+   creator_id = me. Unlike ssLoadClips (feed = live only), this includes
+   'processing' rows too and carries the REAL status, so the profile's
+   "My Clips" badge reflects the database — not a stale sessionStorage
+   copy. This is the authoritative source for the owner profile so an
+   upload survives re-login and a webhook flip to 'live' is reflected on
+   next load. Returns [] for guests / offline (profile keeps its mock). */
+async function ssLoadMyClips(){
+  if(!window.ssDB) return [];
+  var me = window.ssCurrentUser && window.ssCurrentUser();
+  if(!me || !me.id) return [];
+  try{
+    var res = await window.ssDB.from("content")
+      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, created_at, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .eq("creator_id", me.id)
+      .in("status", ["processing","live"])
+      .is("deleted_at", null)
+      .order("created_at",{ascending:false});
+    if(res.error || !res.data) return [];
+    return res.data.map(function(row){
+      var meta=row.meta||{}, p=row.platform||{}, t=row.title||{}, cr=row.creator||{};
+      var mood=[]; try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){}
+      var uname=cr.username||"curator";
+      return {
+        id: row.id, status: row.status, mine: true,
+        title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
+        caption: row.description||"", fires: row.fires_count||0,
+        genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
+        bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
+        muxPlaybackId: row.mux_playback_id || null,
+        poster: row.thumbnail_url || null,
+        url: row.url || null,
+        durationSec: row.duration_sec || null,
+        platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
+        platAbbr: p.abbr||(p.name?p.name.charAt(0):"\u25B6"), platRgb: _ssHexRgb(p.color),
+        providers: t.providers || {},
+        cachedAt: t.cached_at || null,
+        curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
+        creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
+      };
+    });
+  }catch(e){ return []; }
+}
+window.ssLoadMyClips=ssLoadMyClips;
+
 /* ── Button UI sync ────────────────────────────── */
 // Call after any page renders its save buttons so they
 // reflect the current sessionStorage state correctly.

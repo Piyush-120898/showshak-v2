@@ -1548,8 +1548,17 @@ function switchTab(t) {
   renderTabs();
 }
 
-/* ── PUBLISHED CLIPS (from the upload flow, sessionStorage) ── */
+/* ── PUBLISHED CLIPS (DB-backed for signed-in owner; sessionStorage
+   mirror as the instant-UI / offline fallback) ──
+   `_myClipsCache` is filled by hydrateMyClipsFromDB() from the real
+   `content` rows (status processing+live). For a signed-in own profile
+   it is the authoritative source, so a clip survives re-login and a
+   webhook flip to 'live' shows up correctly. Before that async load
+   resolves (and for logged-out/public demo) we fall back to the
+   sessionStorage mirror written at upload time. */
+let _myClipsCache = null;
 function getMyClips() {
+  if (isSignedInOwn() && _myClipsCache) return _myClipsCache;
   try { return JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]'); }
   catch { return []; }
 }
@@ -2160,6 +2169,28 @@ async function fetchOwnFollowers() {
   } catch (e) { /* keep 0 on any failure */ }
 }
 
+/* ── HYDRATE MY CLIPS FROM THE DB ───────────────────────────────
+   Load the signed-in owner's real uploads (processing + live) from the
+   `content` table and cache them as the authoritative My Clips source,
+   then re-render the surfaces that depend on them. This is what makes an
+   upload persist across re-login and reflects the webhook's flip to
+   'live' (badge clears) instead of the stale sessionStorage 'processing'.
+   No-ops for guests / public view / offline. */
+async function hydrateMyClipsFromDB() {
+  if (!isSignedInOwn() || typeof window.ssLoadMyClips !== 'function') return;
+  try {
+    const rows = await window.ssLoadMyClips();
+    _myClipsCache = rows || [];
+    // Re-render every surface that reads getMyClips() so the real status,
+    // count, and grid replace the stale session mirror.
+    renderWall();
+    renderTabs();
+    renderCreate();
+    renderPrimary();
+    renderAnalytics();
+  } catch (e) { /* keep the session-mirror fallback on any failure */ }
+}
+
 (async function boot() {
   await hydrateOwnProfile();
   // Brand-new signed-in user: start every account-linked number CLEAN so
@@ -2172,6 +2203,7 @@ async function fetchOwnFollowers() {
   renderWall();
   renderAll();
   fetchOwnFollowers();   // async → re-renders creds/cockpit/analytics when it resolves
+  hydrateMyClipsFromDB();  // async → replaces the session mirror with real DB clips
 })();
 
 // Keep the Following list + public Follow button live if following changes
