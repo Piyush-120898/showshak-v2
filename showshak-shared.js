@@ -1335,6 +1335,34 @@ function _ssvResolveMuted(mode) {
   return ssGetMutePref();
 }
 
+/* _ssActivateSurface(surface, wantMuted) — the autoplay-policy-safe play+sound
+   sequence used by BOTH hosts (inline feed + fullscreen viewer).
+
+   WHY: browsers ALWAYS allow MUTED autoplay but block UNMUTED play() unless it
+   happens during a transient user activation. A freshly-mounted player (e.g.
+   the next clip when you scroll) therefore gets its unmuted play() rejected and
+   the video would stall or silently fall back to muted. So we:
+     1) start MUTED and play() → guaranteed to start (never a black/stalled frame)
+     2) then honor the unmute preference on the NOW-PLAYING element
+     3) if the browser refuses the unmute (re-pauses), fall back to muted
+        playback so the VIDEO KEEPS PLAYING; the next tap / mute-toggle restores
+        sound. Fixes "video plays but audio doesn't come" on scroll. */
+function _ssActivateSurface(surface, wantMuted) {
+  if (!surface) return;
+  surface.setMuted(true);
+  var p = surface.play();
+  Promise.resolve(p).then(function () {
+    if (wantMuted || !surface.setMuted) return;
+    surface.setMuted(false);                 // honor "sound on"
+    var p2 = surface.play();                  // re-assert in case unmute paused it
+    Promise.resolve(p2).catch(function () {
+      try { surface.setMuted(true); surface.play(); } catch (e) {}  // keep video playing, muted
+    });
+  }).catch(function () {
+    try { surface.setMuted(true); surface.play(); } catch (e) {}    // rare: one muted retry
+  });
+}
+
 /* ── INLINE-mode engine state ───────────────────────────────────────
    The INLINE host (the Feed's #feed) keeps its OWN surface/clip/active
    state, SEPARATE from the FULLSCREEN viewer's _ssv* state, because both
@@ -1771,13 +1799,8 @@ const ClipEngine = {
     if (!surface) return;
 
     const muted = _ssvResolveMuted(m);
-    surface.setMuted(muted);
     surface._ssPaused = false;
-    surface.play().catch(() => {
-      // Autoplay-with-audio rejected → retry muted (keeps playback alive).
-      surface.setMuted(true);
-      surface.play().catch(() => {});
-    });
+    _ssActivateSurface(surface, muted);   // muted-first then unmute (autoplay-safe)
 
     // Preload the NEXT clip while this one loops, so scrolling to it is
     // instant (smooth viewing). No-op for gradients / when there is no next.
@@ -2155,12 +2178,8 @@ function _inlineSetActive(idx) {
   if (!surface) return;
 
   const muted = _ssvResolveMuted('INLINE');
-  surface.setMuted(muted);
   surface._ssPaused = false;
-  surface.play().catch(() => {
-    surface.setMuted(true);
-    surface.play().catch(() => {});
-  });
+  _ssActivateSurface(surface, muted);   // muted-first then unmute (autoplay-safe)
 
   // Preload the NEXT clip while this one loops, for smooth scrolling.
   const nextSurface = _inlineSurfaces[idx + 1];
@@ -2548,6 +2567,13 @@ function ssOpenClip(clipOrId, list) {
   _ssvPrevScroll = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
 
+  // Pause + mute the inline feed behind the viewer. Otherwise BOTH players run
+  // for the same clip — double audio, double buffering, and they fight for
+  // bandwidth, which is what made the viewer visibly "load again" on open.
+  // Freeing the network lets the viewer's player start fast (same playback id =
+  // segments already in the HTTP cache). Resumed in _ssvTeardownViewer.
+  try { _inlineSurfaces.forEach(s => { if (s) { try { s.setMuted(true); s.pause(); } catch (e) {} } }); } catch (e) {}
+
   const viewer = document.getElementById('ss-clip-viewer');
   viewer.classList.add('open');
 
@@ -2668,6 +2694,12 @@ function _ssvTeardownViewer() {
   _ssvSurfaces = [];
   _ssvBars = [];
   _ssvActiveIdx = -1;
+  // Resume the inline feed behind us where it left off (paused on open).
+  try {
+    if (typeof _inlineActiveIdx === 'number' && _inlineActiveIdx >= 0 && _inlineSurfaces[_inlineActiveIdx]) {
+      _ssActivateSurface(_inlineSurfaces[_inlineActiveIdx], _ssvResolveMuted('INLINE'));
+    }
+  } catch (e) {}
   // Re-sync any save buttons on the underlying page
   setTimeout(ssSyncAllSaveBtns, 50);
 }
