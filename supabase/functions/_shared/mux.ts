@@ -103,7 +103,7 @@ export async function muxFetch(
 export async function createDirectUpload(
   corsOrigin: string,
 ): Promise<{ data: { id: string; url: string; [k: string]: unknown } }> {
-  const res = await muxFetch("/video/uploads", {
+  const res = await muxFetch("/video/v1/uploads", {
     method: "POST",
     body: {
       new_asset_settings: { playback_policy: ["public"] },
@@ -111,7 +111,8 @@ export async function createDirectUpload(
     },
   });
   if (!res.ok) {
-    throw new Error(`mux_upload_create_failed: ${res.status}`);
+    const detail = await res.text().catch(() => "");
+    throw new Error(`mux_upload_create_failed: ${res.status} ${detail}`);
   }
   return await res.json();
 }

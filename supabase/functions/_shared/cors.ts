@@ -28,6 +28,10 @@ const APP_ORIGIN = Deno.env.get("APP_ORIGIN") ?? "*";
  */
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": APP_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  // supabase-js sends apikey + x-client-info (and a version header) on every
+  // call, so they MUST be allowed here or the browser preflight blocks the
+  // request before the function runs.
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-api-version",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };

@@ -50,7 +50,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     mux = await createDirectUpload(appOrigin);
   } catch (_e) {
-    // Mux unreachable / non-OK / missing secret → upstream failure (Req 12.5).
+    // Log the real Mux rejection reason SERVER-SIDE only; never return it to
+    // the browser (avoids leaking Mux internals). Generic body for the client.
+    const detail = (_e && (_e as Error).message) ? (_e as Error).message : String(_e);
+    console.error("mux-upload-url failed:", detail);
     return json({ error: "mux_upload_create_failed" }, 502);
   }
 
