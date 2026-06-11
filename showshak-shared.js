@@ -2455,9 +2455,14 @@ function _ssvClipHTML(c, i, mode) {
   const tags = [...(c.genre || []), c.lang].filter(Boolean)
     .map(t => `<span class="tag">${t}</span>`).join('');
   const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
+  // Poster-first frame so an un-mounted clip (outside the bounded player band)
+  // shows the Mux thumbnail instead of black while you scroll to it.
+  const mediaStyle = c.poster
+    ? ` style="background-image:url('${String(c.poster).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
+    : (c.bg ? ` style="background:${c.bg}"` : '');
   return `
     <div class="${rootCls}" id="ssv-clip-${i}" data-ssv-idx="${i}">
-      <div class="ssv-media" id="ssv-media-${i}"></div>
+      <div class="ssv-media" id="ssv-media-${i}"${mediaStyle}></div>
       <div class="ssv-vig"></div>
 
       <div class="ssv-tap" id="ssv-tap-${i}"></div>
@@ -2531,22 +2536,13 @@ function ssOpenClip(clipOrId, list) {
 
   feed.innerHTML = _ssvClips.map((c, i) => _ssvClipHTML(c, i, 'FULLSCREEN')).join('');
 
-  // Build one Media_Surface + one Progress_Bar per clip, and wire progress.
-  // The engine speaks ONLY the Media_Surface contract here — no medium logic.
-  _ssvClips.forEach((clip, i) => {
-    const mediaEl = document.getElementById(`ssv-media-${i}`);
-    const clipEl  = document.getElementById(`ssv-clip-${i}`);
-    if (!mediaEl || !clipEl) return;
-    const surface = ssCreateSurface(clip, { bgClass: 'ssv-bg' });
-    surface.mount(mediaEl);
-    const bar = ssMakeProgressBar(clipEl);
-    surface.onTimeupdate(p => bar.set(p));
-    _ssvSurfaces[i] = surface;
-    _ssvBars[i] = bar;
-    // Unified gesture model: single tap → pause/resume, double tap → fire+burst.
-    const tapZone = document.getElementById(`ssv-tap-${i}`);
-    if (tapZone) ssAttachGestures(tapZone, i, ClipEngine);
-  });
+  // BOUNDED PLAYERS: mount only a small band of Media_Surfaces around the
+  // active clip (not all of them) — mounting every <mux-player> at once made
+  // them all buffer in parallel and saturated the network (black screens /
+  // audio-without-video / everything slow). _ssvPruneSurfaces mounts the band
+  // and the scroll observer slides it. Frames outside the band show their
+  // poster (set in _ssvClipHTML), so nothing is ever blank.
+  _ssvPruneSurfaces(0);
 
   // Lock background scroll
   _ssvPrevScroll = document.body.style.overflow;
@@ -2710,6 +2706,46 @@ function _ssvKeydown(e) {
   }
 }
 
+/* _ssvWireClip(i) — (re)build the FULLSCREEN viewer's Media_Surface for clip i,
+   attach its Progress_Bar, and bind the unified gesture handler once. Mirror of
+   the inline _inlineWireClip; idempotent so a clip re-entering the mounted band
+   reuses its bar and binds gestures only once. Contract-only. */
+function _ssvWireClip(i) {
+  const mediaEl = document.getElementById(`ssv-media-${i}`);
+  const clipEl  = document.getElementById(`ssv-clip-${i}`);
+  if (!mediaEl || !clipEl) return;
+  if (_ssvSurfaces[i]) { try { _ssvSurfaces[i].destroy(); } catch (e) {} }
+  const surface = ssCreateSurface(_ssvClips[i], { bgClass: 'ssv-bg' });
+  surface.mount(mediaEl);
+  const bar = _ssvBars[i] || ssMakeProgressBar(clipEl);
+  surface.onTimeupdate(p => bar.set(p));
+  _ssvSurfaces[i] = surface;
+  _ssvBars[i] = bar;
+  const tapZone = document.getElementById(`ssv-tap-${i}`);
+  if (tapZone && !tapZone.dataset.ssvTapBound) {
+    tapZone.dataset.ssvTapBound = '1';
+    ssAttachGestures(tapZone, i, ClipEngine);
+  }
+}
+
+/* _ssvPruneSurfaces(activeIdx) — bounded-concurrency for the FULLSCREEN viewer
+   (mirror of ClipEngine.pruneInlineSurfaces). Keep only the sliding band of
+   mounted <mux-player>s around the active clip (ssMountedPlayerSet): mount any
+   in-band clip that isn't mounted, destroy out-of-band players. This is what
+   stops N parallel video players from saturating the network. */
+function _ssvPruneSurfaces(activeIdx) {
+  const a = (activeIdx == null) ? _ssvActiveIdx : activeIdx;
+  const keep = ssMountedPlayerSet(a, _ssvClips.length, SS_MAX_LIVE_PLAYERS);
+  const keepSet = new Set(keep);
+  keep.forEach(i => { if (!_ssvSurfaces[i]) _ssvWireClip(i); });
+  for (let i = 0; i < _ssvSurfaces.length; i++) {
+    if (!keepSet.has(i) && _ssvSurfaces[i]) {
+      try { _ssvSurfaces[i].destroy(); } catch (e) {}
+      _ssvSurfaces[i] = null;
+    }
+  }
+}
+
 function _ssvSetupObserver(feed) {
   if (_ssvObserver) _ssvObserver.disconnect();
   _ssvObserver = new IntersectionObserver(entries => {
@@ -2720,7 +2756,10 @@ function _ssvSetupObserver(feed) {
         // Drive engine playback: pause the previous surface, play this one
         // with the resolved Mute_Preference. (FULLSCREEN host.)
         const idx = parseInt(entry.target.dataset.ssvIdx, 10);
-        if (!isNaN(idx)) ClipEngine.setActive(idx, 'FULLSCREEN');
+        if (!isNaN(idx)) {
+          _ssvPruneSurfaces(idx);   // mount the band around the new active, drop the rest
+          ClipEngine.setActive(idx, 'FULLSCREEN');
+        }
       }
     });
   }, { root: feed, threshold: 0.6 });
