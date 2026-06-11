@@ -636,12 +636,43 @@ async function loadRealClips() {
 // the per-clip frames into #feed, drives playback/gestures/progress/sound, owns
 // the mobile per-clip rail + the fixed desktop #action-rail (positionRail), the
 // IntersectionObserver, keyboard nav, and window.navigateFeed (#nav-arrows).
+//
+// Open path is stale-while-revalidate for a seamless, Instagram/TikTok-grade
+// open: render the per-user cached first window INSTANTLY (poster-first), then
+// revalidate against the DB once and only re-mount if it actually changed.
 (async function initFeed() {
-  const real = await loadRealClips();   // swap mock → real DB clips if available
   const feedEl = document.getElementById('feed');
-  ClipEngine.mountInline(feedEl, SHOWS);
-  // Start the DB-backed sliding-window pager only for real clips (mock has no pages).
-  if (real && typeof ssStartFeedPager === "function") ssStartFeedPager(feedEl, SHOWS.length);
+  let mountedFromCache = false;
+  const cache = (typeof ssReadFeedCache === 'function') ? ssReadFeedCache() : null;
+
+  // 1) Instant shell from the per-user cache (no spinner, posters show at once).
+  if (cache && cache.clips && cache.clips.length) {
+    SHOWS = cache.clips;
+    ClipEngine.mountInline(feedEl, SHOWS);
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS);
+    mountedFromCache = true;
+    // Very fresh cache → skip the revalidation query entirely (lighter on DB).
+    if (cache.ageMs < (window.SS_FEED_FRESH_MS || 30000)) {
+      if (typeof ssStartFeedPager === 'function') ssStartFeedPager(feedEl, SHOWS.length);
+      return;
+    }
+  }
+
+  // 2) Revalidate against the DB (also the first-ever load for a new user).
+  const real = await loadRealClips();
+  if (real) {
+    if (typeof ssWriteFeedCache === 'function') ssWriteFeedCache(SHOWS);
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS);
+    // Re-mount ONLY if the first window changed — a correct cache never flashes
+    // or interrupts the clip already playing.
+    if (!mountedFromCache || (typeof ssFeedListChanged === 'function' && ssFeedListChanged(cache && cache.clips, SHOWS))) {
+      ClipEngine.mountInline(feedEl, SHOWS);
+    }
+    if (typeof ssStartFeedPager === 'function') ssStartFeedPager(feedEl, SHOWS.length);
+  } else if (!mountedFromCache) {
+    // No cache + no real clips (logged out / offline / none yet) → mock fallback.
+    ClipEngine.mountInline(feedEl, SHOWS);
+  }
 })();
 </script>
 </body>

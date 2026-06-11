@@ -1978,9 +1978,15 @@ function _inlineClipHTML(c, i) {
     .map(t => `<span class="tag">${t}</span>`).join('');
   const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
   const platAbbr = (c.platforms && c.platforms[0] && c.platforms[0].label) || c.platAbbr;
+  // Poster-first frame: paint the Mux thumbnail (or the gradient) on the media
+  // node up front so the clip shows an image INSTANTLY — no black/spinner while
+  // the <mux-player> upgrades and buffers (Instagram/TikTok feel).
+  const mediaStyle = c.poster
+    ? ` style="background-image:url('${String(c.poster).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
+    : (c.bg ? ` style="background:${c.bg}"` : '');
   return `
     <div class="clip${i === 0 ? ' active' : ''}" id="clip-${i}" data-ss-idx="${i}">
-      <div class="clip-media" id="clip-media-${i}"></div>
+      <div class="clip-media" id="clip-media-${i}"${mediaStyle}></div>
       <div class="clip-vignette"></div>
       <div class="clip-grain"></div>
       <div class="clip-logo-float">
@@ -2282,6 +2288,94 @@ function ssStartFeedPager(container, initialCount) {
   _feedNextOffset    = initialCount || 0;
   _feedFetchInFlight = false;
   _feedNoMore        = false;
+}
+
+/* ── Per-user feed cache + video warming (seamless open, Req: instant feel) ──
+   Instagram/TikTok-grade open without overloading the DB or Mux:
+     • Render the per-user cached first window INSTANTLY (poster-first, no
+       spinner), then revalidate against the DB ONCE (stale-while-revalidate).
+     • Cache is keyed PER USER (guests share a 'guest' bucket), VERSIONED,
+       CAPPED, and TTL'd so it self-heals and never grows unbounded.
+     • Stores ONLY public clip metadata (captions, PUBLIC Mux playback ids,
+       posters) — nothing RLS-protected, so the cache can never leak data the
+       user could not already read.
+     • Warming is BOUNDED to the next couple of clips so we never burn Mux
+       bandwidth or crash mobile with too many live players. */
+var SS_FEED_CACHE_VERSION = 1;                    // bump to invalidate all caches
+var SS_FEED_CACHE_MAX     = 10;                   // cap stored clips (~first window)
+var SS_FEED_CACHE_TTL_MS  = 6 * 60 * 60 * 1000;   // 6h: render stale, then refresh
+var SS_FEED_FRESH_MS      = 30 * 1000;            // <30s old → skip revalidation (saves a query)
+var SS_WARM_AHEAD         = 2;                     // warm only the next N clips
+
+function _ssFeedCacheKey() {
+  var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+  return 'ss_feed_cache_v' + SS_FEED_CACHE_VERSION + '_' + ((me && me.id) || 'guest');
+}
+
+/* Read the cached first window for THIS user. Returns { clips, ageMs } or null
+   (null when missing, wrong version, empty, or past the freshness TTL). */
+function ssReadFeedCache() {
+  try {
+    var raw = window.localStorage.getItem(_ssFeedCacheKey());
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || obj.v !== SS_FEED_CACHE_VERSION || !Array.isArray(obj.clips) || !obj.clips.length) return null;
+    var ageMs = Date.now() - (obj.ts || 0);
+    if (SS_FEED_CACHE_TTL_MS && ageMs > SS_FEED_CACHE_TTL_MS) return null;   // too stale → revalidate from scratch
+    return { clips: obj.clips, ageMs: ageMs };
+  } catch (e) { return null; }
+}
+
+/* Persist the first window for THIS user (best-effort; quota/disabled storage is fine). */
+function ssWriteFeedCache(clips) {
+  try {
+    if (!Array.isArray(clips) || !clips.length) return;
+    window.localStorage.setItem(_ssFeedCacheKey(), JSON.stringify({
+      v: SS_FEED_CACHE_VERSION, ts: Date.now(), clips: clips.slice(0, SS_FEED_CACHE_MAX),
+    }));
+  } catch (e) { /* best-effort cache */ }
+}
+
+/* True if the fresh first window differs (by id/order) from what we rendered,
+   so we ONLY re-mount when something actually changed — a correct cache never
+   causes a flash or interrupts the playing clip. */
+function ssFeedListChanged(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return true;
+  var an = Math.min(a.length, SS_FEED_CACHE_MAX), bn = Math.min(b.length, SS_FEED_CACHE_MAX);
+  if (an !== bn) return true;
+  for (var i = 0; i < an; i++) {
+    if (String(a[i] && a[i].id) !== String(b[i] && b[i].id)) return true;
+  }
+  return false;
+}
+
+/* Warm the next few clips so playback + first frame are instant when reached.
+   Bounded by SS_WARM_AHEAD; de-duped per playback id so we never re-fetch. */
+var _ssWarmed = {};
+function ssWarmClips(clips, n) {
+  if (!Array.isArray(clips)) return;
+  var count = Math.min((n || SS_WARM_AHEAD), clips.length);
+  for (var i = 0; i < count; i++) {
+    var c = clips[i]; if (!c) continue;
+    var pid = c.muxPlaybackId;
+    if (pid && !_ssWarmed[pid]) {
+      _ssWarmed[pid] = true;
+      // Prime DNS/TLS/CDN + the HLS manifest so the first segment loads fast.
+      if (typeof fetch === 'function') {
+        try { fetch('https://stream.mux.com/' + pid + '.m3u8', { mode: 'no-cors', cache: 'force-cache' }).catch(function () {}); } catch (e) {}
+      }
+    }
+    // Prime the poster image (instant first frame when the clip is reached).
+    if (c.poster && typeof Image === 'function') { try { var im = new Image(); im.src = c.poster; } catch (e) {} }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.ssReadFeedCache  = ssReadFeedCache;
+  window.ssWriteFeedCache = ssWriteFeedCache;
+  window.ssFeedListChanged = ssFeedListChanged;
+  window.ssWarmClips      = ssWarmClips;
+  window.SS_FEED_FRESH_MS = SS_FEED_FRESH_MS;
 }
 if (typeof window !== 'undefined') {
   window.ssLoadClipWindow = ssLoadClipWindow;
