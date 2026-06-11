@@ -1778,6 +1778,11 @@ const ClipEngine = {
       surface.setMuted(true);
       surface.play().catch(() => {});
     });
+
+    // Preload the NEXT clip while this one loops, so scrolling to it is
+    // instant (smooth viewing). No-op for gradients / when there is no next.
+    const nextSurface = _ssvSurfaces[idx + 1];
+    if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
   },
 
   /* mountInline(container, clips, opts) — the INLINE render mode. Rebuilds the
@@ -2150,6 +2155,10 @@ function _inlineSetActive(idx) {
     surface.setMuted(true);
     surface.play().catch(() => {});
   });
+
+  // Preload the NEXT clip while this one loops, for smooth scrolling.
+  const nextSurface = _inlineSurfaces[idx + 1];
+  if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
 
   _inlineSyncRail(idx);
   _inlineAnimateRailIn();
@@ -3480,6 +3489,7 @@ var MediaSurfaceContract = {
   seek: function (fraction) {},       // jump to fraction in [0,1]
   onTimeupdate: function (cb) {},     // cb(progress:0..1) fired as playback advances
   onEnded: function (cb) {},          // cb() fired when the clip reaches its end
+  preload: function () {},            // eagerly buffer ahead (no-op for gradient)
   destroy: function () {},            // stop timers/listeners, detach DOM
 };
 
@@ -3493,12 +3503,18 @@ function GradientSurface(clip, opts) {
   var el = null, raf = null, startedAt = 0, elapsedBase = 0;
   var muted = true, ended = false;
   var onTick = [], onEnd = [];
+  var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function loop(now) {
     var elapsed = elapsedBase + (now - startedAt);
     var p = Math.max(0, Math.min(1, elapsed / DURATION_MS));
     onTick.forEach(function (cb) { cb(p); });
-    if (p >= 1) { ended = true; onEnd.forEach(function (cb) { cb(); }); return; }
+    if (p >= 1) {
+      // Loop the active clip: restart the cycle instead of ending, so it
+      // replays until the viewer scrolls away (mirrors VideoSurface loop).
+      if (loopClip) { elapsedBase = 0; startedAt = now; raf = requestAnimationFrame(loop); return; }
+      ended = true; onEnd.forEach(function (cb) { cb(); }); return;
+    }
     raf = requestAnimationFrame(loop);
   }
 
@@ -3523,6 +3539,7 @@ function GradientSurface(clip, opts) {
     },
     setMuted: function (m) { muted = !!m; },   // gradient has no audio track
     isMuted: function () { return muted; },
+    preload: function () {},                   // nothing to buffer for a gradient
     getProgress: function () {
       return Math.max(0, Math.min(1, elapsedBase / DURATION_MS));
     },
@@ -3546,6 +3563,7 @@ function VideoSurface(clip, opts) {
   var el = null, ended = false;
   var onTick = [], onEnd = [];
   var muted = true, errored = false;
+  var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function handleTimeupdate() {
     var p = ssClipProgress(el && el.currentTime, el && el.duration);
@@ -3570,6 +3588,10 @@ function VideoSurface(clip, opts) {
       el.setAttribute('stream-type', 'on-demand');
       el.setAttribute('playsinline', '');
       el.setAttribute('preload', 'auto');  // mounted = look-ahead band → buffer ahead (Req 9.2)
+      // Loop the active clip (TikTok/Reels-style) so it replays until the
+      // viewer scrolls to another clip. Native loop never fires 'ended', so
+      // the error→advance path (handleError) is unaffected.
+      if (loopClip) { el.loop = true; el.setAttribute('loop', ''); }
       el.muted = muted;
       // Poster from the Mux image CDN when present, else paint the clip's
       // gradient as the loading background so the frame is never blank (Req 7).
@@ -3587,6 +3609,12 @@ function VideoSurface(clip, opts) {
     },
     play: function () { return el ? (el.play() || Promise.resolve()) : Promise.resolve(); },
     pause: function () { if (el) { try { el.pause(); } catch (e) {} } },
+    // Eagerly buffer this (not-yet-active) clip so the NEXT clip is ready to
+    // play instantly when the viewer scrolls to it (smooth viewing). Safe to
+    // call repeatedly; never interrupts the currently-playing surface.
+    preload: function () {
+      if (el) { try { el.preload = 'auto'; el.setAttribute('preload', 'auto'); } catch (e) {} }
+    },
     setMuted: function (m) { muted = !!m; if (el) el.muted = muted; },
     isMuted: function () { return el ? !!el.muted : muted; },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
