@@ -1393,6 +1393,15 @@ function _ssvNormalize(raw) {
     season: raw.season || '',
     creator, fires,
     platLabel, platColor, platAbbr, platRgb, platforms,
+    // Carry the Mux playback fields through normalization so the fullscreen
+    // viewer's ssCreateSurface() builds a VideoSurface (real video) and not the
+    // gradient fallback. Also carry the Watch It cache so the sheet resolves.
+    muxPlaybackId: raw.muxPlaybackId || null,
+    poster: raw.poster || null,
+    url: raw.url || null,
+    durationSec: raw.durationSec || null,
+    providers: raw.providers || {},
+    curatorPlat: raw.curatorPlat || null,
   };
 }
 
