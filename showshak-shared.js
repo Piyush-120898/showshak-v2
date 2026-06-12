@@ -1701,7 +1701,7 @@ async function ssLoadMyClips(){
         genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
         bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
         muxPlaybackId: row.mux_playback_id || null,
-        poster: row.thumbnail_url || null,
+        poster: row.thumbnail_url || (row.mux_playback_id ? ssCoverThumbUrl(row.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
         url: row.url || null,
         durationSec: row.duration_sec || null,
         platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",

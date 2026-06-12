@@ -847,12 +847,15 @@ async function upHandleFile(e) {
    clip is really being posted — and never at all for a full-source upload.
 ════════════════════════════════════════════════ */
 
-/* m:ss.t formatter for the in/out readouts and the live segment duration. */
+/* SS.cc formatter (seconds + hundredths, e.g. 3.5s → "03.50") for the in/out
+   readouts and the live segment duration. Clips are ≤ 90 s so minutes aren't
+   needed — seconds.milliseconds reads cleaner. */
 function fmtTrimTime(sec) {
   sec = Math.max(0, Number(sec) || 0);
-  const m = Math.floor(sec / 60);
-  const s = sec - m * 60;
-  return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+  var whole = Math.floor(sec);
+  var cs = Math.round((sec - whole) * 100);   // hundredths of a second
+  if (cs === 100) { whole += 1; cs = 0; }
+  return (whole < 10 ? '0' : '') + whole + '.' + (cs < 10 ? '0' : '') + cs;
 }
 
 /* Map the ssValidateTrim reason codes (showshak-shared.js) to curator-facing
