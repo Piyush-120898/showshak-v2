@@ -1105,3 +1105,100 @@ Founder activation still owed (an agent can't do these):
 - Open `showshak-rls-check.html` signed in as a curator and confirm all RLS checks PASS.
 - Smoke-test the full live flow: upload → trim → titles → pitch → vibe → cover → publish
   → webhook flips to live → plays; plus drafts (save/resume/discard/publish) and edit.
+
+---
+
+## 18. Upload v2 SHIPPED + live bug-fixes, and Creator Analytics spec (requirements done)
+
+This session: Curator Upload v2 went fully live and verified, several live bugs were fixed
+(all committed + pushed to `main`), and we started the next feature — **Creator Analytics**
+(Step 5) — as a requirements-first spec.
+
+> **How to continue in a new chat:** paste this file. Current pointer is §18.4 ("NEXT"):
+> the `creator-analytics` requirements are done; next is the **Design** phase.
+
+### 18.1 Curator Upload v2 — LIVE + verified
+- A real clip was uploaded end-to-end through the new 7-step flow and went live. Feature is
+  done (60/60 tasks). RLS check page run by the founder: **3 PASS / 0 FAIL / 1 SKIPPED** (the
+  skipped DELETE check just had no `content_titles` row to test against — it becomes testable
+  once another curator uploads via v2).
+- Founder activation done: `mux-webhook` redeployed (cover-frame thumbnail + 90s duration
+  backstop live). STILL OWED by founder: `supabase functions deploy mux-upload-url` (Basic
+  tier) and `node data/ingest-tmdb.js --force` on a TMDB-reachable network (genres for
+  Discover). Deno edge tests optional (Deno not installed).
+
+### 18.2 Live bug-fixes shipped this session (all pushed to main)
+1. **Dual-handle trim slider** — replaced the two separate in/out sliders with ONE track + two
+   thumbs (Start/End), clamped so they can't cross, red selected-segment fill, grabbed thumb
+   raised via z-index. `showshak-upload.html`.
+2. **Post-upload hang fixed** — the content insert/update weren't wrapped, so a rejected DB
+   call froze the publish button silently. Now both write paths are try/caught with `[ss-publish]`
+   console breadcrumbs; plus a 60s timeout on the ffmpeg.wasm load so a stalled engine can't
+   hang publish.
+3. **Trim engine pre-warm** — the long "Trim 0%" wait was the ~25MB ffmpeg.wasm download on
+   first use; now it pre-warms in the BACKGROUND the moment the curator makes a cut (overlaps
+   the later steps), and publish shows "Preparing editor…" instead of a stuck 0%.
+4. **Trim timer format** — readouts now show seconds.hundredths (e.g. `03.50`) not `m:ss.t`.
+5. **Thumbnails everywhere** — the Mux poster now renders on every clip frame: profile My Clips,
+   Discover (cards + search results), Watchlist (stack + rec cards). The data layer
+   (`ssMapContentRowsToClips`, `ssLoadMyClips`, `ssHydrateStacks`) now derives a poster from the
+   playback id (+`meta.cover_time`) when `thumbnail_url` is absent. Property test updated to the
+   new poster contract.
+6. **Watchlist "[object Object]" fixed** — `ssHydrateStacks` stored `creator` as an object but
+   the watchlist template printed `@${c.creator}`; added `wlCreator()` normalizer (object OR
+   string) and guarded the genre/lang tag. Also added `mux_playback_id`/`thumbnail_url` to the
+   stacks hydrate SELECT so saved-stack frames get posters.
+7. **Profile photo not saving (FIXED w/ migration)** — root cause: the `avatars` Storage bucket
+   had no INSERT policy (RLS on `storage.objects`), and the client SILENTLY swallowed the failed
+   upload. Added **`supabase/migrations/0018_avatars_storage_policies.sql`** (public read +
+   owner-scoped insert/update/delete in the user's own `<uid>/` folder) and made the client
+   surface upload errors instead of faking success. **FOUNDER NOTE:** the bucket must be named
+   EXACTLY `avatars` (lowercase, plural) — the founder had `Avatar` which caused "Bucket not
+   found". Founder needs to: create bucket `avatars` (Public, 5MB, image/jpeg,png,webp) + run
+   migration 0018.
+8. **Discover curator search fixed** — profile search matched only the MOCK
+   `SSData.discoverCurators()` list, so real curators (incl. the founder's own account) never
+   appeared (their clips did). Now after real clips load, the curator directory is REBUILT from
+   the live clip authors (`rebuildCuratorsFromClips`, grouped by @username + clip count + fires).
+   Caveat: a curator needs ≥1 LIVE clip to appear; display name = @username for now (clip loader
+   doesn't carry the separate display name yet).
+
+### 18.3 sessionStorage + DB audit (founder asked)
+Audited every storage key. Conclusion: NO harmful sessionStorage+DB duplication — all uses are
+the intentional **instant-UI cache + DB-as-truth** pattern (`ss_stacks_v1`, `ss_following_v1`,
+`ss_my_clips_v1`, feed cache), same-tab nav handoffs (`ss_view_curator_v1`), or auth fallbacks
+(`ss_signed_up_v1`). Only fixed misleading COMMENTS (upload header said "No backend yet"; stacks
+header called sessionStorage the "source of truth"). Two harmless-but-dead-ish items left
+untouched (flagged, not removed): `ss_user_profile_v1` (write-only, in index.html which is
+"intentionally left as-is") and `ss_is_creator_v1` (settings UI toggle).
+
+### 18.4 Creator Analytics (Step 5) — spec STARTED, requirements DONE
+**Spec:** `.kiro/specs/creator-analytics/` (requirements-first; `.config.kiro` written,
+specType feature). Requirements complete + the founder's refined counting rules encoded.
+
+**What it is:** make the profile cockpit numbers real (Fires received · Watch Its · Reach ·
+shares · followers · 7-day trend + per-clip stats). Grounded in EXISTING tables — ADDITIVE only
+(grants + RLS + `SECURITY DEFINER` aggregate read functions); NO new tables.
+
+**Existing schema facts (from 0001):** `content_fires` (fires work, `sync_fires_count` trigger);
+`view_events` / `watch_events` / `share_events` EXIST but have NO insert grants/policies and
+nothing writes to them yet; `analytics_daily` rollup cache (owner-read RLS); `watch_history`.
+
+**FOUNDER'S COUNTING RULES (locked into requirements):**
+- **View & Share:** every action by a NON-owner counts separately (multiple count); a curator's
+  own views/shares of their OWN clip collapse to **ONE** per clip (`Self_Activity`). Enforced at
+  READ time by the aggregate function (raw rows still inserted for every action).
+- **Fire:** one per user per clip (existing), curator firing own clip = one.
+- **Watch It:** every tap counts, per user, NO self-collapse, NO de-dup; linked to viewer
+  `user_id` + the clip's curator via `content_id → content.creator_id`.
+- **Guests** count (events allow `user_id = null`); anti-spoof RLS `with check` (signed-in must
+  match `auth.uid()`, guest must be null); raw event rows are NEVER readable — only owner-scoped
+  aggregates via `SECURITY DEFINER` functions (hide-the-scoreboard stays a DB guarantee).
+- v1 = on-read aggregation; `analytics_daily` nightly rollup DEFERRED as the scale path.
+
+**⬜ NEXT: Design phase** for `creator-analytics` — lock the exact SQL (insert grants + RLS
+`with check` on the 3 event tables; the `SECURITY DEFINER` aggregate function signatures that
+apply the Self_Activity collapse, per-user fire counting, per-tap watch counting, and the
+7-day zero-filled trend) and the client capture hooks (emit view on clip view, watch on Watch It
+tap, share on share — fire-and-forget; fires already captured). Then tasks, then implement.
+Migrations continue at **0019+**.
