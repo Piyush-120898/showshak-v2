@@ -7,8 +7,12 @@
 //     • verify the Mux signature (authenticity + replay window) — Req 3.3
 //     • match the content row by meta->>'mux_upload_id' (the upload id we
 //       stored at insert time), falling back to mux_asset_id — Req 3.4
+//     • duration backstop: if the Mux-reported duration exceeds DURATION_CAP
+//       (90 s), delete the Mux asset and mark the row 'removed' so an over-cap
+//       clip never goes live — Req 4.5/4.6
 //     • idempotently flip status 'processing' → 'live' and store
 //       mux_asset_id / mux_playback_id / thumbnail_url / duration_sec — Req 3.1/3.2/3.5
+//       (the thumbnail uses the stored meta.cover_time when present — Req 8.2)
 //
 // DEPLOY: this function is PUBLIC (Mux is not a Supabase user), so it is
 // deployed WITH --no-verify-jwt. It authenticates Mux itself by verifying
@@ -18,6 +22,14 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyMuxSignature } from "../_shared/verify-signature.ts";
+import { muxFetch } from "../_shared/mux.ts";
+
+// Server-side backstop for the clip length limit. Mirrors the client-side
+// SS_DURATION_CAP (90 s) enforced in showshak-shared.js — kept in sync by hand
+// since the Edge runtime (Deno) and the browser/Node helpers don't share a
+// module. An asset whose Mux-reported duration exceeds this slipped past the
+// client trim/validation and must be rejected (Req 4.5/4.6).
+const DURATION_CAP = 90;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // Raw body is required for HMAC verification — read it before JSON.parse.
@@ -49,9 +61,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const assetId: string | null = asset.id ?? null;
   const playbackId: string | null = asset.playback_ids?.[0]?.id ?? null;
   const durationSec: number | null = asset.duration ? Math.round(asset.duration) : null;
-  const thumbnailUrl: string | null = playbackId
-    ? `https://image.mux.com/${playbackId}/thumbnail.jpg`
-    : null;
 
   // Service-role client (bypasses RLS); key is server-side only (Req 3.6).
   const db = createClient(
@@ -60,39 +69,108 @@ Deno.serve(async (req: Request): Promise<Response> => {
     { auth: { persistSession: false } },
   );
 
-  const patch = {
-    status: "live",
-    mux_asset_id: assetId,
-    mux_playback_id: playbackId,
-    thumbnail_url: thumbnailUrl,
-    duration_sec: durationSec,
-  };
-
-  // 2) MATCH the row by the upload id we stored in meta at insert time, and
-  //    only touch rows still 'processing' so a duplicate ready event is a
-  //    no-op on an already-live row (idempotent — Req 3.1/3.2/3.5).
-  let updated: Array<{ id: string }> | null = null;
+  // 2) MATCH the target row by the upload id we stored in meta at insert time,
+  //    falling back to the asset id, and only consider rows still 'processing'
+  //    so a duplicate ready event finds nothing → no-op (idempotent —
+  //    Req 3.1/3.2/3.5). We SELECT (not update) first so we can read the row's
+  //    stored meta (for meta.cover_time and a non-clobbering meta merge) and
+  //    branch on duration before deciding what to write.
+  type ContentRow = { id: string; meta: Record<string, any> | null };
+  let row: ContentRow | null = null;
   if (uploadId) {
     const res = await db.from("content")
-      .update(patch)
+      .select("id, meta")
       .eq("meta->>mux_upload_id", uploadId)
       .eq("status", "processing")
-      .select("id");
-    updated = res.data ?? null;
+      .limit(1)
+      .maybeSingle();
+    row = (res.data as ContentRow | null) ?? null;
   }
 
   // Fallback: match by asset id (e.g. a row created/updated out of band).
-  if ((!updated || updated.length === 0) && assetId) {
+  if (!row && assetId) {
     const res = await db.from("content")
-      .update(patch)
+      .select("id, meta")
       .eq("mux_asset_id", assetId)
       .eq("status", "processing")
-      .select("id");
-    updated = res.data ?? null;
+      .limit(1)
+      .maybeSingle();
+    row = (res.data as ContentRow | null) ?? null;
   }
 
   // No match (unknown upload, or already live) → acknowledge, change nothing
   // (Req 3.4 / 3.5). Always 200 so Mux does not retry a handled event.
+  if (!row) {
+    return new Response(JSON.stringify({ updated: 0 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const meta = row.meta ?? {};
+
+  // 3) DURATION BACKSTOP (Req 4.5/4.6): an over-cap asset slipped past the
+  //    client trim/validation. Reject it BEFORE the live-flip so it never goes
+  //    live: delete the Mux asset and mark the row 'removed'.
+  if (durationSec !== null && durationSec > DURATION_CAP) {
+    // Delete the Mux asset. Wrap in try/catch so a Mux failure (network, 404,
+    // already-deleted) never crashes the handler — log and continue so we
+    // still mark the row removed and ACK 200.
+    if (assetId) {
+      try {
+        await muxFetch(`/video/v1/assets/${assetId}`, { method: "DELETE" });
+      } catch (err) {
+        console.error("mux asset delete failed", assetId, err);
+      }
+    }
+
+    // Merge rejected_reason into the EXISTING meta so other keys
+    // (mux_upload_id, vibes, cover_time, trim, …) are preserved (Req 4.6).
+    const mergedMeta = { ...meta, rejected_reason: "over_duration_cap" };
+    await db.from("content")
+      .update({
+        status: "removed",
+        deleted_at: new Date().toISOString(),
+        meta: mergedMeta,
+      })
+      .eq("id", row.id)
+      .eq("status", "processing");
+
+    return new Response(JSON.stringify({ rejected: "over_duration_cap" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 4) NORMAL live-flip. Use the row's STORED meta.cover_time (set at insert by
+  //    the upload UI) to build a cover-time thumbnail; 0 is a valid time
+  //    (first frame), so check finiteness rather than truthiness (Req 8.2).
+  const coverTime: number | null =
+    meta && typeof meta.cover_time === "number" && isFinite(meta.cover_time)
+      ? meta.cover_time
+      : null;
+  const thumbnailUrl: string | null = playbackId
+    ? (coverTime !== null
+      ? `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${coverTime}`
+      : `https://image.mux.com/${playbackId}/thumbnail.jpg`)
+    : null;
+
+  // Update by id (read+write on the same row avoids a re-match race); keep the
+  // status='processing' guard for extra idempotency. Do NOT write meta here —
+  // only the rejected branch touches meta.
+  const res = await db.from("content")
+    .update({
+      status: "live",
+      mux_asset_id: assetId,
+      mux_playback_id: playbackId,
+      thumbnail_url: thumbnailUrl,
+      duration_sec: durationSec,
+    })
+    .eq("id", row.id)
+    .eq("status", "processing")
+    .select("id");
+  const updated = res.data ?? null;
+
   return new Response(JSON.stringify({ updated: updated?.length ?? 0 }), {
     status: 200,
     headers: { "Content-Type": "application/json" },

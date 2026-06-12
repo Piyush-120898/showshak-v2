@@ -215,6 +215,19 @@
   line-height: 1.5;
 }
 
+/* Per-title section heading — shown only for multi-title clips so each linked
+   title labels its own region-aware options at the Watch It reveal (Req 2.4). */
+.sheet-title-section {
+  padding: 14px 20px 6px;
+}
+
+.sheet-title-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 0.3px;
+}
+
 /* "In your plan" badge */
 .sheet-included {
   display: inline-flex;

@@ -88,56 +88,152 @@ window.addEventListener('pageshow', (e) => {
 /* ════════════════════════════════════════════════
    WATCH IT SHEET
 ════════════════════════════════════════════════ */
-async function ssOpenSheet(show) {
-  if (!show) return;
 
-  const header = document.getElementById('sheet-header');
-  if (header) {
-    // Title is revealed only at the Watch It moment. Some clip data
-    // (Discover/Watchlist/Profile) has no title yet — degrade gracefully.
-    const title = show.title || 'Ready to watch';
-    const metaTop = [show.year, show.season].filter(Boolean).join(' · ');
-    const genres  = (show.genre || []).join(' · ');
-    const meta    = [metaTop, genres].filter(Boolean).join('<br>') || 'Choose where to watch it';
-    header.innerHTML = `
-      <div class="sheet-thumb" style="background:${show.bg}">
-        <span>${show.title || '▶'}</span>
-      </div>
-      <div class="sheet-info">
-        <div class="sheet-show-title">${title}</div>
-        <div class="sheet-meta">${meta}</div>
-      </div>
-    `;
+/* Minimal HTML-escape for interpolating curator free-text (title names and
+   platform names can be curator-created) into the sheet markup. */
+function _ssEscapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* Build the per-title input list the Watch It sheet renders (Req 2.4).
+   RECOMMENDED lazy-fetch approach (keeps the hot feed query unchanged): for a
+   REAL clip (uuid content id in show.id — the field set by ssMapContentRowsToClips
+   and carried through the viewer normalizer) query `content_titles` for the
+   clip's linked titles, each with its OWN region-aware `providers`, ordered by
+   `sort_no` (primary first). Each title carries the clip's `curatorPlat` so the
+   curator-platform fallback (Req 1.4 / 2.5 / 6.1) resolves PER-TITLE when a
+   title has no providers for the region.
+
+   FALLBACK (documented): when there is no usable content id (mock/demo clips,
+   Discover/Watchlist/Profile clips), or the fetch errors / returns no rows, we
+   build a single-title list from the clip itself so those surfaces and genuine
+   single-title clips keep working. Never throws; always returns ≥ 1 entry. */
+async function _ssFetchSheetTitles(show) {
+  const single = [{
+    name:        show.title,
+    year:        show.year,
+    providers:   show.providers,
+    curatorPlat: show.curatorPlat
+  }];
+  if (!window.ssDB || !_ssIsUuid(show.id)) return single;
+  try {
+    const res = await window.ssDB.from('content_titles')
+      .select('sort_no, titles:title_id ( id, name, year, providers )')
+      .eq('content_id', show.id)
+      .order('sort_no');
+    if (res.error || !res.data || !res.data.length) return single;
+    return res.data.map(function (row) {
+      const t = row.titles || {};
+      return {
+        name:        t.name || show.title,
+        year:        t.year || show.year,
+        providers:   t.providers || {},
+        curatorPlat: show.curatorPlat   // per-title curator fallback (Req 1.4/2.5/6.1)
+      };
+    });
+  } catch (e) {
+    return single;   // any failure → graceful single-title fallback
   }
+}
 
-  // Open the overlay immediately (runs synchronously before the first await)
-  // so the sheet appears at once; options resolve via the cached lookups below.
-  document.getElementById('watch-sheet-overlay')?.classList.add('open');
-  document.getElementById('watch-sheet')?.classList.add('open');
-
-  // Resolve region + subscriptions (cached), run the resolver, then render
-  // either the option list or the neutral fallback message (R6.2).
-  const opts = document.getElementById('sheet-options');
-  if (!opts) return;
-  const region = await ssGetRegion();
-  const subs   = await ssGetSubscribedPlatformIds();
-  const res    = ssResolveWatchOptions(show, region, subs);
-
-  if (res.message) {
-    opts.innerHTML = '<div class="sheet-empty">' + res.message + '</div>';
-  } else {
-    opts.innerHTML = res.options.map(p => `
-      <div class="sheet-option" onclick="ssHandleWatchNow('${p.name}', '${show.title}')">
-        <div class="sheet-plat-logo" style="background:${p.color}">${p.label}</div>
+/* Render one option row's markup. Title/platform free-text is HTML-escaped;
+   the platform + owning-title names ride on data-* attributes so the click
+   handler reads decoded values (no free-text interpolated into inline JS). */
+function _ssRenderSheetOption(p, titleName) {
+  return `
+      <div class="sheet-option" data-plat="${_ssEscapeHtml(p.name)}" data-title="${_ssEscapeHtml(titleName)}">
+        <div class="sheet-plat-logo" style="background:${_ssEscapeHtml(p.color)}">${_ssEscapeHtml(p.label)}</div>
         <div class="sheet-option-info">
-          <div class="sheet-option-name">${p.name}</div>
-          <div class="sheet-option-sub">${p.sub}</div>
+          <div class="sheet-option-name">${_ssEscapeHtml(p.name)}</div>
+          <div class="sheet-option-sub">${_ssEscapeHtml(p.sub)}</div>
           ${p.included ? '<span class="sheet-included">✓ In your plan</span>' : ''}
         </div>
         <span class="sheet-option-arrow">›</span>
+      </div>`;
+}
+
+async function ssOpenSheet(show) {
+  if (!show) return;
+
+  // Open the overlay immediately (runs synchronously before the first await)
+  // so the sheet appears at once; the header + options fill in after the
+  // cached lookups + lazy title fetch below resolve.
+  document.getElementById('watch-sheet-overlay')?.classList.add('open');
+  document.getElementById('watch-sheet')?.classList.add('open');
+
+  const header = document.getElementById('sheet-header');
+  const opts   = document.getElementById('sheet-options');
+  if (!opts) return;
+
+  // Resolve region + subscriptions (cached), build the per-title input list
+  // (lazy fetch of the clip's linked titles, single-title fallback otherwise),
+  // then resolve EACH title independently via the shared resolver (Req 2.4).
+  const region   = await ssGetRegion();
+  const subs     = await ssGetSubscribedPlatformIds();
+  const titles   = await _ssFetchSheetTitles(show);
+  const sections = window.ssResolveWatchOptionsForTitles(titles, region, subs);
+  const multi    = sections.length > 1;
+
+  // ── Header ── This is the Watch It reveal moment, so showing titles here is
+  // correct (the clip BODY stays title-hidden — Req 6.1). Single-title: reveal
+  // that title. Multi-title: neutral header + a count, each section carries its
+  // own title name. Degrade gracefully when title data is missing.
+  if (header) {
+    if (multi) {
+      header.innerHTML = `
+      <div class="sheet-thumb" style="background:${_ssEscapeHtml(show.bg)}">
+        <span>▶</span>
       </div>
-    `).join('');
+      <div class="sheet-info">
+        <div class="sheet-show-title">Where to watch</div>
+        <div class="sheet-meta">${sections.length} titles</div>
+      </div>
+    `;
+    } else {
+      const t0      = (sections[0] && sections[0].title) || {};
+      const title   = t0.name || show.title || 'Ready to watch';
+      const metaTop = [t0.year || show.year, show.season].filter(Boolean).join(' · ');
+      const genres  = (show.genre || []).join(' · ');
+      const meta    = [metaTop, genres].filter(Boolean).join('<br>') || 'Choose where to watch it';
+      header.innerHTML = `
+      <div class="sheet-thumb" style="background:${_ssEscapeHtml(show.bg)}">
+        <span>${_ssEscapeHtml(title)}</span>
+      </div>
+      <div class="sheet-info">
+        <div class="sheet-show-title">${_ssEscapeHtml(title)}</div>
+        <div class="sheet-meta">${meta}</div>
+      </div>
+    `;
+    }
   }
+
+  // ── Options ── one labelled section per linked title. A multi-title clip
+  // shows each title's name above its own region-aware options (or its neutral
+  // message when none resolve). A single-title clip renders just its options,
+  // with no redundant per-title heading (the header already names it).
+  opts.innerHTML = sections.map(function (sec) {
+    const titleName = (sec.title && sec.title.name) || show.title || 'Title';
+    const heading   = multi
+      ? '<div class="sheet-title-section"><span class="sheet-title-label">' + _ssEscapeHtml(titleName) + '</span></div>'
+      : '';
+    const body = sec.message
+      ? '<div class="sheet-empty">' + _ssEscapeHtml(sec.message) + '</div>'
+      : sec.options.map(function (p) { return _ssRenderSheetOption(p, titleName); }).join('');
+    return heading + body;
+  }).join('');
+
+  // Wire click handlers from the data-* attributes (decoded, injection-safe),
+  // routing each option to ssHandleWatchNow with its OWN title's name.
+  opts.querySelectorAll('.sheet-option').forEach(function (el) {
+    el.addEventListener('click', function () {
+      ssHandleWatchNow(el.getAttribute('data-plat'), el.getAttribute('data-title'));
+    });
+  });
 }
 
 function ssCloseSheet() {
@@ -821,7 +917,12 @@ function ssMapContentRowsToClips(rows){
     return row && row.status === "live" && (row.deleted_at == null);
   }).map(function(row){
     var meta=row.meta||{}, p=row.platform||{}, t=row.title||{}, cr=row.creator||{};
-    var mood=[]; try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){}
+    // Moods/vibes: v2 writes the canonical `meta.vibes` (string[]); legacy rows
+    // carry `meta.mood` (a JSON-stringified array). Read vibes first, else fall
+    // back to the legacy field so both old and uploaded clips surface moods.
+    var mood=[];
+    if (Array.isArray(meta.vibes)) { mood = meta.vibes.slice(); }
+    else { try{ mood=JSON.parse(meta.mood||"[]"); }catch(e){} }
     var uname=cr.username||"curator";
     return {
       id: row.id,
@@ -872,6 +973,702 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
+
+/* ═══════════════════════════════════════════════════════════════
+   CURATOR UPLOAD v2 — pure helpers (no DOM, no network, Node-testable).
+   These encode the input-driven logic the upload flow relies on and are
+   exported under the consolidated module.exports block below so tests/ can
+   require them under the DOM stub. See .kiro/specs/curator-upload-v2.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Pitch length rules — Req 5.1, 5.2, 5.3 (Open Decision resolved: 280 chars).
+
+   SS_PITCH_MAX is the hard maximum (characters). There is NO minimum beyond a
+   non-empty pitch: a Pitch is publishable iff its length is between 1 and 280
+   inclusive. The sweet-spot range (SS_PITCH_SWEET_MIN..SS_PITCH_SWEET_MAX) is a
+   SOFT, advisory hint only — it NEVER affects `ok`, so a pitch outside the
+   sweet spot but within the maximum is still publishable.
+
+   Length decision (documented, locked): we validate and report the *trimmed*
+   character length. The UI shows a live counter and the DB stores the pitch in
+   content.description, so leading/trailing whitespace should not count toward
+   either the publishable check or the maximum. Consequences, kept consistent:
+     - empty OR whitespace-only pitch  → length 0   → ok=false, overMax=false
+     - exactly 280 (trimmed)           → length 280 → ok=true,  overMax=false
+     - 281+ (trimmed)                  → length 281 → ok=false, overMax=true
+
+   Pure + defensive: never touches the DOM/network and never throws on odd
+   input (null, undefined, numbers) — the argument is coerced via String(...). */
+var SS_PITCH_MAX = 280;          // hard maximum, characters (Req 5.3)
+var SS_PITCH_SWEET_MIN = 80;     // soft hint lower bound (advisory only, Req 5.2)
+var SS_PITCH_SWEET_MAX = 180;    // soft hint upper bound (advisory only, Req 5.2)
+
+function ssValidatePitch(text){
+  var raw = String(text == null ? '' : text);
+  var length = raw.trim().length;                 // trimmed length drives every decision
+  var overMax = length > SS_PITCH_MAX;            // Req 5.3
+  var ok = length > 0 && length <= SS_PITCH_MAX;  // Req 5.1 (no minimum beyond > 0)
+  // Soft hint — advisory only, must never influence `ok` (Req 5.2).
+  var inSweetSpot = length >= SS_PITCH_SWEET_MIN && length <= SS_PITCH_SWEET_MAX;
+  return { ok: ok, length: length, overMax: overMax, inSweetSpot: inSweetSpot };
+}
+if (typeof window !== 'undefined') {
+  window.ssValidatePitch = ssValidatePitch;
+  window.SS_PITCH_MAX = SS_PITCH_MAX;
+  window.SS_PITCH_SWEET_MIN = SS_PITCH_SWEET_MIN;
+  window.SS_PITCH_SWEET_MAX = SS_PITCH_SWEET_MAX;
+}
+
+/* Clip Trim rules — Req 7.2, 7.3, 7.4, 7.6.
+
+   SS_DURATION_CAP is the single shared 90-second Duration_Cap used by BOTH the
+   trim validation here AND the media-file validation (Task 5.1 reuses this same
+   constant) so the limit is defined in exactly one place. Mirrors the cap the
+   webhook re-applies server-side.
+
+   These three helpers are pure (no DOM, no network) and DEFENSIVE — they never
+   throw on any input (null, undefined, strings, NaN, Infinity); odd inputs are
+   coerced via Number(...) and non-finite values are rejected, never crash.
+
+   ── ssValidateTrim reason codes (locked, documented) ──
+     ''                 → ok === true   (no reason needed)
+     'non_finite'       → In_Point or Out_Point is not a finite number
+     'out_not_after_in' → Out_Point <= In_Point  (Req 7.2; covers a zero-length
+                          or backwards selection — the "empty" case)
+     'over_cap'         → finite, out > in, but (out - in) > SS_DURATION_CAP (Req 7.4)
+
+   ── ok-gate (locked, matches design Property 2 exactly) ──
+     ok === isFinite(in) && isFinite(out) && (out > in) && ((out - in) <= 90)
+   srcDur is accepted for signature/audit completeness, but it deliberately does
+   NOT tighten `ok`: Property 2 states ok IFF (out > in AND out - in <= 90), so
+   adding srcDur bounds (e.g. in >= 0, out <= srcDur) could flip ok to false
+   where Property 2 expects true and would violate the property. We therefore
+   keep the gate to the four primary conditions only. */
+var SS_DURATION_CAP = 90;        // Duration_Cap in seconds (Req 4 / Req 7.4), shared
+
+/* outSec - inSec, clamped to >= 0 and finite-safe (never NaN, never negative).
+   Rule: coerce both inputs to Number; if either is non-finite return 0;
+   otherwise return Math.max(0, outSec - inSec). */
+function ssTrimDuration(inSec, outSec){
+  var a = Number(inSec);
+  var b = Number(outSec);
+  if (!isFinite(a) || !isFinite(b)) return 0;
+  var d = b - a;
+  return d > 0 ? d : 0;          // Math.max(0, d), avoiding -0
+}
+
+/* Validate a trim selection. Returns { ok, reason, durationSec }.
+   Never throws; durationSec is always a finite number >= 0 (from ssTrimDuration). */
+function ssValidateTrim(inSec, outSec, srcDur){
+  var a = Number(inSec);
+  var b = Number(outSec);
+  var durationSec = ssTrimDuration(inSec, outSec);  // finite, >= 0
+
+  if (!isFinite(a) || !isFinite(b)) {
+    return { ok: false, reason: 'non_finite', durationSec: durationSec };
+  }
+  if (!(b > a)) {                                   // Req 7.2 (also catches zero-length)
+    return { ok: false, reason: 'out_not_after_in', durationSec: durationSec };
+  }
+  if ((b - a) > SS_DURATION_CAP) {                  // Req 7.4
+    return { ok: false, reason: 'over_cap', durationSec: durationSec };
+  }
+  return { ok: true, reason: '', durationSec: durationSec };
+}
+
+/* True IFF the selection equals the whole source: In_Point === 0 and
+   Out_Point === srcDur (Req 7.6). Finite-safe: if srcDur is non-finite, return
+   false. Exact compare (no epsilon) per design Property 3. */
+function ssIsFullSourceTrim(inSec, outSec, srcDur){
+  var a = Number(inSec);
+  var b = Number(outSec);
+  var s = Number(srcDur);
+  if (!isFinite(s)) return false;
+  return a === 0 && b === s;
+}
+if (typeof window !== 'undefined') {
+  window.ssTrimDuration = ssTrimDuration;
+  window.ssValidateTrim = ssValidateTrim;
+  window.ssIsFullSourceTrim = ssIsFullSourceTrim;
+  window.SS_DURATION_CAP = SS_DURATION_CAP;
+}
+
+/* Media-file validation — Req 4.1, 4.2, 4.3, 4.7 (design Property 4).
+
+   Gates a source file on BOTH the duration cap and the file-size cap *before*
+   the UI mints a Mux direct-upload (`ok` is that precondition); the webhook
+   re-applies the same duration bound server-side as a backstop.
+
+   SS_FILE_SIZE_CAP is the File_Size_Cap (~300 MB). The design says
+   "approximately 300 MB"; we lock the exact byte value to the binary MiB
+   reading 300 * 1024 * 1024 = 314,572,800 bytes (no prior size cap existed in
+   this file, so this is the canonical definition). SS_DURATION_CAP (90 s) is
+   REUSED from the trim section above — the 90 is defined in exactly one place.
+
+   ── ssValidateMediaFile reason codes (locked, documented) ──
+     ''              → ok === true   (no reason needed)
+     'invalid'       → sizeBytes or durationSec is non-finite (NaN/Infinity) or
+                       negative — neither cap can be meaningfully evaluated
+     'over_duration' → finite, non-negative, but durationSec > SS_DURATION_CAP
+     'over_size'     → finite, non-negative, within duration, but
+                       sizeBytes > SS_FILE_SIZE_CAP
+
+   ── ok-gate (matches design Property 4 for valid finite, non-negative input) ──
+     ok === (durationSec <= 90) && (sizeBytes <= SS_FILE_SIZE_CAP)
+
+   ── Precedence when BOTH caps are exceeded ──
+     Duration is checked FIRST, so a both-over file reports 'over_duration'.
+     Duration is the harder, server-re-checked limit (the webhook deletes
+     over-duration assets), so surfacing it first guides the curator to the
+     blocking issue. Deterministic and documented.
+
+   ── Non-finite / negative handling ──
+     Inputs are coerced via Number(...). Any non-finite (NaN, ±Infinity) or
+     negative duration or size makes ok=false with reason 'invalid'. Pure +
+     defensive: no DOM, no network, never throws. */
+var SS_FILE_SIZE_CAP = 300 * 1024 * 1024;  // File_Size_Cap = 314,572,800 bytes (~300 MiB), Req 4.3
+
+function ssValidateMediaFile(sizeBytes, durationSec){
+  var size = Number(sizeBytes);
+  var dur = Number(durationSec);
+
+  // Reject non-finite or negative inputs up front (Req 4.7 — fail closed).
+  if (!isFinite(size) || !isFinite(dur) || size < 0 || dur < 0) {
+    return { ok: false, reason: 'invalid' };
+  }
+  if (dur > SS_DURATION_CAP) {                 // Req 4.1 — duration precedence
+    return { ok: false, reason: 'over_duration' };
+  }
+  if (size > SS_FILE_SIZE_CAP) {               // Req 4.3
+    return { ok: false, reason: 'over_size' };
+  }
+  return { ok: true, reason: '' };
+}
+if (typeof window !== 'undefined') {
+  window.ssValidateMediaFile = ssValidateMediaFile;
+  window.SS_FILE_SIZE_CAP = SS_FILE_SIZE_CAP;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GENRE UNION — ssGenreUnion (Req 3.1, 3.2, 3.3; design Property 5)
+   ═══════════════════════════════════════════════════════════════
+   Client-side helper that flattens an array of per-title genre-name lists
+   into the de-duplicated, FIRST-SEEN-ORDER-STABLE union the upload flow
+   shows/transports. Example:
+     ssGenreUnion([["Drama","Crime"], ["Crime","Thriller"], []])
+       → ["Drama","Crime","Thriller"]
+
+   ── De-dup semantics (DECIDED + LOCKED so the property test 6.2 mirrors it) ──
+   • TRIM: each name is trimmed of leading/trailing whitespace before use.
+   • DROP: empty/blank names (trim → '') are dropped and contribute nothing.
+   • NON-STRING COERCION: non-string entries are SKIPPED, never String()-coerced.
+       - null / undefined           → ignored
+       - numbers/booleans/objects   → skipped (NOT coerced to text)
+     This keeps the output predictable: only real string names survive.
+   • DE-DUP KEY: the TRIMMED string, compared CASE-SENSITIVELY. The first-seen
+     casing is preserved; later differently-cased variants ("drama" after
+     "Drama") are treated as distinct and kept.
+       Rationale: this is a display/transport list. The DB function
+       sync_content_genres (0017) is the authority on case-INSENSITIVE
+       resolution + create-if-missing; the client must NOT silently merge
+       "Drama"/"drama" in a way that diverges from what gets sent, so we
+       de-dup by exact trimmed text and let the DB normalise casing. Documented
+       here and asserted by Property 5.
+
+   ── Empty-safe + pure ──
+     Outer arg null/undefined/not-an-array → []. Inner lists that are
+     empty/null/undefined/non-array contribute nothing. Never throws, no DOM,
+     no network.
+
+   ── Idempotent ──
+     For an already-unioned array u (distinct trimmed strings, no blanks),
+     ssGenreUnion([u]) deep-equals u (same order, same values). */
+function ssGenreUnion(titlesGenreLists){
+  var out = [];
+  var seen = Object.create(null);              // trimmed-name → true (case-sensitive key)
+  if (!Array.isArray(titlesGenreLists)) return out;   // null/undefined/non-array → []
+  for (var i = 0; i < titlesGenreLists.length; i++) {
+    var list = titlesGenreLists[i];
+    if (!Array.isArray(list)) continue;          // empty/null/undefined/non-array inner → skip
+    for (var j = 0; j < list.length; j++) {
+      var name = list[j];
+      if (typeof name !== 'string') continue;    // skip non-strings (no coercion)
+      var trimmed = name.trim();
+      if (trimmed === '') continue;              // drop blank/whitespace-only
+      if (seen[trimmed]) continue;               // de-dup by exact trimmed text
+      seen[trimmed] = true;
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
+if (typeof window !== 'undefined') {
+  window.ssGenreUnion = ssGenreUnion;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TITLE LINKING + PUBLISH GATING — ssBuildTitleLinks, ssCanPublish
+   (Req 1.2, 1.5, 2.2, 2.3; design Property 7)
+   ───────────────────────────────────────────────────────────────
+   A clip can recommend SEVERAL titles. The curator's chosen order IS the
+   array order. These pure helpers turn that selection into the ordered
+   `content_titles` link descriptors and decide whether a draft may publish.
+
+   ── ssBuildTitleLinks(selectedTitles) ──
+   Input : an array of selected-title entries, in the curator's order.
+   Output: an array of link descriptors, ONE per DISTINCT title, shaped
+             { title_id, sort_no }
+           with sort_no = 0..m-1 following first-seen input order. The FIRST
+           distinct title gets sort_no 0 — the PRIMARY (it mirrors
+           content.title_id; see migration 0014, content_titles.sort_no = 0).
+
+   ── Accepted entry shapes (documented, in precedence order) ──
+     1. An OBJECT with a string `id`            → uses entry.id
+     2. An OBJECT with a string `title_id`      → fallback when `id` absent
+     3. A BARE string/uuid                      → the entry IS the id
+   Anything else (null/undefined/empty-string id, numbers, objects with no
+   usable id) is SKIPPED. Ids are uuids: kept AS-IS as strings, never Number()'d
+   or otherwise coerced. A whitespace-only / empty id is treated as unusable.
+
+   Note on content_id: 0014's content_titles row is (content_id, title_id,
+   sort_no). The clip id isn't known when building links (the row is inserted
+   at publish time), so this helper emits only { title_id, sort_no }; the
+   publish step (task 14.7) attaches content_id.
+
+   ── DE-DUP ──
+     If the same id appears more than once, only the FIRST occurrence is kept
+     (with its sort_no); later duplicates are dropped. sort_no stays a
+     contiguous 0..m-1 with NO gaps after de-duping.
+
+   ── Defensive ──
+     null / undefined / non-array input → []. Pure, never throws. */
+function ssBuildTitleLinks(selectedTitles){
+  var out = [];
+  if (!Array.isArray(selectedTitles)) return out;   // null/undefined/non-array → []
+  var seen = Object.create(null);                   // title_id → true (de-dup, first wins)
+  for (var i = 0; i < selectedTitles.length; i++) {
+    var entry = selectedTitles[i];
+    var id = null;
+    if (typeof entry === 'string') {
+      id = entry;                                   // bare string/uuid entry
+    } else if (entry && typeof entry === 'object') {
+      if (typeof entry.id === 'string') id = entry.id;             // primary shape
+      else if (typeof entry.title_id === 'string') id = entry.title_id; // fallback shape
+    }
+    if (typeof id !== 'string') continue;           // no usable id → skip
+    id = id.trim();
+    if (id === '') continue;                        // empty/whitespace-only id → skip
+    if (seen[id]) continue;                         // drop later duplicate, keep first
+    seen[id] = true;
+    out.push({ title_id: id, sort_no: out.length }); // contiguous 0..m-1, no gaps
+  }
+  return out;
+}
+if (typeof window !== 'undefined') {
+  window.ssBuildTitleLinks = ssBuildTitleLinks;
+}
+
+/* ── ssCanPublish(draft) ──
+   Returns true IFF the draft has at least one linked title — the gate the
+   Review & Publish step checks (task 14.7) before minting an upload.
+
+   A "draft" here is minimally an object that may carry:
+     • selectedTitles : array of selected-title entries (see ssBuildTitleLinks)
+     • title_id       : a primary title id (the sort_no 0 title)
+
+   ── Exact rule (locked) ──
+     ssCanPublish(draft) === true  iff
+         ssBuildTitleLinks(draft.selectedTitles).length >= 1
+       OR draft.title_id is a non-empty (trimmed) string id.
+   This stays consistent with publish: the row's title_id is the sort_no 0
+   title — which is exactly ssBuildTitleLinks(selectedTitles)[0].title_id when
+   titles are selected, or draft.title_id when already set. When ssCanPublish
+   is true the publish row's title_id is therefore guaranteed non-null.
+
+   Defensive: null/undefined/odd input → false. Pure, never throws. */
+function ssCanPublish(draft){
+  if (!draft || typeof draft !== 'object') return false;
+  if (ssBuildTitleLinks(draft.selectedTitles).length >= 1) return true;
+  if (typeof draft.title_id === 'string' && draft.title_id.trim() !== '') return true;
+  return false;
+}
+if (typeof window !== 'undefined') {
+  window.ssCanPublish = ssCanPublish;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COVER THUMBNAIL — ssCoverThumbUrl, ssParseCoverTime
+   (Req 8.2, 8.3; design Property 8)
+   ───────────────────────────────────────────────────────────────
+   The cover is a timestamp into the published clip, rendered as a Mux
+   on-demand thumbnail. These two pure helpers build that URL and parse the
+   cover time back out, and are exact round-trip inverses.
+
+   ── URL SHAPE (locked) ──
+     Absolute https URL so it is a complete, valid src:
+       with a time : https://image.mux.com/<playbackId>/thumbnail.jpg?time=<t>
+       no time     : https://image.mux.com/<playbackId>/thumbnail.jpg
+     (The design text writes image.mux.com/<pid>/thumbnail.jpg?time=N; we
+     prefix https:// so the value is a usable absolute URL. The Property-8
+     round-trip only depends on the ?time=<t> query + parser, which holds
+     regardless of the scheme.)
+
+   ── ssCoverThumbUrl(playbackId, timeSec) ──
+   • timeSec is a valid, USABLE cover time when it coerces to a finite,
+     non-negative Number — INCLUDING 0. Zero is a real cover time (the first
+     frame, the picker's default), so an explicitly-passed 0 yields ?time=0.
+   • timeSec NOT supplied (undefined/null) OR not usable (non-finite, e.g.
+     NaN/Infinity, or negative) → return the DEFAULT cover URL with NO `time`
+     query parameter (design Property 8: "when no cover time is supplied the
+     default cover URL carries no time parameter"). This is the crux of the
+     0-vs-undefined distinction: 0 ⇒ ?time=0, undefined ⇒ no param.
+   • Number formatting: render with String(Number(t)) so 5 → "5" and
+     5.5 → "5.5"; ssParseCoverTime parses back with Number(), giving an exact
+     round-trip for any finite non-negative t.
+   • playbackId is used as-is (uuid-like string), coerced to a string;
+     missing/empty playbackId still returns a sensible string (the id segment
+     is just empty), never throws. The common case is a valid playback id.
+   Pure: no DOM, no network, never throws. */
+function ssCoverThumbUrl(playbackId, timeSec){
+  var pid = (playbackId === undefined || playbackId === null) ? '' : String(playbackId);
+  var base = 'https://image.mux.com/' + pid + '/thumbnail.jpg';
+  // "no time supplied" = undefined/null OR not a usable non-negative finite number.
+  if (timeSec === undefined || timeSec === null) return base;
+  var t = Number(timeSec);
+  if (!isFinite(t) || t < 0) return base;       // NaN, Infinity, negative → default (no param)
+  return base + '?time=' + String(t);            // includes 0 → ?time=0
+}
+if (typeof window !== 'undefined') {
+  window.ssCoverThumbUrl = ssCoverThumbUrl;
+}
+
+/* ── ssParseCoverTime(thumbUrl) ──
+   Inverse of ssCoverThumbUrl: extract the `time` query value and return it as
+   a Number, or null when there is no usable time.
+
+   ── Locked rule ──
+     ssParseCoverTime(ssCoverThumbUrl(pid, t)) === t for any valid non-negative
+       finite t (including 0);
+     ssParseCoverTime(ssCoverThumbUrl(pid)) === null (default URL → no param).
+   • Returns null (the chosen "no time" sentinel) when: input is not a string,
+     there is no `time` param, or the captured value is not a finite Number.
+   • Parsing is DOM-free and dependency-free: a small regex captures the value
+     after ?time= or &time=, then Number() coerces it.
+   Pure: never throws. */
+function ssParseCoverTime(thumbUrl){
+  if (typeof thumbUrl !== 'string') return null;
+  var m = /[?&]time=([^&#]+)/.exec(thumbUrl);
+  if (!m) return null;                            // no time param (default URL) → null
+  var t = Number(m[1]);
+  if (!isFinite(t)) return null;                  // unusable value → null
+  return t;
+}
+if (typeof window !== 'undefined') {
+  window.ssParseCoverTime = ssParseCoverTime;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MULTI-TITLE WATCH IT — ssResolveWatchOptionsForTitles
+   (Req 1.4, 2.4, 2.5, 6.2; design Property 6)
+   ───────────────────────────────────────────────────────────────
+   A v2 clip can recommend SEVERAL titles, and the Watch It sheet renders one
+   section PER title. This is the multi-title extension of the single-title
+   resolver ssResolveWatchOptions(clip, region, subscribedPlatformIds) defined
+   earlier in this file — it does NOT reimplement any resolution logic, it just
+   maps over the titles and delegates EACH one to that existing resolver, so
+   every per-title behaviour (region-cached providers, the curator-platform
+   fallback when a title has no providers for the region, the neutral
+   "not available" message) is identical to the single-title path.
+
+   ── Signature ──
+     ssResolveWatchOptionsForTitles(titles, region, subs)
+   • titles : array of title-like objects, each shaped like what
+              ssResolveWatchOptions expects (carries `providers`, a
+              region-keyed object, and optionally `curatorPlat`).
+   • region : region string; forwarded UNCHANGED to each resolver call.
+              (ssResolveWatchOptions itself defaults a falsy region to 'IN'.)
+   • subs   : Set of subscribed platform_ids; forwarded UNCHANGED.
+              (ssResolveWatchOptions itself defaults a falsy subs to new Set().)
+   region/subs are passed THROUGH as-is — this helper never defaults or alters
+   them; whatever defaulting happens is done by ssResolveWatchOptions alone.
+
+   ── Per-entry output shape (LOCKED so property test 9.2 mirrors it) ──
+   Returns an ARRAY with exactly ONE element per input title, IN ORDER. Entry i
+   corresponds to titles[i] and equals:
+     { title: titles[i], options, fallback, message }
+   where { options, fallback, message } are the EXACT fields returned by
+   ssResolveWatchOptions(titles[i], region, subs). So:
+     • result.length === titles.length                       (one per title, order preserved)
+     • result[i].title === titles[i]                          (the original object, by reference)
+     • the rest of result[i] (options/fallback/message) deep-equals
+       ssResolveWatchOptions(titles[i], region, subs)
+   The `title` field lets the sheet render a labelled section per title.
+
+   ── null/undefined-entry decision (DECIDED + LOCKED): KEEP, do not skip ──
+   To guarantee "exactly one entry per title in order", we map the array AS-IS:
+   the output length always equals the input length. A null/undefined title is
+   kept and still passed to ssResolveWatchOptions — verified safe because that
+   resolver guards every access (`clip && clip.providers...`, `clip && clip.curatorPlat`)
+   and so returns its neutral branch { options: [], fallback: true, message:
+   'Not available to stream in your region' } for a null clip rather than
+   throwing. The kept entry is therefore { title: null, options: [], fallback:
+   true, message: 'Not available...' }.
+
+   ── Empty/defensive ──
+     titles null/undefined/non-array → []. Pure: no DOM, no network, never throws. */
+function ssResolveWatchOptionsForTitles(titles, region, subs){
+  if (!Array.isArray(titles)) return [];          // null/undefined/non-array → []
+  return titles.map(function (title) {
+    var res = ssResolveWatchOptions(title, region, subs);  // delegate; reuse EXACTLY
+    return {
+      title:    title,
+      options:  res.options,
+      fallback: res.fallback,
+      message:  res.message
+    };
+  });
+}
+if (typeof window !== 'undefined') {
+  window.ssResolveWatchOptionsForTitles = ssResolveWatchOptionsForTitles;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAFTS — ssDraftToRow, ssDraftToLinks, ssRowToDraft
+   (Req 5.4, 9.1, 9.4; design Property 9 — "Draft state round-trips")
+   ───────────────────────────────────────────────────────────────
+   A draft is a `content` row with status='draft' (no new column — design
+   "Draft model"). These three PURE helpers serialise a draft's in-progress
+   state to a `content` row patch (+ content_titles link rows) and reconstruct
+   it, so a draft can be saved and resumed. Together they satisfy the
+   ROUND-TRIP contract (design Property 9):
+
+       ssRowToDraft(ssDraftToRow(d), ssDraftToLinks(d))  deep-equals  d
+
+   ── CANONICAL DRAFT SHAPE (locked, so the 10.2 property test mirrors it) ──
+     draft = {
+       selectedTitles: [ {id:<string>}, ... ],   // ordered, distinct, non-empty ids
+       pitch:    <string>,                        // the curator's pitch text
+       vibes:    <string[]>,                      // selected mood names
+       coverTime:<number|null>,                   // seconds into clip; null = none
+       trim:     { in:<number>, out:<number>, src:<number> } | null,
+     }
+   selectedTitles entries are the NORMALISED {id} form — the same input
+   ssBuildTitleLinks accepts. On the way BACK, ssRowToDraft reconstructs
+   selectedTitles FROM THE LINKS as `links.sortBy(sort_no).map(l => ({id:
+   l.title_id}))`. So a draft whose selectedTitles are already [{id:'a'},
+   {id:'b'}] (distinct ids, in order) round-trips EXACTLY. (A draft using
+   richer title objects or bare-string ids still serialises fine, but its
+   selectedTitles come back normalised to [{id}], which is the documented and
+   intended canonical form for the round-trip.)
+
+   ── DB COLUMN MAPPING (design "Draft model") ──
+     pitch          → content.description
+     primary title  → content.title_id   (the sort_no 0 link, or null)
+     linked titles  → content_titles rows {title_id, sort_no}
+     vibes/moods    → content.meta.vibes
+     cover time     → content.meta.cover_time
+     trim points    → content.meta.trim = { in, out, src }
+   (Video/Mux fields are intentionally NOT handled here: a draft may have no
+   asset yet, and the mux_* columns are written by the publish/webhook path,
+   not by draft (de)serialisation.)
+
+   ── EXACT meta SHAPE produced by ssDraftToRow (locked) ──
+   `meta` ALWAYS carries exactly these three keys so the round-trip is
+   well-defined regardless of which fields the draft set:
+       meta: { vibes: <string[]>, cover_time: <number|null>, trim: <{in,out,src}|null> }
+   Defaults: vibes → [], cover_time → null, trim → null.
+
+   ── ROUND-TRIP CONTRACT (locked) ──
+   For a draft d whose selectedTitles is a list of {id:<string>} with distinct,
+   non-empty ids in order, pitch a string, vibes a string[], coverTime a
+   number|null, and trim a {in,out,src}|null, then
+       ssRowToDraft(ssDraftToRow(d), ssDraftToLinks(d))  deep-equals  d.
+   The 10.2 property test generates drafts in exactly this normalised shape.
+
+   All three helpers are PURE: no DOM, no network, never throw; missing /
+   malformed input degrades to a sensible empty draft / empty row / empty
+   links. */
+
+/* Normalise a trim value to the locked { in, out, src } shape, or null. */
+function _ssNormTrim(t){
+  if (!t || typeof t !== 'object') return null;
+  return { in: t.in, out: t.out, src: t.src };
+}
+/* Normalise a cover time to a finite number, or null (0 is a valid time). */
+function _ssNormCoverTime(v){
+  if (v === undefined || v === null) return null;
+  var n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
+/* ── ssDraftToRow(draft) → `content` row patch ──
+   { description, title_id, status:'draft', meta:{ vibes, cover_time, trim } }
+   • description = draft.pitch coerced to a string ('' when absent/non-string).
+   • title_id    = ssBuildTitleLinks(draft.selectedTitles)[0]?.title_id ?? null
+                   (the primary, sort_no 0 link; null when no titles selected).
+   • meta carries the locked three keys with their defaults (see header).
+   Pure, never throws; a missing/odd draft yields the sensible empty row. */
+function ssDraftToRow(draft){
+  var d = (draft && typeof draft === 'object') ? draft : {};
+  var links = ssBuildTitleLinks(d.selectedTitles);
+  return {
+    description: (typeof d.pitch === 'string') ? d.pitch : '',
+    title_id: links.length ? links[0].title_id : null,
+    status: 'draft',
+    meta: {
+      vibes: Array.isArray(d.vibes) ? d.vibes.slice() : [],
+      cover_time: _ssNormCoverTime(d.coverTime),
+      trim: _ssNormTrim(d.trim)
+    }
+  };
+}
+if (typeof window !== 'undefined') {
+  window.ssDraftToRow = ssDraftToRow;
+}
+
+/* ── ssDraftToLinks(draft) → content_titles rows ──
+   Reuses ssBuildTitleLinks: one { title_id, sort_no } per distinct selected
+   title, sort_no 0..n-1 in curator order. Pure, never throws (delegates the
+   null/non-array → [] handling to ssBuildTitleLinks). */
+function ssDraftToLinks(draft){
+  return ssBuildTitleLinks(draft && draft.selectedTitles);
+}
+if (typeof window !== 'undefined') {
+  window.ssDraftToLinks = ssDraftToLinks;
+}
+
+/* ── ssRowToDraft(row, links) → reconstructed draft state ──
+   The inverse of ssDraftToRow + ssDraftToLinks:
+     { selectedTitles, pitch, vibes, coverTime, trim }
+   • selectedTitles = links sorted by sort_no ASCENDING, mapped to {id:
+     l.title_id} (restores curator order; normalised {id} form).
+   • pitch     = row.description || '' (string).
+   • vibes     = row.meta.vibes when an array, else [].
+   • coverTime = row.meta.cover_time normalised to a finite number, else null.
+   • trim      = row.meta.trim normalised to {in,out,src}, else null.
+   Pure, never throws; tolerates missing row / meta / links (→ empties). */
+function ssRowToDraft(row, links){
+  var r = (row && typeof row === 'object') ? row : {};
+  var meta = (r.meta && typeof r.meta === 'object') ? r.meta : {};
+  var ls = Array.isArray(links) ? links.slice() : [];
+  ls.sort(function (a, b) {
+    var an = (a && isFinite(Number(a.sort_no))) ? Number(a.sort_no) : 0;
+    var bn = (b && isFinite(Number(b.sort_no))) ? Number(b.sort_no) : 0;
+    return an - bn;                               // ascending by sort_no → restores order
+  });
+  return {
+    selectedTitles: ls.map(function (l) { return { id: l.title_id }; }),
+    pitch: (typeof r.description === 'string') ? r.description : '',
+    vibes: Array.isArray(meta.vibes) ? meta.vibes.slice() : [],
+    coverTime: _ssNormCoverTime(meta.cover_time),
+    trim: _ssNormTrim(meta.trim)
+  };
+}
+if (typeof window !== 'undefined') {
+  window.ssRowToDraft = ssRowToDraft;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EDIT-AFTER-POST — ssBuildEditPatch
+   (Req 10.2, 10.3, 10.5; design Property 10 — "Edit patch only ever
+   touches Mutable_Metadata")
+   ───────────────────────────────────────────────────────────────
+   Edit-after-post lets an owner change a published clip's METADATA only.
+   The video bytes / Mux asset are the Immutable_Asset and must NEVER be
+   written through the edit path (Req 10.3). This PURE helper turns an
+   `editInput` into a `content` UPDATE patch that is GUARANTEED to contain
+   ONLY mutable keys — it is built by an explicit ALLOWLIST (never by
+   spreading editInput), so an unknown or forbidden field carried on the
+   input can never leak into the patch.
+
+   ── ALLOWLIST (the ONLY keys the patch may ever own) ──
+     top-level : { description, title_id, meta, thumbnail_url }
+     meta       : { vibes, cover_time }            (when meta is present)
+   The patch NEVER contains mux_asset_id, mux_playback_id, url,
+   mux_upload_id, duration_sec, status, creator_id, deleted_at, or any
+   other field — including the immutable video-bytes/asset fields.
+
+   ── INPUT CONTRACT (editInput, all keys optional) ──
+     pitch          : string  — the new pitch (see description rule below)
+     selectedTitles : array   — selected-title entries; the primary is
+                                ssBuildTitleLinks(selectedTitles)[0].title_id
+     title_id       : string  — alternative DIRECT primary title id (used
+                                only when selectedTitles yields no primary)
+     vibes          : string[]— selected moods → meta.vibes
+     coverTime      : number  — seconds into the clip → meta.cover_time
+                                (0 is a valid, included value)
+     thumbnailUrl   : string  — explicit cover image URL (takes precedence)
+     coverUrl       : string  — alias for thumbnailUrl
+     muxPlaybackId  : string  — used ONLY to BUILD a thumbnail_url via
+                                ssCoverThumbUrl when a coverTime is given;
+                                it is NEVER written as a mux_* field.
+   Any other property on editInput (e.g. mux_asset_id, url) is IGNORED.
+
+   ── KEY RULES (locked, so the 10.4 property test mirrors them) ──
+   • description : included ONLY when editInput.pitch is a string AND
+     ssValidatePitch(pitch).ok is true (length 1..280). An over-max pitch
+     (>280, .ok=false) → description OMITTED, so an invalid pitch is never
+     written (Req 10.5 — "apply the same Pitch length rules"). The UI/
+     ssValidatePitch enforce the 280 cap; this builder simply omits the
+     key when the pitch is out of range.
+   • title_id    : the primary from ssBuildTitleLinks(selectedTitles)[0]
+     when selectedTitles yields a link; else editInput.title_id when it is
+     a non-empty (trimmed) string; else OMITTED.
+   • meta        : an object carrying ONLY the present sub-keys —
+       vibes      when editInput.vibes is an array,
+       cover_time when editInput.coverTime is a finite number (incl. 0).
+     When neither is present, meta is OMITTED entirely (no empty {}).
+   • thumbnail_url : PRECEDENCE — an explicit string thumbnailUrl (or
+     coverUrl) wins; otherwise, when muxPlaybackId is given AND coverTime
+     is a finite number, it is built via ssCoverThumbUrl(muxPlaybackId,
+     coverTime). Otherwise OMITTED. (muxPlaybackId alone, with no cover
+     time and no explicit url, never produces a thumbnail_url.)
+
+   Pure: no DOM, no network, never throws. null/undefined/odd editInput →
+   returns {} (or a patch with only the derivable allowed keys). */
+function ssBuildEditPatch(editInput){
+  var e = (editInput && typeof editInput === 'object') ? editInput : {};
+  var patch = {};                                 // ALLOWLIST: assign only mutable keys
+
+  // description — only a valid (1..280) pitch is ever written (Req 10.5).
+  if (typeof e.pitch === 'string' && ssValidatePitch(e.pitch).ok) {
+    patch.description = e.pitch;
+  }
+
+  // title_id — prefer the primary derived from selectedTitles, else the
+  // direct title_id when it is a non-empty string.
+  var links = ssBuildTitleLinks(e.selectedTitles);
+  if (links.length) {
+    patch.title_id = links[0].title_id;
+  } else if (typeof e.title_id === 'string' && e.title_id.trim() !== '') {
+    patch.title_id = e.title_id;
+  }
+
+  // meta — include ONLY the present sub-keys; omit meta entirely if empty.
+  var meta = {};
+  var hasMeta = false;
+  if (Array.isArray(e.vibes)) { meta.vibes = e.vibes.slice(); hasMeta = true; }
+  var coverTimeNum = Number(e.coverTime);
+  var hasCoverTime = (e.coverTime !== undefined && e.coverTime !== null && isFinite(coverTimeNum));
+  if (hasCoverTime) { meta.cover_time = coverTimeNum; hasMeta = true; }
+  if (hasMeta) { patch.meta = meta; }
+
+  // thumbnail_url — explicit url wins; else build from playback id + cover time.
+  var explicitUrl = (typeof e.thumbnailUrl === 'string') ? e.thumbnailUrl
+                  : (typeof e.coverUrl === 'string') ? e.coverUrl
+                  : null;
+  if (explicitUrl !== null) {
+    patch.thumbnail_url = explicitUrl;
+  } else if (e.muxPlaybackId !== undefined && e.muxPlaybackId !== null &&
+             String(e.muxPlaybackId) !== '' && hasCoverTime) {
+    patch.thumbnail_url = ssCoverThumbUrl(e.muxPlaybackId, coverTimeNum);
+  }
+
+  return patch;
+}
+if (typeof window !== 'undefined') {
+  window.ssBuildEditPatch = ssBuildEditPatch;
+}
 
 /* ── MY CLIPS (owner profile) ───────────────────────────────────
    Loads the SIGNED-IN user's OWN clips straight from the DB, scoped to
@@ -3947,6 +4744,28 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssCreateSurface = ssCreateSurface;
   module.exports.VideoSurface = VideoSurface;
   module.exports.GradientSurface = GradientSurface;
+  // Curator Upload v2 — pure helpers
+  module.exports.ssValidatePitch = ssValidatePitch;
+  module.exports.SS_PITCH_MAX = SS_PITCH_MAX;
+  module.exports.SS_PITCH_SWEET_MIN = SS_PITCH_SWEET_MIN;
+  module.exports.SS_PITCH_SWEET_MAX = SS_PITCH_SWEET_MAX;
+  module.exports.ssTrimDuration = ssTrimDuration;
+  module.exports.ssValidateTrim = ssValidateTrim;
+  module.exports.ssIsFullSourceTrim = ssIsFullSourceTrim;
+  module.exports.SS_DURATION_CAP = SS_DURATION_CAP;
+  module.exports.ssValidateMediaFile = ssValidateMediaFile;
+  module.exports.SS_FILE_SIZE_CAP = SS_FILE_SIZE_CAP;
+  module.exports.ssGenreUnion = ssGenreUnion;
+  module.exports.ssBuildTitleLinks = ssBuildTitleLinks;
+  module.exports.ssCanPublish = ssCanPublish;
+  module.exports.ssCoverThumbUrl = ssCoverThumbUrl;
+  module.exports.ssParseCoverTime = ssParseCoverTime;
+  module.exports.ssResolveWatchOptions = ssResolveWatchOptions;
+  module.exports.ssResolveWatchOptionsForTitles = ssResolveWatchOptionsForTitles;
+  module.exports.ssDraftToRow = ssDraftToRow;
+  module.exports.ssDraftToLinks = ssDraftToLinks;
+  module.exports.ssRowToDraft = ssRowToDraft;
+  module.exports.ssBuildEditPatch = ssBuildEditPatch;
 }
 
 /* ── Mute_Preference ─────────────────────────────

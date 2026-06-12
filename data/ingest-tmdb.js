@@ -309,6 +309,75 @@ function toCacheEntry(p) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+ * GENRES — fetch TMDB genre display NAMES for a title
+ * ───────────────────────────────────────────────────────────────
+ * Auto-genres (Curator Upload v2) needs titles to CARRY their genres.
+ * We store the TMDB genre display NAMES (not ids) on titles.meta.genres
+ * (an additive jsonb array; no new column). The DB function
+ * sync_content_genres reads exactly this key. (R3.1, R3.2)
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* Genre id->name maps keyed by media type, loaded once via
+ * loadGenreMaps(): { movie: { <id>: <name> }, tv: { <id>: <name> } }.
+ * Used only as a FALLBACK when a record exposes genre_ids without
+ * embedded {id,name} genre objects. */
+let genreMapByType = { movie: {}, tv: {} };
+
+async function loadGenreMaps() {
+  const params = new URLSearchParams({ api_key: process.env.TMDB_API_KEY });
+  const [movieRes, tvRes] = await Promise.all([
+    fetch(`${TMDB_BASE}/genre/movie/list?${params.toString()}`),
+    fetch(`${TMDB_BASE}/genre/tv/list?${params.toString()}`)
+  ]);
+  if (!movieRes.ok) throw new Error(`TMDB genre/movie/list HTTP ${movieRes.status}`);
+  if (!tvRes.ok) throw new Error(`TMDB genre/tv/list HTTP ${tvRes.status}`);
+  const movieJson = await movieRes.json();
+  const tvJson = await tvRes.json();
+  genreMapByType = { movie: {}, tv: {} };
+  (movieJson.genres || []).forEach((g) => { if (g && g.id != null) genreMapByType.movie[g.id] = g.name; });
+  (tvJson.genres || []).forEach((g) => { if (g && g.id != null) genreMapByType.tv[g.id] = g.name; });
+  return genreMapByType;
+}
+
+/* fetchTitleDetail(mediaType, tmdbId)
+ *   GET /{movie|tv}/{tmdbId} — the detail endpoint, which always
+ *   returns a `genres: [{ id, name }]` array (preferred source of
+ *   display names). Region/image agnostic, so India-safe to store. */
+async function fetchTitleDetail(mediaType, tmdbId) {
+  const params = new URLSearchParams({ api_key: process.env.TMDB_API_KEY });
+  const url = `${TMDB_BASE}/${mediaType}/${tmdbId}?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`TMDB ${mediaType} detail HTTP ${res.status}`);
+  return res.json();
+}
+
+/* genreNamesFromTmdb(detail, mediaType) — pure mapper to display NAMES.
+ *   - Prefer detail.genres[].name (the detail endpoint shape).
+ *   - Fall back to mapping detail.genre_ids (search-result shape) via
+ *     the loaded genre map for the media type.
+ *   - De-duplicated and first-seen-order-stable; empty/missing data
+ *     yields [] and never throws (R3.3 — never blocks). */
+function genreNamesFromTmdb(detail, mediaType) {
+  const out = [];
+  const seen = new Set();
+  const map = (genreMapByType && genreMapByType[mediaType]) || {};
+  const push = (name) => {
+    const n = String(name == null ? '' : name).trim();
+    if (n && !seen.has(n)) { seen.add(n); out.push(n); }
+  };
+  if (detail && Array.isArray(detail.genres) && detail.genres.length) {
+    detail.genres.forEach((g) => {
+      if (g && g.name) push(g.name);            // preferred: {id,name} object
+      else if (g && g.id != null) push(map[g.id]);  // id-only object -> map
+      else if (g != null && typeof g !== 'object') push(map[g]);  // bare id -> map
+    });
+  } else if (detail && Array.isArray(detail.genre_ids)) {
+    detail.genre_ids.forEach((id) => push(map[id]));  // search-result shape
+  }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
  * TASK 2.3 — main loop: link -> fetch -> map -> write, with
  *            per-title resilience, tally, and summary
  * ═══════════════════════════════════════════════════════════════ */
@@ -326,6 +395,7 @@ function printSummary(tally) {
 async function main() {
   const force = process.argv.includes('--force');
   await loadCatalog();                               // load platforms catalog once
+  await loadGenreMaps();                             // load TMDB genre id->name maps once (genre fallback)
   const titles = await selectTitles(force);
   console.log(`ingest-tmdb: ${titles.length} title(s) selected${force ? ' (--force)' : ''}.`);
 
@@ -354,16 +424,21 @@ async function main() {
         providers[region] = flatrate.map(toCacheEntry);    // R2.2 flatrate ONLY + R2.3 shape
       }
 
-      // 3. WRITE (R1.3 tmdb_id, R2.3 providers, R2.4 cached_at)
+      // 2b. GENRES — display NAMES from the detail endpoint (R3.1, R3.2)
+      //     Prefer detail.genres[].name; never blocks on missing data (R3.3).
+      const detail = await fetchTitleDetail(mediaType, tmdbId);
+      const genres = genreNamesFromTmdb(detail, mediaType);
+
+      // 3. WRITE (R1.3 tmdb_id, R2.3 providers, R2.4 cached_at, R3.1/3.2 meta.genres)
       const { error } = await db.from('titles').update({
         tmdb_id: tmdbId,
         providers,
         cached_at: new Date().toISOString(),
-        meta: { ...(t.meta || {}), media_type: mediaType }
+        meta: { ...(t.meta || {}), media_type: mediaType, genres }
       }).eq('id', t.id);
       if (error) throw new Error('update failed: ' + error.message);
       tally.updated++;
-      console.log(`✓ ${t.name} -> tmdb_id ${tmdbId} (${mediaType || '?'})`);
+      console.log(`✓ ${t.name} -> tmdb_id ${tmdbId} (${mediaType || '?'}) [${genres.length} genre(s)]`);
     } catch (err) {
       tally.failed++;                                  // R3.3 — record + keep going
       console.error(`✗ ${t.name}: ${err.message}`);
@@ -386,5 +461,6 @@ if (require.main === module) {
 module.exports = {
   selectTitles, searchTmdb, normalizeName, nameSimilarity,
   fetchWatchProviders, toCacheEntry, PROVIDER_TO_CATALOG, loadCatalog,
+  loadGenreMaps, fetchTitleDetail, genreNamesFromTmdb,
   main, REGIONS, TMDB_DELAY_MS
 };

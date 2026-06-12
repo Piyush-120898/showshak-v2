@@ -106,7 +106,13 @@ export async function createDirectUpload(
   const res = await muxFetch("/video/v1/uploads", {
     method: "POST",
     body: {
-      new_asset_settings: { playback_policy: ["public"] },
+      new_asset_settings: {
+        playback_policy: ["public"],
+        // "Basic" quality tier (Req 4.4): input/encoding is FREE on Mux's
+        // pay-as-you-go plan and storage/delivery are far cheaper — built for
+        // UGC short clips. Keeps per-clip cost near-zero at ShowShak's scale.
+        video_quality: "basic",
+      },
       cors_origin: corsOrigin,
     },
   });

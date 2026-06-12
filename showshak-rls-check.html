@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShowShak — RLS Check (anon key, signed-in curator)</title>
+<!--
+  ═══════════════════════════════════════════════════════════════
+  showshak-rls-check.html — IN-BROWSER RLS verification (KEPT, re-runnable)
+  ───────────────────────────────────────────────────────────────
+  Task 19.1 (curator-upload-v2). Requirements 6.6, 9.3, 10.1.
+
+  WHY A BROWSER PAGE (not a Node test):
+  The Node verifier `data/_verify_upload_v2.js` runs with the SERVICE-ROLE
+  key, which BYPASSES Row-Level Security — so it cannot prove owner-scoping.
+  RLS only constrains the anon/authenticated role, which is exactly what the
+  browser uses (window.ssDB = anon client + the signed-in curator's JWT).
+  So this check MUST run in a browser, signed in AS a curator.
+
+  HOW TO RUN:
+    1. Sign in to the ShowShak app (any page) as a curator in THIS browser —
+       supabase-js persists the session in localStorage, so it is shared here.
+       OR use the email/password box below to sign in directly.
+    2. Open this page (same origin / same browser profile).
+    3. Click "Run RLS checks". Read the PASS/FAIL table.
+
+  Each check PASSES when the forbidden cross-owner operation is BLOCKED by RLS.
+  Uses the ANON key only (window.ssDB). NEVER the service role — that's the point.
+  ═══════════════════════════════════════════════════════════════
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="showshak-supabase.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0e0f13; color: #e7e9ee; margin: 0; padding: 24px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #9aa0ab; font-size: 14px; margin: 0 0 20px; }
+  .card {
+    background: #161821; border: 1px solid #262a36; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; color: #cdd2dc; }
+  label { display: block; font-size: 13px; color: #9aa0ab; margin: 8px 0 4px; }
+  input {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid #2c3140;
+    background: #0e0f13; color: #e7e9ee; font-size: 14px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 200px; }
+  button {
+    margin-top: 12px; padding: 10px 18px; border-radius: 8px; border: 0;
+    background: #5b7cfa; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: #2c3140; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #who { font-size: 13px; color: #9aa0ab; margin-top: 8px; }
+  #who b { color: #e7e9ee; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #262a36; vertical-align: top; }
+  th { color: #9aa0ab; font-weight: 600; }
+  td.req { color: #9aa0ab; white-space: nowrap; }
+  .pill { font-weight: 700; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+  .PASS { background: #103a24; color: #4ade80; }
+  .FAIL { background: #3a1010; color: #f87171; }
+  .SKIPPED { background: #2a2f1a; color: #d8c84a; }
+  .summary { font-size: 16px; font-weight: 700; margin: 14px 0 4px; }
+  .muted { color: #9aa0ab; font-size: 12px; }
+  pre.note { background: #0e0f13; border: 1px solid #262a36; border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; color: #9aa0ab; white-space: pre-wrap; }
+  .err { color: #f87171; }
+  .ok { color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ShowShak — In-browser RLS check</h1>
+  <p class="sub">
+    Anon key only (<code>window.ssDB</code>), running as the signed-in curator.
+    Confirms the <b>0014</b> (<code>content_titles</code>) and <b>0015</b>
+    (<code>content</code> owner read/update) policies hold under the
+    anon/authenticated role. Requirements <b>6.6</b>, <b>9.3</b>, <b>10.1</b>.
+  </p>
+
+  <div class="card">
+    <h2>1) Identity</h2>
+    <div id="who">Checking session…</div>
+    <details style="margin-top:10px">
+      <summary class="muted" style="cursor:pointer">Sign in directly (fallback if not already signed in)</summary>
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label for="email">Curator email</label>
+          <input id="email" type="email" autocomplete="username" placeholder="curator@example.com" />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+        </div>
+      </div>
+      <button id="signin" class="secondary">Sign in</button>
+      <button id="signout" class="secondary">Sign out</button>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>2) Run the checks</h2>
+    <p class="muted">
+      Each check tries a cross-owner operation that RLS must block. PASS = blocked
+      (empty result / error). The checks need a clip owned by a <b>different</b>
+      curator; the page discovers one automatically.
+    </p>
+    <button id="run" disabled>Run RLS checks</button>
+    <button id="rerun" class="secondary" style="display:none">Run again</button>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none">
+    <h2>3) Results</h2>
+    <table id="results">
+      <thead>
+        <tr><th>#</th><th>Check</th><th class="req">Requirement</th><th>Expected</th><th>Actual</th><th>Result</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="summary" id="summary"></div>
+    <pre class="note" id="context"></pre>
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Helpers
+   ───────────────────────────────────────────────────────────── */
+const $ = (id) => document.getElementById(id);
+const db = () => window.ssDB;
+
+let CURRENT_USER = null;
+
+async function refreshIdentity() {
+  if (!db()) { $('who').innerHTML = '<span class="err">supabase-js / showshak-supabase.js failed to load.</span>'; return; }
+  const { data: { session } } = await db().auth.getSession();
+  CURRENT_USER = session ? session.user : null;
+  if (CURRENT_USER) {
+    $('who').innerHTML = 'Signed in as <b>' + (CURRENT_USER.email || CURRENT_USER.id) +
+      '</b><br><span class="muted">user id: ' + CURRENT_USER.id + '</span>';
+    $('run').disabled = false;
+  } else {
+    $('who').innerHTML = '<span class="err">Not signed in.</span> ' +
+      'Sign in on the app in this browser, or use the fallback box below. ' +
+      'RLS owner-scoping cannot be tested as a guest.';
+    $('run').disabled = true;
+  }
+}
+
+$('signin').addEventListener('click', async () => {
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if (!email || !password) { alert('Enter email and password.'); return; }
+  $('signin').disabled = true;
+  const { error } = await db().auth.signInWithPassword({ email, password });
+  $('signin').disabled = false;
+  if (error) { alert('Sign-in failed: ' + error.message); return; }
+  await refreshIdentity();
+});
+
+$('signout').addEventListener('click', async () => {
+  await db().auth.signOut();
+  await refreshIdentity();
+});
+
+$('run').addEventListener('click', runChecks);
+$('rerun').addEventListener('click', runChecks);
+
+/* ─────────────────────────────────────────────────────────────
+   Result table plumbing
+   ───────────────────────────────────────────────────────────── */
+function addRow(n, name, req, expected, actual, result) {
+  const tb = $('results').querySelector('tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td>' + n + '</td>' +
+    '<td>' + name + '</td>' +
+    '<td class="req">Req ' + req + '</td>' +
+    '<td>' + expected + '</td>' +
+    '<td>' + actual + '</td>' +
+    '<td><span class="pill ' + result + '">' + result + '</span></td>';
+  tb.appendChild(tr);
+}
+
+function esc(v) {
+  return String(v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+/* ─────────────────────────────────────────────────────────────
+   The checks
+   ───────────────────────────────────────────────────────────── */
+async function runChecks() {
+  $('run').disabled = true;
+  $('rerun').style.display = 'none';
+  $('resultsCard').style.display = 'block';
+  $('results').querySelector('tbody').innerHTML = '';
+  $('summary').textContent = '';
+  $('context').textContent = '';
+
+  await refreshIdentity();
+  if (!CURRENT_USER) {
+    $('summary').innerHTML = '<span class="err">Not signed in — cannot run owner-scoped RLS checks.</span>';
+    $('run').disabled = false;
+    return;
+  }
+
+  const me = CURRENT_USER;
+  let pass = 0, fail = 0, skip = 0;
+  const ctx = [];
+  const tally = (r) => { if (r === 'PASS') pass++; else if (r === 'FAIL') fail++; else skip++; };
+
+  /* ── Discover a clip owned by a DIFFERENT curator (curator B) ───── */
+  // Public read policy only exposes status='live', so .neq(creator_id) over the
+  // public surface returns OTHER curators' LIVE clips — perfect "another curator's clip".
+  const { data: others, error: othersErr } = await db()
+    .from('content')
+    .select('id, creator_id, status')
+    .neq('creator_id', me.id)
+    .limit(5);
+
+  if (othersErr) ctx.push('Discovery query error: ' + othersErr.message);
+
+  const otherClip = (others || []).find((r) => r.status === 'live') || (others || [])[0] || null;
+  const otherClipId = otherClip ? otherClip.id : null;
+  ctx.push('My user id: ' + me.id);
+  ctx.push('Other-curator clips visible (live, via public read): ' + ((others || []).length));
+  if (otherClip) ctx.push('Target other-curator clip: ' + otherClipId + ' (owner ' + otherClip.creator_id + ', status ' + otherClip.status + ')');
+
+  /* ── CHECK 1 — Cannot read another curator's DRAFT (Req 9.3) ─────
+     A non-owner must not see status='draft' rows that aren't theirs.
+     The public policy exposes only status='live'; content_select_own
+     exposes only your own rows. So this query MUST return 0 rows.
+     PASS = 0 rows. Any rows => RLS is leaking other owners' drafts. */
+  {
+    const { data, error } = await db()
+      .from('content')
+      .select('id, creator_id, status')
+      .eq('status', 'draft')
+      .neq('creator_id', me.id);
+    let result, actual;
+    if (error) {
+      // An error (e.g. permission denied) also means the draft is not readable.
+      result = 'PASS';
+      actual = 'query denied (' + esc(error.message) + ')';
+    } else {
+      const leaked = (data || []).length;
+      result = leaked === 0 ? 'PASS' : 'FAIL';
+      actual = leaked === 0
+        ? '0 other-curator drafts visible'
+        : leaked + ' draft row(s) LEAKED: ' + esc((data || []).map((r) => r.id).join(', '));
+    }
+    addRow(1, "Cannot read another curator's draft", '9.3',
+      '0 rows (drafts hidden)', actual, result);
+    tally(result);
+  }
+
+  /* ── CHECK 2 — Cannot UPDATE another curator's clip (Req 10.1) ───
+     content_update_own scopes UPDATE to creator_id = auth.uid(). An UPDATE
+     that matches no owned row affects 0 rows and returns empty data (NOT an
+     error). PASS = 0 rows updated (or error). We also read the description
+     back to confirm it did NOT change. */
+  if (!otherClipId) {
+    addRow(2, "Cannot UPDATE another curator's clip", '10.1',
+      'update blocked', 'SKIPPED — no other-curator clip found', 'SKIPPED');
+    tally('SKIPPED');
+  } else {
+    // Capture the description before (public read of a live clip).
+    const before = await db().from('content').select('id, description').eq('id', otherClipId).maybeSingle();
+    const beforeDesc = before.data ? before.data.description : null;
+
+    const probe = 'rls-probe-' + Date.now();
+    const { data, error } = await db()
+      .from('content')
+      .update({ description: probe })
+      .eq('id', otherClipId)
+      .select('id');
+
+    // Read back to confirm no change actually landed.
+    const after = await db().from('content').select('id, description').eq('id', otherClipId).maybeSingle();
+    const afterDesc = after.data ? after.data.description : null;
+    const changed = afterDesc === probe;
+
+    let result, actual;
+    if (changed) {
+      // RLS FAILED to block. Best-effort restore.
+      result = 'FAIL';
+      actual = 'description WAS changed (RLS bypassed)';
+      try { await db().from('content').update({ description: beforeDesc }).eq('id', otherClipId); ctx.push('CHECK 2: restored original description after unexpected write.'); }
+      catch (e) { ctx.push('CHECK 2: could not restore description: ' + e.message); }
+    } else if (error) {
+      result = 'PASS';
+      actual = 'update denied (' + esc(error.message) + ')';
+    } else {
+      const rows = (data || []).length;
+      result = rows === 0 ? 'PASS' : 'FAIL';
+      actual = rows === 0
+        ? '0 rows updated; description unchanged'
+        : rows + ' row(s) reported updated';
+    }
+    addRow(2, "Cannot UPDATE another curator's clip", '10.1',
+      '0 rows updated / no change', actual, result);
+    tally(result);
+  }
+
+  /* ── CHECK 3 — Cannot INSERT a content_titles link on another's clip (Req 6.6) ──
+     content_titles_insert_own WITH CHECK requires the parent clip be owned by
+     auth.uid(). Inserting against another curator's clip violates WITH CHECK and
+     is REJECTED with an error. PASS = error / nothing inserted. If it somehow
+     inserts, we DELETE it to stay clean and report FAIL. */
+  if (!otherClipId) {
+    addRow(3, "Cannot INSERT content_titles on another curator's clip", '6.6',
+      'insert rejected', 'SKIPPED — no other-curator clip found', 'SKIPPED');
+    tally('SKIPPED');
+  } else {
+    // Need a real title id for a well-formed insert (so the only thing that can
+    // reject it is the ownership WITH CHECK, not a FK violation).
+    const { data: titles, error: titleErr } = await db().from('titles').select('id').limit(1);
+    const titleId = (titles && titles[0]) ? titles[0].id : null;
+    if (!titleId) {
+      addRow(3, "Cannot INSERT content_titles on another curator's clip", '6.6',
+        'insert rejected', 'SKIPPED — no title row available (' + esc(titleErr ? titleErr.message : 'titles empty') + ')', 'SKIPPED');
+      tally('SKIPPED');
+    } else {
+      const { data, error } = await db()
+        .from('content_titles')
+        .insert({ content_id: otherClipId, title_id: titleId, sort_no: 99 })
+        .select();
+      const inserted = !error && (data || []).length > 0;
+      let result, actual;
+      if (error) {
+        result = 'PASS';
+        actual = 'insert rejected (' + esc(error.message) + ')';
+      } else if (!inserted) {
+        // No error but nothing returned — treat as blocked.
+        result = 'PASS';
+        actual = 'nothing inserted';
+      } else {
+        result = 'FAIL';
+        actual = 'link WAS inserted (RLS bypassed) — cleaning up';
+        try {
+          await db().from('content_titles').delete().eq('content_id', otherClipId).eq('title_id', titleId);
+          ctx.push('CHECK 3: deleted the leaked content_titles link (cleanup).');
+        } catch (e) { ctx.push('CHECK 3: cleanup delete failed: ' + e.message); }
+      }
+      addRow(3, "Cannot INSERT content_titles on another curator's clip", '6.6',
+        'insert rejected (error)', actual, result);
+      tally(result);
+    }
+  }
+
+  /* ── CHECK 4 — Cannot DELETE another curator's content_titles link (Req 6.6) ──
+     content_titles_delete_own scopes DELETE to clips owned by auth.uid(). A
+     delete against another curator's link matches 0 rows (NOT an error).
+     PASS = 0 rows deleted AND the link still exists afterward. If there is no
+     existing link on the other clip, SKIP (don't fail spuriously). */
+  if (!otherClipId) {
+    addRow(4, "Cannot DELETE another curator's content_titles link", '6.6',
+      'delete blocked', 'SKIPPED — no other-curator clip found', 'SKIPPED');
+    tally('SKIPPED');
+  } else {
+    const { data: links } = await db()
+      .from('content_titles')
+      .select('content_id, title_id')
+      .eq('content_id', otherClipId)
+      .limit(1);
+    const link = (links && links[0]) ? links[0] : null;
+    if (!link) {
+      addRow(4, "Cannot DELETE another curator's content_titles link", '6.6',
+        'delete blocked', 'SKIPPED — no existing link on the other clip to test against (seed one or pick a clip with linked titles)', 'SKIPPED');
+      tally('SKIPPED');
+    } else {
+      const { data, error } = await db()
+        .from('content_titles')
+        .delete()
+        .eq('content_id', link.content_id)
+        .eq('title_id', link.title_id)
+        .select();
+
+      // Confirm the link still exists.
+      const { data: still } = await db()
+        .from('content_titles')
+        .select('content_id, title_id')
+        .eq('content_id', link.content_id)
+        .eq('title_id', link.title_id)
+        .limit(1);
+      const stillExists = (still || []).length > 0;
+
+      let result, actual;
+      if (error) {
+        result = 'PASS';
+        actual = 'delete denied (' + esc(error.message) + ')';
+      } else {
+        const deleted = (data || []).length;
+        result = (deleted === 0 && stillExists) ? 'PASS' : 'FAIL';
+        actual = (deleted === 0 && stillExists)
+          ? '0 rows deleted; link still present'
+          : deleted + ' row(s) deleted' + (stillExists ? '' : '; link GONE (RLS bypassed)');
+      }
+      addRow(4, "Cannot DELETE another curator's content_titles link", '6.6',
+        '0 rows deleted; link intact', actual, result);
+      tally(result);
+    }
+  }
+
+  /* ── Summary ─────────────────────────────────────────────────── */
+  const cls = fail > 0 ? 'err' : 'ok';
+  $('summary').innerHTML =
+    '<span class="' + cls + '">' + pass + ' PASS · ' + fail + ' FAIL · ' + skip + ' SKIPPED</span>' +
+    (fail > 0 ? ' — RLS owner-scoping is NOT holding; investigate the failing policy.' :
+      (skip > 0 ? ' — passing checks confirm RLS; skipped checks need seed data (see notes).' :
+        ' — RLS owner-scoping holds for all checks. ✓'));
+  $('context').textContent = ctx.join('\n');
+
+  $('run').disabled = false;
+  $('rerun').style.display = 'inline-block';
+}
+
+/* Init */
+window.addEventListener('load', refreshIdentity);
+</script>
+</body>
+</html>

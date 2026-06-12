@@ -1,0 +1,12 @@
+{
+  "name": "showshak-v2-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev/test harness for ShowShak v2. The shipped app (showshak-*.html, showshak-shared.js) has NO build step and NO production dependencies — this package.json exists ONLY to provide the Node test runner and its dev dependency (fast-check). Do not add production dependencies here.",
+  "scripts": {
+    "test": "node tests/run-all.js"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.2"
+  }
+}
