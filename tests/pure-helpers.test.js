@@ -97,7 +97,11 @@ check('Property 1+2: loader returns only live/non-deleted rows and maps Mux fiel
     out.forEach((clip, k) => {
       const src = expected[k];
       assert(clip.muxPlaybackId === (src.mux_playback_id || null), 'muxPlaybackId mismap');
-      assert(clip.poster === (src.thumbnail_url || null), 'poster mismap');
+      // poster prefers thumbnail_url; else derives the Mux still-frame from the
+      // playback id (cover_time omitted here since meta is empty); null when neither.
+      const expPoster = src.thumbnail_url
+        || (src.mux_playback_id ? ('https://image.mux.com/' + src.mux_playback_id + '/thumbnail.jpg') : null);
+      assert(clip.poster === expPoster, 'poster mismap');
       if (!src.mux_playback_id) assert(!clip.muxPlaybackId, 'no pid → falsy muxPlaybackId');
     });
   }

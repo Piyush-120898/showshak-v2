@@ -625,6 +625,7 @@ function clipCardHTML(clip, size = 'lg') {
     <div class="${cls}" onclick="ssOpenClip('${clip.id}', CLIPS)">
       <div style="width:100%;aspect-ratio:9/16;border-radius:${radius};overflow:hidden;position:relative;border:1px solid var(--border)">
         <div style="position:absolute;inset:0;background:${clip.bg};background-size:cover;background-position:center;transition:transform 0.4s ease"></div>
+        ${clip.poster ? `<img src="${clip.poster}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''}
         <div class="${vigClass}"></div>
         ${playEl}
         <div style="position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:5px">
@@ -869,6 +870,7 @@ function showResultsView(clips, label, curators) {
     <div class="result-clip" onclick="ssOpenClip('${clip.id}', CLIPS)">
       <div class="result-clip-thumb">
         <div class="result-clip-thumb-bg" style="background:${clip.bg}"></div>
+        ${clip.poster ? `<img src="${clip.poster}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''}
       </div>
       <div class="result-clip-info">
         <div class="result-clip-creator" data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}">@${clip.creator.name}</div>

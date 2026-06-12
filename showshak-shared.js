@@ -932,7 +932,11 @@ function ssMapContentRowsToClips(rows){
       bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
       // Mux playback fields: null muxPlaybackId → GradientSurface fallback (Req 4.2, 4.4).
       muxPlaybackId: row.mux_playback_id || null,
-      poster: row.thumbnail_url || null,
+      // Poster: prefer the stored thumbnail_url (the webhook bakes in the cover
+      // frame); else derive the Mux still-frame from the playback id (+ cover_time)
+      // so every live clip has a real frame everywhere it's rendered. Null only
+      // when there's no playback id yet (still processing) → gradient fallback.
+      poster: row.thumbnail_url || (row.mux_playback_id ? ssCoverThumbUrl(row.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
       url: row.url || null,
       durationSec: row.duration_sec || null,
       platLabel: p.name||"Streaming", platColor: p.color||"#EA3B32",
