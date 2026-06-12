@@ -1968,6 +1968,8 @@ async function saveEditProfile() {
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
   // Update local PROFILE first for instant feedback.
+  const prevPhoto = PROFILE.photo;     // so we can revert if the upload fails
+  let photoUploadFailed = false;
   PROFILE.name = name;
   PROFILE.letter = name.charAt(0).toUpperCase();
   PROFILE.bio = bio;
@@ -1987,11 +1989,17 @@ async function saveEditProfile() {
           const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg','jpg');
           const path = user.id + '/' + Date.now() + '.' + ext;
           const up = await window.ssDB.storage.from('avatars').upload(path, blob, { upsert: true, contentType: blob.type });
-          if (!up.error) {
-            const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
-            if (pub && pub.publicUrl) { avatarUrl = pub.publicUrl; PROFILE.photo = pub.publicUrl; }
-          }
-        } catch (e) { /* storage not set up — skip photo, keep other edits */ }
+          if (up.error) throw up.error;
+          const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
+          if (!pub || !pub.publicUrl) throw new Error('no_public_url');
+          avatarUrl = pub.publicUrl; PROFILE.photo = pub.publicUrl;
+        } catch (e) {
+          // NOT silent: surface it so a misconfigured bucket/policy is obvious.
+          // Revert the local preview so the UI never shows a photo that didn't persist.
+          console.error('ShowShak: avatar upload failed', e);
+          photoUploadFailed = true;
+          PROFILE.photo = prevPhoto;
+        }
       } else if (epPhoto === '') {
         avatarUrl = null;   // explicit removal
       }
@@ -2013,7 +2021,9 @@ async function saveEditProfile() {
   if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save changes'; }
   closeEditProfile();
   renderHeader();
-  ssToast('✓ Profile updated');
+  ssToast(photoUploadFailed
+    ? '✓ Profile saved — but the photo couldn’t upload (storage not configured)'
+    : '✓ Profile updated');
 }
 
 /* ── FACE SWITCHING (prototype: stands in for real auth) ──
