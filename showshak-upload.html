@@ -161,6 +161,21 @@ body { background: var(--bg); }
 .up-trim-msg.bad { color: var(--red); }
 .up-trim-msg.ok { color: #6FD08C; }
 
+/* ── Dual-handle trim slider — one track, two thumbs (Start + End) ── */
+.up-trim-ends { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.up-trim-ends .up-trim-label { margin-right: 6px; }
+.up-trim-dual { position: relative; height: 28px; margin: 2px 0 6px; }
+.up-trim-track { position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); background: rgba(255,255,255,0.12); border-radius: 2px; }
+.up-trim-fill { position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); background: var(--red); border-radius: 2px; }
+/* The two range inputs stack on the same track; only their thumbs are grabbable. */
+.up-trim-range-dual { position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0; background: transparent; pointer-events: none; }
+.up-trim-range-dual::-webkit-slider-runnable-track { background: transparent; border: none; }
+.up-trim-range-dual::-moz-range-track { background: transparent; border: none; }
+.up-trim-range-dual::-webkit-slider-thumb { pointer-events: auto; margin-top: -7px; }
+.up-trim-range-dual::-moz-range-thumb { pointer-events: auto; }
+#up-trim-in  { z-index: 3; }
+#up-trim-out { z-index: 4; }
+
 /* ════════════════════════════════════════════════
    STEP 3 — Titles (search + multi-select)
 ════════════════════════════════════════════════ */
@@ -387,21 +402,19 @@ body { background: var(--bg); }
       </div>
 
       <div class="up-trim-controls">
-        <div class="up-trim-row">
-          <div class="up-trim-row-head">
-            <span class="up-trim-label">In point</span>
-            <span class="up-trim-val" id="up-trim-in-val">0:00.0</span>
-          </div>
-          <input type="range" class="up-trim-range" id="up-trim-in" min="0" max="100" step="0.1" value="0"
-                 oninput="onTrimInput('in')" aria-label="Trim in point (seconds)">
+        <!-- Dual-handle trim: ONE track, two thumbs (Start + End) so the curator
+             tightens from both ends on a single line. -->
+        <div class="up-trim-ends">
+          <span><span class="up-trim-label">Start</span> <span class="up-trim-val" id="up-trim-in-val">0:00.0</span></span>
+          <span style="text-align:right"><span class="up-trim-label">End</span> <span class="up-trim-val" id="up-trim-out-val">0:00.0</span></span>
         </div>
-        <div class="up-trim-row">
-          <div class="up-trim-row-head">
-            <span class="up-trim-label">Out point</span>
-            <span class="up-trim-val" id="up-trim-out-val">0:00.0</span>
-          </div>
-          <input type="range" class="up-trim-range" id="up-trim-out" min="0" max="100" step="0.1" value="100"
-                 oninput="onTrimInput('out')" aria-label="Trim out point (seconds)">
+        <div class="up-trim-dual" id="up-trim-dual">
+          <div class="up-trim-track"></div>
+          <div class="up-trim-fill" id="up-trim-fill"></div>
+          <input type="range" class="up-trim-range up-trim-range-dual" id="up-trim-in" min="0" max="100" step="0.1" value="0"
+                 oninput="onTrimInput('in')" onpointerdown="ssTrimRaise('in')" aria-label="Trim start (seconds)">
+          <input type="range" class="up-trim-range up-trim-range-dual" id="up-trim-out" min="0" max="100" step="0.1" value="100"
+                 oninput="onTrimInput('out')" onpointerdown="ssTrimRaise('out')" aria-label="Trim end (seconds)">
         </div>
 
         <div class="up-trim-readout">
@@ -875,13 +888,42 @@ function enterTrimStep() {
   syncTrim();
 }
 
-/* Slider input handler: keep the draft in sync and scrub the preview to the
-   frame being dragged so the curator sees exactly where the cut lands. */
+/* Raise the grabbed thumb above the other so it's always reachable even when the
+   two handles overlap (dual-range z-index trick). */
+function ssTrimRaise(which) {
+  var inEl = document.getElementById('up-trim-in');
+  var outEl = document.getElementById('up-trim-out');
+  if (inEl)  inEl.style.zIndex  = (which === 'in')  ? 5 : 3;
+  if (outEl) outEl.style.zIndex = (which === 'out') ? 5 : 3;
+}
+
+/* Position the red "selected segment" fill between the two thumbs. */
+function _ssUpdateTrimFill() {
+  var inEl = document.getElementById('up-trim-in');
+  var outEl = document.getElementById('up-trim-out');
+  var fill = document.getElementById('up-trim-fill');
+  if (!inEl || !outEl || !fill) return;
+  var max = Number(inEl.max) || 0;
+  if (max <= 0) { fill.style.left = '0%'; fill.style.right = '0%'; return; }
+  var l = Math.max(0, Math.min(100, (Number(inEl.value) / max) * 100));
+  var r = Math.max(0, Math.min(100, (Number(outEl.value) / max) * 100));
+  fill.style.left = l + '%';
+  fill.style.right = (100 - r) + '%';
+}
+
+/* Slider input handler for the dual-handle trim. Clamps the two thumbs so Start
+   always stays a hair before End (they can't cross), keeps the draft in sync,
+   scrubs the preview to the handle being dragged, and repaints the fill. */
 function onTrimInput(which) {
   const inEl = document.getElementById('up-trim-in');
   const outEl = document.getElementById('up-trim-out');
-  draft.trimIn = Number(inEl.value);
-  draft.trimOut = Number(outEl.value);
+  let inV = Number(inEl.value);
+  let outV = Number(outEl.value);
+  const GAP = 0.1;   // minimum gap so Out is always strictly after In
+  if (which === 'in'  && inV  > outV - GAP) { inV  = Math.max(0, outV - GAP); inEl.value  = String(inV); }
+  if (which === 'out' && outV < inV  + GAP) { outV = inV + GAP;               outEl.value = String(outV); }
+  draft.trimIn = inV;
+  draft.trimOut = outV;
 
   const vid = document.getElementById('up-trim-video');
   const t = which === 'out' ? draft.trimOut : draft.trimIn;
@@ -928,6 +970,7 @@ function syncTrim() {
     msg.className = 'up-trim-msg bad';
     msg.textContent = upTrimRejectMessage(v.reason);
   }
+  _ssUpdateTrimFill();
   syncFooter();
 }
 
@@ -990,7 +1033,15 @@ async function ssTrimToBlob(file, inSec, outSec, onProgress) {
   const report = (pct) => { if (typeof onProgress === 'function') onProgress(Math.max(0, Math.min(100, Math.round(pct)))); };
   report(0);
 
-  const { ffmpeg, fetchFile } = await ssLoadFfmpeg();   // throws if the engine can't load
+  // Load the engine, but never hang forever: on a host without cross-origin
+  // isolation (COOP/COEP) ffmpeg.wasm can stall on load, so race it against a
+  // timeout. On timeout we throw → the publish path falls back to the full
+  // (already ≤90 s) source instead of freezing.
+  const loadWithTimeout = Promise.race([
+    ssLoadFfmpeg(),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg_load_timeout')), 25000))
+  ]);
+  const { ffmpeg, fetchFile } = await loadWithTimeout;   // throws if the engine can't load / times out
   const inName = ssFfmpegInputName(file);
   const outName = 'output.mp4';
 
@@ -1693,10 +1744,12 @@ async function publish() {
   try {
     await ssPutWithProgress(up.uploadUrl, uploadBlob, (pct) => setBusy('Uploading… ' + pct + '%'));
   } catch (e) {
+    console.error('[ss-publish] byte upload failed', e);
     ssToast('Upload failed — please try again');
     restoreBtn();
     return;
   }
+  console.log('[ss-publish] bytes uploaded ✓ — writing content row…');
 
   // ── 5) Write the `content` row as 'processing' (Req 1.5, 3.1, 8.2, 9.5) ────
   // Fresh publish INSERTs a new row; publishing a saved/resumed draft UPDATEs the
@@ -1732,13 +1785,17 @@ async function publish() {
     // content_update_own) scopes this to the owner. `meta` is a FULL replacement
     // object (mux_upload_id, vibes, cover_time, and trim only when effectiveTrim),
     // so any stale draft-only meta keys are dropped — it matches the fresh path.
-    const upd = await window.ssDB.from('content').update({
-      title_id: (links[0] && links[0].title_id) || null,   // primary (sort_no 0) title; mirrors content_titles[0]
-      description: draft.pitch || '',
-      status: 'processing',
-      meta,
-    }).eq('id', draft.draftId).select('id').single();
-    if (upd.error || !upd.data || !upd.data.id) {     // update failed — no success state, draft retained
+    let upd;
+    try {
+      upd = await window.ssDB.from('content').update({
+        title_id: (links[0] && links[0].title_id) || null,   // primary (sort_no 0) title; mirrors content_titles[0]
+        description: draft.pitch || '',
+        status: 'processing',
+        meta,
+      }).eq('id', draft.draftId).select('id').single();
+    } catch (e) { upd = { error: e }; }
+    if (!upd || upd.error || !upd.data || !upd.data.id) {     // update failed — no success state, draft retained
+      console.error('[ss-publish] draft→processing update failed', upd && upd.error);
       ssToast('Couldn’t save your clip — please try again');
       restoreBtn();
       return;
@@ -1770,18 +1827,22 @@ async function publish() {
     // to get the new row id back — REQUIRED because the content_titles INSERT policy
     // (content_titles_insert_own) only allows a link whose content_id references a
     // content row owned by the caller, so the content row MUST exist first.
-    const ins = await window.ssDB.from('content').insert({
-      creator_id: me.id,
-      title_id: (links[0] && links[0].title_id) || null,   // primary (sort_no 0) title; mirrors content_titles[0]
-      // platform_id stays null: the curator-platform fallback for Watch It is
-      // resolved at READ time by ssResolveWatchOptions/ForTitles (task 18.1), not
-      // stored on the row. (No platform lookup here.)
-      platform_id: null,
-      description: draft.pitch || '',
-      status: 'processing',
-      meta,
-    }).select('id').single();
-    if (ins.error || !ins.data || !ins.data.id) {      // insert failed — no success state, no links written
+    let ins;
+    try {
+      ins = await window.ssDB.from('content').insert({
+        creator_id: me.id,
+        title_id: (links[0] && links[0].title_id) || null,   // primary (sort_no 0) title; mirrors content_titles[0]
+        // platform_id stays null: the curator-platform fallback for Watch It is
+        // resolved at READ time by ssResolveWatchOptions/ForTitles (task 18.1), not
+        // stored on the row. (No platform lookup here.)
+        platform_id: null,
+        description: draft.pitch || '',
+        status: 'processing',
+        meta,
+      }).select('id').single();
+    } catch (e) { ins = { error: e }; }
+    if (!ins || ins.error || !ins.data || !ins.data.id) {      // insert failed — no success state, no links written
+      console.error('[ss-publish] content insert failed', ins && ins.error);
       ssToast('Couldn’t save your clip — please try again');
       restoreBtn();
       return;
@@ -1828,6 +1889,7 @@ async function publish() {
 
   restoreBtn();
   document.getElementById('up-success').classList.add('show');
+  console.log('[ss-publish] done — clip is processing, success screen shown ✓ (id ' + newContentId + ')');
 }
 
 /* ════════════════════════════════════════════════
