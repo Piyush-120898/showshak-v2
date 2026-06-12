@@ -742,6 +742,25 @@ function wlOpenStackClip(stackId, clipId) {
    RENDER — reads ONLY from ssGetStacks() (shared.js)
    This is now the single source of truth.
 ════════════════════════════════════════════════ */
+/* Normalize a clip's creator into { name, letter, bg } whether it was stored as
+   an object (DB-hydrated clips) or as flat string fields (mock). Prevents the
+   "@[object Object]" that appears when an object is interpolated as a string. */
+function wlCreator(c) {
+  if (c && c.creator && typeof c.creator === 'object') {
+    return {
+      name: c.creator.name || 'curator',
+      letter: c.creator.letter || (c.creator.name || 'C').charAt(0).toUpperCase(),
+      bg: c.creator.bg || '#EA3B32'
+    };
+  }
+  const name = (c && typeof c.creator === 'string') ? c.creator : 'curator';
+  return {
+    name: name,
+    letter: (c && c.creatorLetter) || name.charAt(0).toUpperCase(),
+    bg: (c && c.creatorBg) || '#EA3B32'
+  };
+}
+
 function render() {
   const stacks   = ssGetStacks();  // ← always read fresh from shared storage
   const emptyEl  = document.getElementById('empty-state');
@@ -761,7 +780,10 @@ function render() {
       ? stack.clips[0].bg
       : 'linear-gradient(160deg,#0B0B0F,#13131A)';
 
-    const clipsHtml = stack.clips.map(c => `
+    const clipsHtml = stack.clips.map(c => {
+      const cr = wlCreator(c);
+      const tag = [(c.genre && c.genre[0]) ? c.genre[0] : null, c.lang || null].filter(Boolean).join(' · ');
+      return `
       <div class="wl-clip" onclick="wlOpenStackClip('${stack.id}','${c.id}')">
         <div class="wl-clip-thumb">
           <div class="wl-clip-bg" style="background:${c.bg}"></div>
@@ -769,12 +791,13 @@ function render() {
           <div class="wl-clip-vig"></div>
           <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}','${c.id}')">✕</div>
           <div class="wl-clip-meta">
-            <div class="wl-clip-creator" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter||''}" data-curator-bg="${c.creatorBg||''}">@${c.creator}</div>
-            <div class="wl-clip-tag">${c.genre[0]} · ${c.lang}</div>
+            <div class="wl-clip-creator" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</div>
+            ${tag ? `<div class="wl-clip-tag">${tag}</div>` : ''}
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     return `
       <div class="stack-block" id="sb-${stack.id}" style="animation-delay:${si * 0.055}s">
@@ -841,7 +864,9 @@ function buildRec() {
   const grid = document.getElementById('rec-grid');
   const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
 
-  grid.innerHTML = shuffled.map(c => `
+  grid.innerHTML = shuffled.map(c => {
+    const cr = wlCreator(c);
+    return `
     <div class="rec-clip-card" onclick="ssOpenClip('${c.id}', ALL_CLIPS)">
       <div class="rec-clip-thumb">
         <div class="rec-clip-bg" style="background:${c.bg}"></div>
@@ -849,8 +874,8 @@ function buildRec() {
         <div class="rec-clip-vig"></div>
         <div class="rec-clip-play">${PLAY_SVG}</div>
         <div class="rec-clip-creator-row">
-          <div class="rec-clip-avatar" style="background:${c.creatorBg}" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter}" data-curator-bg="${c.creatorBg}">${c.creatorLetter}</div>
-          <span class="rec-clip-handle" data-curator="${c.creator}" data-curator-name="${c.creator}" data-curator-letter="${c.creatorLetter}" data-curator-bg="${c.creatorBg}">@${c.creator}</span>
+          <div class="rec-clip-avatar" style="background:${cr.bg}" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">${cr.letter}</div>
+          <span class="rec-clip-handle" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</span>
         </div>
       </div>
       <div class="rec-clip-foot">
@@ -862,7 +887,8 @@ function buildRec() {
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
   if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(grid);
 }
 

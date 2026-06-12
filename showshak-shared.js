@@ -788,7 +788,7 @@ async function ssHydrateStacks() {
     if (_ssPendingWrites.length) { try { await Promise.all(_ssPendingWrites); } catch (e) {} }
     const { data: stacks, error } = await window.ssDB
       .from('stacks')
-      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
+      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, mux_playback_id, thumbnail_url, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
       .eq('user_id', me.id).is('deleted_at', null);
     if (error || !stacks) return;
     const mapped = stacks.map(st => ({
@@ -796,6 +796,10 @@ async function ssHydrateStacks() {
       clips: (st.stack_items || []).filter(it => it.content).map(it => {
         const c = it.content, meta = c.meta || {}, p = c.platform || {}, cr = c.creator || {};
         return { id: c.id, title: '', bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+          // Poster: stored thumbnail (cover frame) else derive the Mux still-frame
+          // from the playback id, so saved-stack frames show the real thumbnail.
+          muxPlaybackId: c.mux_playback_id || null,
+          poster: c.thumbnail_url || (c.mux_playback_id ? ssCoverThumbUrl(c.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
           platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
           caption: c.description || '', genre: [], lang: meta.lang || '', fires: c.fires_count || 0,
           creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
