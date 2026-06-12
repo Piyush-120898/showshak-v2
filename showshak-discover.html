@@ -597,9 +597,36 @@ let activeMood = null, activePlatform = null;
    Search profile results show CURATORS ONLY — never normal user
    accounts. The directory is derived from clip authors (so by
    definition only curators) and every entry is flagged isCurator:true.
-   Now sourced from the central data file (data/showshak-data.js);
-   SSData.discoverCurators() reproduces the old derived shape exactly. */
-const CURATORS = SSData.discoverCurators();
+   Starts from the central mock (logged-out / offline demo); once real
+   clips load (discoverLoadRealClips), it's REBUILT from the real clip
+   authors so actual curators — including the signed-in user — are
+   searchable (rebuildCuratorsFromClips). */
+let CURATORS = SSData.discoverCurators();
+
+/* Rebuild the curator directory from the real loaded CLIPS. Each real clip's
+   `creator.name` is the author's @username (from ssMapContentRowsToClips), so
+   we group by it, tallying clip count + total fires. This makes every real
+   curator with at least one live clip findable in profile search. */
+function rebuildCuratorsFromClips() {
+  const map = Object.create(null);
+  CLIPS.forEach(c => {
+    const cr = c.creator || {};
+    const uname = (cr.name || '').trim();
+    if (!uname) return;
+    if (!map[uname]) {
+      map[uname] = {
+        username: uname, name: uname,
+        letter: cr.letter || uname.charAt(0).toUpperCase(),
+        bg: cr.bg || '#EA3B32', avatar: cr.avatar || null,
+        isCurator: true, verified: false,
+        clips: 0, clipCount: 0, totalFires: 0
+      };
+    }
+    map[uname].clips++; map[uname].clipCount++;
+    map[uname].totalFires += (c.fires || 0);
+  });
+  return Object.values(map);
+}
 
 /* Fire SVG for inline use */
 const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
@@ -972,7 +999,7 @@ input.addEventListener('blur', () => {
 input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e); input.blur(); } });
 
 // INIT
-(async function(){ await discoverLoadRealClips(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); })();
+(async function(){ const _real = await discoverLoadRealClips(); if (_real) CURATORS = rebuildCuratorsFromClips(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); })();
 function _discover_old_init(){
 buildMoods();
 buildFeatured();
