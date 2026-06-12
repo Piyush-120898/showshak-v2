@@ -556,9 +556,13 @@ body { background: var(--bg); }
 <script>
 /* ════════════════════════════════════════════════
    CURATOR UPLOAD FLOW
-   Prototype: persists published clips to sessionStorage
-   key 'ss_my_clips_v1' so they appear in the profile's
-   "My Clips" tab. No backend yet.
+   Publishes a real clip end-to-end: titles → trim → Mux upload →
+   content (+ content_titles) rows. The single 'ss_my_clips_v1'
+   sessionStorage write in publish() is ONLY an instant-UI placeholder so
+   the new clip appears in the profile's "My Clips" immediately; the
+   profile's hydrateMyClipsFromDB() then replaces it with the authoritative
+   DB rows (reflecting the webhook's processing→live flip). The DB is the
+   source of truth — the sessionStorage entry is a throwaway optimistic echo.
 ════════════════════════════════════════════════ */
 
 /* Step model is data-driven (Req 4 / Req 7 / Req 8 step model). The Trim step

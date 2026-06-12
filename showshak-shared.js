@@ -429,9 +429,11 @@ document.addEventListener('click', function(e) {
 
 /* ════════════════════════════════════════════════
    ── UNIVERSAL SAVE & STACKS SYSTEM ──────────────
-   Single source of truth for all saved clips.
-   Uses sessionStorage — survives page navigation
-   within the same tab, resets when tab is closed.
+   The DB (stacks / stack_items) is the source of truth. sessionStorage
+   ('ss_stacks_v1') is an INSTANT-UI cache for fast same-tab reads: every
+   write mirrors to the DB (_ssDb* helpers), and ssHydrateStacks() rebuilds
+   the cache from the DB on login/refresh so it never drifts. Guests/offline
+   use the cache alone.
 
    Storage key : 'ss_stacks_v1'
    Stack schema : { id, name, createdAt, clips[] }
