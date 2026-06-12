@@ -962,7 +962,7 @@ function syncTrim() {
   //   • valid cut                → meta.trim = {in,out,src}; publish trims to a Blob
   //   • invalid selection        → nothing recorded; "proceed" stays blocked
   if (isFull) draft.trim = null;
-  else if (v.ok) draft.trim = { in: inSec, out: outSec, src: src };
+  else if (v.ok) { draft.trim = { in: inSec, out: outSec, src: src }; ssWarmFfmpeg(); }
   else draft.trim = null;
 
   const msg = document.getElementById('up-trim-msg');
@@ -1021,6 +1021,18 @@ function ssLoadFfmpeg() {
   return _ssFfmpegPromise;
 }
 
+/* Warm the trim engine in the BACKGROUND as soon as the curator makes a real cut,
+   so the ~25 MB ffmpeg.wasm download overlaps with the Titles/Pitch/Vibe/Cover
+   steps and is ready (cached) by the time they hit Post. Fire-and-forget; on
+   failure it resets so a later attempt (or the publish-time load) can retry. */
+let _ssFfmpegWarmed = false;
+function ssWarmFfmpeg() {
+  if (_ssFfmpegWarmed) return;
+  _ssFfmpegWarmed = true;
+  try { ssLoadFfmpeg().catch(function () { _ssFfmpegWarmed = false; }); }
+  catch (e) { _ssFfmpegWarmed = false; }
+}
+
 /* Pick a safe input filename/extension for the wasm FS from the source file. */
 function ssFfmpegInputName(file) {
   const name = (file && file.name) || '';
@@ -1034,15 +1046,18 @@ function ssFfmpegInputName(file) {
    so the caller can degrade gracefully (Req 7.6). */
 async function ssTrimToBlob(file, inSec, outSec, onProgress) {
   const report = (pct) => { if (typeof onProgress === 'function') onProgress(Math.max(0, Math.min(100, Math.round(pct)))); };
-  report(0);
 
   // Load the engine, but never hang forever: on a host without cross-origin
   // isolation (COOP/COEP) ffmpeg.wasm can stall on load, so race it against a
-  // timeout. On timeout we throw → the publish path falls back to the full
-  // (already ≤90 s) source instead of freezing.
+  // timeout. The ~25 MB core download can be slow on a constrained connection,
+  // so allow a generous window (it's usually pre-warmed via ssWarmFfmpeg by the
+  // time we get here). On timeout we throw → the publish path falls back to the
+  // full (already ≤90 s) source instead of freezing.
+  // NOTE: we do NOT report(0) here — the caller shows a "Preparing…" message
+  // during this load so the progress bar doesn't look stuck at 0%.
   const loadWithTimeout = Promise.race([
     ssLoadFfmpeg(),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg_load_timeout')), 25000))
+    new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg_load_timeout')), 60000))
   ]);
   const { ffmpeg, fetchFile } = await loadWithTimeout;   // throws if the engine can't load / times out
   const inName = ssFfmpegInputName(file);
@@ -1710,7 +1725,7 @@ async function publish() {
   let uploadBlob = draft.file;
   let effectiveTrim = (draft.trim && typeof draft.trim === 'object') ? draft.trim : null;
   if (effectiveTrim) {
-    setBusy('Trimming…');
+    setBusy('Preparing editor…');   // engine may still be downloading on first use
     try {
       uploadBlob = await ssTrimToBlob(draft.file, effectiveTrim.in, effectiveTrim.out,
         (pct) => setBusy('Trimming… ' + pct + '%'));
