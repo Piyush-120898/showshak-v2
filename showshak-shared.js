@@ -1007,6 +1007,88 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
 
 /* ═══════════════════════════════════════════════════════════════
+   PUBLIC CURATOR PROFILE — pure helpers (no Supabase, no DOM, no network,
+   Node-testable). These encode the by-username decision logic the public
+   profile hydrator relies on, and are exported under the consolidated
+   module.exports block below so the fast-check tests can require them.
+   See .kiro/specs/public-curator-profile.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Normalize a raw ?curator value into a queryable username, or null.
+   PURE: URL-decode → trim → strip exactly ONE leading '@' → trim again.
+   A malformed percent-escape must NOT throw — decodeURIComponent failure is
+   treated as identity (the original string is used). Returns the cleaned
+   non-empty string, or null when the result is empty / whitespace-only / a
+   lone '@', or when the input is not a string (Req 1.1, 1.3, 1.6, 8.1). */
+function ssNormalizeCuratorUsername(raw){
+  if (typeof raw !== "string") return null;
+  var decoded;
+  try { decoded = decodeURIComponent(raw); }
+  catch (e) { decoded = raw; }            // malformed escape → identity, never throw
+  var trimmed = decoded.trim();
+  if (trimmed.charAt(0) === "@") trimmed = trimmed.slice(1);  // strip exactly ONE leading '@'
+  trimmed = trimmed.trim();
+  return trimmed.length ? trimmed : null;
+}
+window.ssNormalizeCuratorUsername = ssNormalizeCuratorUsername;
+
+/* Resolve a Viewed_Curator view-model from already-fetched backend data.
+   PURE: no Supabase, no DOM, no network. Inputs:
+     usersRow      : the users row (or null/undefined when not found)
+     contentRows   : raw content rows (or null) — projected via ssMapContentRowsToClips
+     followerCount : non-negative integer (or anything; clamped to a >= 0 integer)
+   Returns:
+     { found: boolean,
+       profile: { name, handle, photo, letter, bio, genres, verified } | null,
+       clips: Clip[],                  // [] when not found / no rows
+       stats: { followers, clips } }   // both non-negative integers
+   Role gate: usersRow null/undefined OR role !== 'curator' yields found=false
+   (Req 1.4, 1.5, 8.3, 8.4, 10.1). Identity fallbacks per Req 2.1-2.10; clips via
+   the existing pure mapper, order preserved (Req 3.2); stats clamp per Req 4.1-4.3. */
+function ssResolveCuratorViewModel(usersRow, contentRows, followerCount){
+  // Role gate → not-found shape (Req 1.4, 1.5, 8.3, 8.4, 10.1).
+  if (!usersRow || usersRow.role !== "curator") {
+    return { found: false, profile: null, clips: [], stats: { followers: 0, clips: 0 } };
+  }
+
+  function nonEmptyStr(v){ return (typeof v === "string" && v.length > 0) ? v : null; }
+
+  var username = (typeof usersRow.username === "string") ? usersRow.username : "";
+  var nameVal  = nonEmptyStr(usersRow.name);
+  var name     = nameVal != null ? nameVal : username;          // Req 2.1, 2.8
+  var letterSrc = nameVal != null ? nameVal : username;          // Req 2.4
+  var letter    = letterSrc ? letterSrc.charAt(0).toUpperCase() : "";
+  var avatar    = nonEmptyStr(usersRow.avatar_url);              // Req 2.3, 2.4
+  var bioVal    = nonEmptyStr(usersRow.bio);                     // Req 2.5, 2.9
+  var genres    = (Array.isArray(usersRow.genres) && usersRow.genres.length) ? usersRow.genres : []; // Req 2.7, 2.10
+
+  // Clips via the existing pure mapper, preserving most-recent-first order (Req 3.2).
+  var clips = ssMapContentRowsToClips(contentRows || []);
+
+  // Followers clamped to a non-negative integer, else 0 (Req 4.1, 4.2).
+  var followers = 0;
+  if (typeof followerCount === "number" && isFinite(followerCount) && followerCount >= 0) {
+    followers = Math.floor(followerCount);
+  }
+
+  return {
+    found: true,
+    profile: {
+      name: name,
+      handle: "@" + username,                                   // Req 2.2
+      photo: avatar,                                            // null when empty (Req 2.3, 2.4)
+      letter: letter,
+      bio: bioVal != null ? bioVal : "",                        // Req 2.5, 2.9
+      genres: genres,
+      verified: !!usersRow.verified                             // Req 2.6
+    },
+    clips: clips,
+    stats: { followers: followers, clips: clips.length }        // Req 4.3
+  };
+}
+window.ssResolveCuratorViewModel = ssResolveCuratorViewModel;
+
+/* ═══════════════════════════════════════════════════════════════
    CREATOR ANALYTICS — Event_Recorder pure helpers (no DOM, no network,
    never throw, Node-testable). These encode the capture-side decisions and
    insert-payload shapes the fire-and-forget recorder wrappers rely on, and are
@@ -5293,6 +5375,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssGetMediaMuted = ssGetMediaMuted;
   module.exports.ssMuteRoundTrip = ssMuteRoundTrip;
   module.exports.ssMapContentRowsToClips = ssMapContentRowsToClips;
+  module.exports.ssNormalizeCuratorUsername = ssNormalizeCuratorUsername;
+  module.exports.ssResolveCuratorViewModel = ssResolveCuratorViewModel;
   module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
   module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;

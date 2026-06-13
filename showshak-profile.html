@@ -1089,6 +1089,10 @@ const isUserOwn = () => face === 'user';
    keep the existing demo/mock so the page is never blank. */
 let _signedIn = false;
 function isSignedInOwn() { return _signedIn && !_params.get('curator'); }
+/* True when this page is rendering a specific curator via ?curator=<username>
+   (the public-by-username path). Render functions read the viewed-curator
+   caches (instead of MOCK_CLIPS / the mock stash) when this is true. */
+function isViewingCurator() { return !!_params.get('curator'); }
 
 /* Tasteful default brand gradients for the hero backdrop of a brand-new
    signed-in user who has no clips yet (so the wall is never empty/flat). */
@@ -1128,7 +1132,13 @@ const MOCK_HISTORY = [
 function renderWall() {
   const wall = document.getElementById('hero-wall');
   let grads;
-  if (isSignedInOwn()) {
+  if (isViewingCurator()) {
+    // Public ?curator= view: build from the REAL viewed-curator clips.
+    // Empty cache (zero clips / clip-query failure) → leave null so the
+    // fallback below paints the default brand backdrop (Req 3.4, 9.4, 10.2).
+    const vc = _viewedCuratorClips || [];
+    grads = vc.length ? vc.map(c => c.bg) : null;
+  } else if (isSignedInOwn()) {
     // Signed-in own profile: build from REAL posted clips. A brand-new
     // user with no clips gets a clean default brand backdrop (not mock).
     const mine = getMyClips();
@@ -1449,12 +1459,16 @@ function renderCreds() {
 /* ── HIGHLIGHTS / COLLECTIONS shelf ──────────────────
    Public face: ONLY public collections, no share/new buttons.
    Owner/User : everything, with visibility chips + share + "new". */
-function publicCollectionCount() { return currentCollections().filter(c => c.vis === 'public').length; }
+function publicCollectionCount() {
+  const src = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
+  return src.filter(c => c.vis === 'public').length;
+}
 function renderShelf() {
   const el = document.getElementById('shelf');
   const pub = isPublic();
+  // Viewing a curator → the REAL public stacks (already public-only).
   // Signed-in own profile → real Stacks; logged-out/public demo → mock.
-  const source = currentCollections();
+  const source = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
   const list = pub ? source.filter(c => c.vis === 'public') : source;
 
   if (!list.length) {
@@ -1571,14 +1585,29 @@ function switchTab(t) {
    resolves (and for logged-out/public demo) we fall back to the
    sessionStorage mirror written at upload time. */
 let _myClipsCache = null;
+
+/* ── VIEWED-CURATOR STATE (public ?curator= path) ───────────────
+   Filled by hydrateCuratorProfile() from the REAL backend for the curator
+   being viewed via ?curator=<username>. The render pipeline reads these
+   caches (instead of MOCK_CLIPS / the mock stash) when ?curator= is present.
+   `_viewedCuratorFound` is null until the async hydrate resolves it to
+   true/false, which drives the public not-found render branch. */
+let _viewedCuratorClips = [];     // real clips for the viewed curator (?curator=)
+let _viewedCuratorStacks = [];    // real public stacks for the shelf
+let _viewedCuratorFound = null;   // null=not yet resolved, true/false after hydrate
+let _viewedCuratorId = null;      // resolved real users.id (for Follow write)
+let _viewedCuratorUsername = null;// resolved real username
 function getMyClips() {
+  if (isViewingCurator()) return _viewedCuratorClips;
   if (isSignedInOwn() && _myClipsCache) return _myClipsCache;
   try { return JSON.parse(sessionStorage.getItem('ss_my_clips_v1') || '[]'); }
   catch { return []; }
 }
 function myClipsCount() {
+  // Public ?curator= view counts the REAL viewed-curator clips only.
   // Signed-in own profile counts REAL uploads only (0 for a new user).
   // Logged-out/public demo keeps the mock count so the showcase isn't empty.
+  if (isViewingCurator()) return _viewedCuratorClips.length;
   return isSignedInOwn() ? getMyClips().length : (getMyClips().length + MOCK_CLIPS.length);
 }
 
@@ -1620,10 +1649,23 @@ function goUpload() {
    (User has no primary grid — their tabs are History + Following.) */
 function renderPrimary() {
   const el = document.getElementById('primary');
+  // Public not-found branch (Req 8): the viewed curator did not resolve to a
+  // real curator. Render a clean unavailable state — zero clips, no MOCK —
+  // and clear the viewer array. PROFILE.followers/clipsPosted are already 0.
+  if (isViewingCurator() && _viewedCuratorFound === false) {
+    const raw = _viewedCuratorUsername || (_params.get('curator') || '').replace(/^@/, '');
+    const uname = raw ? String(raw).replace(/[<>&]/g, '') : '';
+    el.innerHTML = `<div class="empty-state"><div class="empty-ic">🚫</div><div class="empty-t">Curator unavailable</div><div class="empty-d">We couldn't find a curator @${uname}. They may have changed their handle or are no longer on ShowShak.</div></div>`;
+    window._PROFILE_PRIMARY = [];
+    return;
+  }
   const mine = getMyClips();
+  // Viewing a curator → the REAL viewed-curator clips only (no MOCK merge).
   // Signed-in own profile shows REAL uploads ONLY. Logged-out / public
   // ?curator= demo keeps merging the mock clips so the grid isn't empty.
-  const list = isSignedInOwn() ? mine : [...mine, ...MOCK_CLIPS];
+  const list = isViewingCurator() ? _viewedCuratorClips
+             : isSignedInOwn() ? mine
+             : [...mine, ...MOCK_CLIPS];
   window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the array
   const owner = isOwner();
   // Owner-only per-clip analytics (Req 10.1, 11.2, 11.3): the signed-in
@@ -2097,11 +2139,17 @@ function setFace(f) {
 function toggleMode() { setFace(isUserOwn() ? 'owner' : 'user'); }
 
 function togglePublicFollow(btn) {
-  // Build the curator record for the profile currently being viewed.
+  // Build the curator record for the profile currently being viewed. When
+  // viewing a real curator (?curator=), carry the RESOLVED real id/username
+  // so the follow write targets the real curator (Req 13.6).
+  const uname = isViewingCurator()
+    ? (_viewedCuratorUsername || (PROFILE.handle || '').replace(/^@/, ''))
+    : (PROFILE.handle || '').replace(/^@/, '');
   const cu = {
-    username: (PROFILE.handle || '').replace(/^@/, ''),
+    id: isViewingCurator() ? _viewedCuratorId : undefined,
+    username: uname,
     name: PROFILE.name, letter: PROFILE.letter, bg: PROFILE.color,
-    verified: true, clips: PROFILE.clipsPosted,
+    verified: !!PROFILE.verified, clips: PROFILE.clipsPosted,
   };
   const nowFollowing = ssToggleFollow(cu);   // shared store → Following list stays in sync
   paintPublicFollow(btn, nowFollowing);
@@ -2129,25 +2177,12 @@ const _params = new URLSearchParams(location.search);
 if (_params.get('creator') === '1') face = 'owner';
 else if (['user','owner','public'].includes(_params.get('face'))) face = _params.get('face');
 
-// Viewing a SPECIFIC curator from search (?curator=<username>) — hydrate
-// PROFILE from the curator object stashed by Discover, and force public face.
+// Viewing a SPECIFIC curator from search (?curator=<username>) — force the
+// public face for the initial render. The REAL identity, clips, counts, and
+// stacks are filled asynchronously by hydrateCuratorProfile() (from the
+// backend), NOT from the mock-derived ss_view_curator_v1 stash.
 if (_params.get('curator')) {
   face = 'public';
-  try {
-    const cu = JSON.parse(sessionStorage.getItem('ss_view_curator_v1') || 'null');
-    if (cu && cu.username) {
-      PROFILE.name       = (cu.name || cu.username).toUpperCase();
-      PROFILE.handle     = '@' + cu.username;
-      PROFILE.letter     = (cu.letter || cu.username.charAt(0)).toUpperCase();
-      PROFILE.color      = cu.bg || PROFILE.color;
-      PROFILE.photo      = null;
-      PROFILE.bio        = cu.bio || PROFILE.bio;
-      PROFILE.clipsPosted= cu.clipCount != null ? cu.clipCount : PROFILE.clipsPosted;
-      // Followers aren't a search field; approximate from reach so the bar
-      // isn't empty. Real value arrives with the backend.
-      if (cu.totalFires != null) PROFILE.followers = Math.max(1, Math.round(cu.totalFires / 1.5));
-    }
-  } catch (e) { /* fall back to default mock curator */ }
 }
 activeTab = defaultTabFor(face);
 
@@ -2198,6 +2233,102 @@ async function hydrateOwnProfile() {
       activeTab = defaultTabFor(face);
     }
   } catch (e) { /* keep mock on any failure */ }
+}
+
+/* ── CURATOR HYDRATOR (public / by-username path) ───────────────
+   The public sibling of hydrateOwnProfile() + fetchOwnFollowers(). Given
+   ?curator=<username>, it reads the REAL curator from the backend (by
+   username / creator_id, not auth.uid()) and feeds the existing render
+   pipeline via applyCuratorViewModel(). Fail-soft at every step; never
+   throws. Owner-scoped analytics are never requested here. */
+
+/* Fetch the viewed curator's PUBLIC shared stacks (fail-soft → []). */
+async function fetchCuratorPublicStacks(curatorId) {
+  if (!window.ssDB || !curatorId) return [];
+  try {
+    const { data, error } = await window.ssDB
+      .from('stacks')
+      .select('id, name, user_id, visibility, sort_no, created_at')
+      .eq('user_id', curatorId).eq('visibility', 'public').is('deleted_at', null)
+      .order('sort_no', { ascending: true }).order('created_at', { ascending: false })
+      .range(0, 49);
+    if (error || !data) return [];
+    // map to the shelf/collection card shape (mirror ownCollections): name + vis 'public'
+    return data.map(s => ({ id: s.id, name: s.name || 'Untitled', count: 0, vis: 'public', thumbs: [] }));
+  } catch (e) { return []; }
+}
+
+/* Write a resolved curator view-model into PROFILE + the viewed-curator
+   caches. Never reads ss_view_curator_v1 for any field (Req 7.2). */
+function applyCuratorViewModel(vm, usersRow) {
+  _viewedCuratorFound = !!(vm && vm.found);
+  if (vm && vm.found && vm.profile) {
+    PROFILE.name        = vm.profile.name;
+    PROFILE.handle      = vm.profile.handle;
+    PROFILE.letter      = vm.profile.letter;
+    PROFILE.photo       = vm.profile.photo;          // real avatar_url (fixes photo=null bug)
+    PROFILE.bio         = vm.profile.bio;
+    PROFILE.genres      = vm.profile.genres;
+    PROFILE.verified    = vm.profile.verified;
+    PROFILE.followers   = vm.stats.followers;
+    PROFILE.clipsPosted = vm.stats.clips;
+    _viewedCuratorClips = vm.clips || [];
+    _viewedCuratorId       = (usersRow && usersRow.id) || null;
+    _viewedCuratorUsername = (usersRow && usersRow.username) || (vm.profile.handle || '').replace(/^@/, '');
+  } else {
+    _viewedCuratorClips = [];
+    _viewedCuratorId = null;
+    PROFILE.followers = 0;
+    PROFILE.clipsPosted = 0;
+  }
+}
+
+/* PUBLIC / by-username sibling of hydrateOwnProfile(). Forces face='public'.
+   Reads by username / creator_id. Fail-soft at every step; never throws. */
+async function hydrateCuratorProfile() {
+  face = 'public';
+  const username = (typeof ssNormalizeCuratorUsername === 'function')
+    ? ssNormalizeCuratorUsername(_params.get('curator')) : null;
+  _viewedCuratorUsername = username;
+  if (!username || !window.ssDB) { applyCuratorViewModel(ssResolveCuratorViewModel(null)); return; }
+
+  // 1. users row by username (Req 1.1, 1.2) — fail-soft → not-found (Req 9.2)
+  let usersRow = null;
+  try {
+    const { data } = await window.ssDB.from('users')
+      .select('id, username, name, bio, avatar_url, genres, verified, role')
+      .eq('username', username).is('deleted_at', null).maybeSingle();
+    usersRow = data || null;
+  } catch (e) { usersRow = null; }
+
+  const vm0 = ssResolveCuratorViewModel(usersRow, [], 0);
+  if (!vm0.found) { applyCuratorViewModel(vm0, usersRow); return; }   // not found / not curator (Req 8)
+
+  // 2. live clips by creator_id (Req 3.1) — fail-soft → [] (Req 9.3, 9.4).
+  // Uses the SAME content projection ssLoadClips uses so ssMapContentRowsToClips maps correctly.
+  let contentRows = [];
+  try {
+    const { data } = await window.ssDB.from('content')
+      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .eq('creator_id', usersRow.id).eq('status', 'live').is('deleted_at', null)
+      .order('created_at', { ascending: false }).range(0, 199);
+    contentRows = data || [];
+  } catch (e) { contentRows = []; }
+
+  // 3. follower count by creator_id (Req 4.2) — fail-soft → 0 (Req 9.5)
+  let followers = 0;
+  try {
+    const { count } = await window.ssDB.from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('creator_id', usersRow.id).is('deleted_at', null);
+    followers = (typeof count === 'number') ? count : 0;
+  } catch (e) { followers = 0; }
+
+  // 4. public stacks by user_id (Req 5) — fail-soft → [] (Req 9.6)
+  try { _viewedCuratorStacks = await fetchCuratorPublicStacks(usersRow.id); }
+  catch (e) { _viewedCuratorStacks = []; }
+
+  applyCuratorViewModel(ssResolveCuratorViewModel(usersRow, contentRows, followers), usersRow);
 }
 
 /* ── REAL FOLLOWERS COUNT ───────────────────────────
@@ -2320,24 +2451,32 @@ async function hydrateMyClipsFromDB() {
 }
 
 (async function boot() {
-  await hydrateOwnProfile();
-  // Brand-new signed-in user: start every account-linked number CLEAN so
-  // the mock vanity figures never flash. Real values fill in live.
-  if (isSignedInOwn()) {
-    PROFILE.followers     = 0;
-    PROFILE.firesReceived = 0;
-    PROFILE.watchItTaps   = 0;
-    // Owner-scoped analytics caches start CLEAN (fail-to-zero baseline);
-    // fetchOwnAnalytics() fills them from the 0019 reader when it resolves.
-    PROFILE.analytics     = { fires:0, watchIts:0, reach:0, shares:0 };
-    PROFILE.weekly        = [];
-    PROFILE.perClip       = {};   // content_id → { fires, views, watchIts }
+  if (_params.get('curator')) {
+    await hydrateCuratorProfile();   // public/by-username path; forces face='public'
+  } else {
+    await hydrateOwnProfile();
+    // Brand-new signed-in user: start every account-linked number CLEAN so
+    // the mock vanity figures never flash. Real values fill in live.
+    if (isSignedInOwn()) {
+      PROFILE.followers     = 0;
+      PROFILE.firesReceived = 0;
+      PROFILE.watchItTaps   = 0;
+      // Owner-scoped analytics caches start CLEAN (fail-to-zero baseline);
+      // fetchOwnAnalytics() fills them from the 0019 reader when it resolves.
+      PROFILE.analytics     = { fires:0, watchIts:0, reach:0, shares:0 };
+      PROFILE.weekly        = [];
+      PROFILE.perClip       = {};   // content_id → { fires, views, watchIts }
+    }
   }
   renderWall();
   renderAll();
-  fetchOwnFollowers();   // async → re-renders creds/cockpit/analytics when it resolves
-  fetchOwnAnalytics();   // async → fills real totals + 7-day trend from the 0019 reader (fail-to-zero)
-  hydrateMyClipsFromDB();  // async → replaces the session mirror with real DB clips
+  // Owner-scoped async calls NEVER run on the curator branch (Req 6.4). They
+  // are also gated on isSignedInOwn() (false when ?curator= is present).
+  if (!_params.get('curator')) {
+    fetchOwnFollowers();   // async → re-renders creds/cockpit/analytics when it resolves
+    fetchOwnAnalytics();   // async → fills real totals + 7-day trend from the 0019 reader (fail-to-zero)
+    hydrateMyClipsFromDB();  // async → replaces the session mirror with real DB clips
+  }
 })();
 
 // Keep the Following list + public Follow button live if following changes
