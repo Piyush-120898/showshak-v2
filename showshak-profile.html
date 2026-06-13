@@ -2313,8 +2313,9 @@ async function hydrateCuratorProfile() {
     usersRow = data || null;
   } catch (e) { usersRow = null; }
 
-  const vm0 = ssResolveCuratorViewModel(usersRow, [], 0);
-  if (!vm0.found) { applyCuratorViewModel(vm0, usersRow); return; }   // not found / not curator (Req 8)
+  // No real row at all → not found (Req 8). (Existence only — the role/clips
+  // eligibility is decided below, after we know whether they've posted.)
+  if (!usersRow) { applyCuratorViewModel(ssResolveCuratorViewModel(null), null); return; }
 
   // 2. live clips by creator_id (Req 3.1) — fail-soft → [] (Req 9.3, 9.4).
   // Uses the SAME content projection ssLoadClips uses so ssMapContentRowsToClips maps correctly.
@@ -2339,6 +2340,18 @@ async function hydrateCuratorProfile() {
   // 4. public stacks by user_id (Req 5) — fail-soft → [] (Req 9.6)
   try { _viewedCuratorStacks = await fetchCuratorPublicStacks(usersRow.id); }
   catch (e) { _viewedCuratorStacks = []; }
+
+  // Eligibility: a profile is a PUBLIC CURATOR surface if the user is flagged
+  // a curator (role) OR has actually posted at least one live clip. The role
+  // column isn't reliably maintained, so live clips are the real signal. A
+  // normal user with no clips stays private → not-found (their profile is not
+  // a public page). This keeps real curators (role='user' but posted) visible.
+  var isCuratorProfile = (usersRow.role === 'curator') || (contentRows.length > 0);
+  if (!isCuratorProfile) {
+    _viewedCuratorStacks = [];
+    applyCuratorViewModel(ssResolveCuratorViewModel(null), usersRow);
+    return;
+  }
 
   applyCuratorViewModel(ssResolveCuratorViewModel(usersRow, contentRows, followers), usersRow);
 }

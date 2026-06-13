@@ -1046,8 +1046,14 @@ window.ssNormalizeCuratorUsername = ssNormalizeCuratorUsername;
    (Req 1.4, 1.5, 8.3, 8.4, 10.1). Identity fallbacks per Req 2.1-2.10; clips via
    the existing pure mapper, order preserved (Req 3.2); stats clamp per Req 4.1-4.3. */
 function ssResolveCuratorViewModel(usersRow, contentRows, followerCount){
-  // Role gate → not-found shape (Req 1.4, 1.5, 8.3, 8.4, 10.1).
-  if (!usersRow || usersRow.role !== "curator") {
+  // Existence gate → not-found shape (Req 1.4, 8.3, 8.4, 10.1). A null/undefined
+  // (or non-object) row is "not found". NOTE: we deliberately do NOT gate on
+  // usersRow.role here — the `role` column is not reliably set to 'curator' in
+  // practice (sign-up creates role='user' and posting a clip never flips it), so
+  // gating on it wrongly rejects real curators who have posted real clips. The
+  // "is this a public curator surface" policy (role OR has-clips) is decided by
+  // the caller (hydrateCuratorProfile), which has both the row and the clips.
+  if (!usersRow || typeof usersRow !== "object") {
     return { found: false, profile: null, clips: [], stats: { followers: 0, clips: 0 } };
   }
 
