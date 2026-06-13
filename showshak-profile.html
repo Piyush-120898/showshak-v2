@@ -2276,10 +2276,22 @@ function applyCuratorViewModel(vm, usersRow) {
     _viewedCuratorId       = (usersRow && usersRow.id) || null;
     _viewedCuratorUsername = (usersRow && usersRow.username) || (vm.profile.handle || '').replace(/^@/, '');
   } else {
-    _viewedCuratorClips = [];
-    _viewedCuratorId = null;
-    PROFILE.followers = 0;
+    // Not found / not a curator: NEUTRALIZE the hero identity so the page
+    // never falls back to the hardcoded default mock profile (Arjun Mehta).
+    // Show the requested @handle with a clean, empty identity; renderPrimary
+    // renders the "Curator unavailable" state below (Req 8).
+    var reqHandle = _viewedCuratorUsername || (_params.get('curator') || '').replace(/^@/, '');
+    PROFILE.name        = reqHandle || 'Unavailable';
+    PROFILE.handle      = reqHandle ? ('@' + reqHandle) : '';
+    PROFILE.letter      = (reqHandle ? reqHandle.charAt(0) : '?').toUpperCase();
+    PROFILE.photo       = null;
+    PROFILE.bio         = '';
+    PROFILE.genres      = [];
+    PROFILE.verified    = false;
+    PROFILE.followers   = 0;
     PROFILE.clipsPosted = 0;
+    _viewedCuratorClips = [];
+    _viewedCuratorId    = null;
   }
 }
 
