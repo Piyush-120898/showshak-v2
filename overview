@@ -831,6 +831,107 @@ Closest references for mental model:
 
 
 ═══════════════════════════════════════════════════════════════
+  BACKEND BUILD STATUS  (updated 2026 — keep current)
+  ───────────────────────────────────────────────────────────────
+  The frontend prototype is DONE (see FILE STRUCTURE). The backend is now
+  being built spec-by-spec on Supabase (Postgres + Auth + Storage + Edge
+  Functions, Mumbai) + Mux + TMDB. Migrations are applied MANUALLY by the
+  founder in the Supabase SQL editor. Pure logic lives in showshak-shared.js
+  and is covered by Node + fast-check property tests (run: `npm test` /
+  `node tests/run-all.js`). Current suite: 23 test files, all green.
+
+  ── DONE (built + verified) ─────────────────────────────────────
+
+  AUTH / ONBOARDING  ✓
+    Guest-first Supabase auth (anonymous → real account), the guest gate
+    (Fire/Save/Follow prompt sign-up; browsing/Watch It/Share stay free),
+    and post-login onboarding (username, genres, platforms, photo). All in
+    showshak-shared.js. Real sessions drive the whole app now.
+
+  curator-upload-v2  ✓  (migrations 0016–0017)
+    Real publishing pipeline in showshak-upload.html: client-side trim
+    (ffmpeg.wasm), multi-title search + link (find_or_create_title),
+    auto-derived genres, pitch rules (≤280), drafts, edit-after-post, and
+    the fail-closed publish order (titles → trim → mint Mux → PUT bytes →
+    insert content → insert content_titles). Multi-title Watch It sheet.
+
+  watch-it-availability  ✓  (data/ingest-tmdb.js)
+    Cache-first, region-aware Watch It. A LOCAL Node ingest script is the
+    ONLY thing that touches TMDB (browser never does); it writes
+    titles.providers. Frontend resolves region + subscriptions and renders
+    the sheet (ssResolveWatchOptions / ssGetRegion / ssGetSubscribedPlatformIds).
+    NOTE: the live TMDB ingest dry-run is FOUNDER-RUN (needs a TMDB-reachable
+    network; can't run on an India egress path).
+
+  mux-video-clips  ✓  (migration 0012; Edge Functions mux-upload-url + mux-webhook)
+    Real short-form video via Mux behind the MediaSurfaceContract: auth-gated
+    upload mint, signature-verified webhook that flips clips to 'live', the
+    VideoSurface (<mux-player>), and a windowed/bounded preloader so only a
+    few players mount at once. Founder-only: deploy the Edge Functions + set
+    Mux secrets + configure the dashboard webhook.
+
+  unified-clip-player  ✓
+    One shared Clip_Engine in showshak-shared.js powers BOTH the inline Feed
+    and the fullscreen viewer (Media_Surface + Progress_Bar + gestures +
+    ordering seam). The Feed is fully migrated onto it; bespoke player code
+    removed. Final formal manual regression is the only open item.
+
+  creator-analytics  ✓ built  (migration 0019 — APPLIED)
+    Makes the curator cockpit numbers REAL (Fires · Watch-Its · Reach +
+    7-day trend + per-clip stats), instead of zeros. Three parts:
+      1. Migration 0019 (additive): INSERT-only grants + anti-spoofing RLS
+         (`user_id is not distinct from auth.uid()`) on view/watch/share
+         events, and owner-scoped SECURITY DEFINER reader functions
+         (creator_analytics_totals / _weekly / _per_clip). NO raw event
+         reads; counts derived on-read (the analytics_daily rollup is the
+         documented future scale path, NOT built).
+      2. Event_Recorder in showshak-shared.js: fire-and-forget view / watch /
+         share inserts, no-op for guests on mock clips, per-session view
+         de-dup. REACH = GENUINE ATTENTION: a view is recorded only after a
+         clip has been the ACTIVE clip for SS_VIEW_DWELL_MS = 2000ms (2s) —
+         scroll-bys don't count. (Founder decision; tune Reach via this one
+         constant.)
+      3. Cockpit read-path in showshak-profile.html: fetchOwnAnalytics()
+         calls the 0019 readers and renders real totals + weekly trend +
+         per-clip Fire/View/Watch-It, owner-only, FAIL-TO-ZERO (never breaks
+         the page if a read fails or 0019 isn't applied).
+    The metrics philosophy is enforced in the DB by RLS (hide-the-scoreboard
+    is structural, not a UI promise).
+
+  ── WHAT'S REMAINING ────────────────────────────────────────────
+
+  creator-analytics — founder-run verification (the build is done; these are
+  manual checks you run, not code to write — the harness checks ARE written):
+    • 8.1 ✓ written — anti-spoofing RLS + no-raw-reads checks live in
+      showshak-rls-check.html (run it in-browser, signed in as a curator,
+      after 0019 is applied).
+    • 8.2 — owner-scoped reader-correctness checks (seed two curators + a
+      known event mix; assert each sees ONLY their own aggregates and the
+      collapse/no-collapse/fire rules hold).  ← NEXT
+    • 8.3 — config/smoke for the 0019 posture (insert-not-select grants, RLS
+      enabled, functions SECURITY DEFINER + locked search_path, index usage,
+      content_fires / analytics_daily untouched).
+    • Optional, intentionally skipped: 6.3 cockpit fail-to-zero unit test
+      (profile JS is inline, not unit-testable without refactor — covered
+      in-browser instead).
+
+  Cross-spec FOUNDER-RUN / OPS items still open:
+    • Deploy the Mux Edge Functions, set Mux secrets, configure the Mux
+      dashboard webhook (mux-video-clips §12).
+    • Run the TMDB ingest dry-run for real (watch-it-availability) on a
+      TMDB-reachable network.
+    • Final manual browser regression for unified-clip-player + watch-it.
+    • Confirm migrations 0012–0019 are all applied in Supabase.
+
+  Bigger picture (NOT yet started — these are the real company milestones,
+  see "pitch points" file): the THREE-SIDED COLD-START (≈15 hungry curators
+  posting + ≈100 users returning), the LEGAL/DMCA safe-harbor scaffolding
+  (registered agent, takedown + counter-notice flow, repeat-infringer policy,
+  ToS), GET-PAID attribution on Watch It (deals/affiliate), and the PWA layer
+  (manifest/service worker/install) once site + backend are stable.
+
+
+═══════════════════════════════════════════════════════════════
   HOW TO USE THIS FILE
   ───────────────────
   Start any new AI conversation with:
@@ -845,4 +946,4 @@ Closest references for mental model:
     + whichever page HTML you are working on
 
   The AI will have full context and can start immediately.
-═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════

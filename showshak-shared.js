@@ -157,8 +157,20 @@ function _ssRenderSheetOption(p, titleName) {
       </div>`;
 }
 
+/* Current Watch It sheet context, stashed by ssOpenSheet so ssHandleWatchNow
+   (which only receives display strings) can record a Watch_Event for the right
+   clip. Reset/overwritten each time the sheet opens. */
+var _ssSheetShow   = null;
+var _ssSheetRegion = undefined;
+
 async function ssOpenSheet(show) {
   if (!show) return;
+
+  // Stash the current sheet's clip (and, once resolved, its region) so the
+  // option-click handler — which only receives display strings — can record a
+  // Watch_Event for the right clip (Req 2.1/2.2).
+  _ssSheetShow   = show;
+  _ssSheetRegion = undefined;
 
   // Open the overlay immediately (runs synchronously before the first await)
   // so the sheet appears at once; the header + options fill in after the
@@ -174,6 +186,7 @@ async function ssOpenSheet(show) {
   // (lazy fetch of the clip's linked titles, single-title fallback otherwise),
   // then resolve EACH title independently via the shared resolver (Req 2.4).
   const region   = await ssGetRegion();
+  _ssSheetRegion = region;   // stash for the Watch_Event recorded on option click
   const subs     = await ssGetSubscribedPlatformIds();
   const titles   = await _ssFetchSheetTitles(show);
   const sections = window.ssResolveWatchOptionsForTitles(titles, region, subs);
@@ -242,6 +255,12 @@ function ssCloseSheet() {
 }
 
 function ssHandleWatchNow(platform, showTitle) {
+  // Record the Watch It tap fire-and-forget BEFORE/independent of the toast +
+  // close, so it never blocks the navigation (Req 2.1, 2.2). The wrapper skips
+  // mock/demo clips and de-dup isn't applied (every tap counts). We pass only
+  // the fields cheaply in scope (content_id + resolved region); ssBuildWatchEvent
+  // omits absent title_id/platform_id (Req 2.2).
+  ssRecordWatch(_ssSheetShow && _ssSheetShow.id, { region: _ssSheetRegion, platform_id: undefined, title_id: undefined });
   ssCloseSheet();
   setTimeout(() => ssToast(`▶ Opening ${showTitle} on ${platform}`), 200);
 }
@@ -362,6 +381,9 @@ function scrollFeedToTop() { ssScrollToTop('feed'); }
 ════════════════════════════════════════════════ */
 function ssShare(show) {
   if (!show) return;
+  // Record the share fire-and-forget alongside the native share / clipboard
+  // path (Req 3.1). The wrapper skips mock clips and never blocks the action.
+  ssRecordShare(show && show.id);
   if (navigator.share) {
     navigator.share({
       title: `Watch ${show.title} on ${show.platLabel}`,
@@ -983,6 +1005,520 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
+
+/* ═══════════════════════════════════════════════════════════════
+   CREATOR ANALYTICS — Event_Recorder pure helpers (no DOM, no network,
+   never throw, Node-testable). These encode the capture-side decisions and
+   insert-payload shapes the fire-and-forget recorder wrappers rely on, and are
+   exported under the consolidated module.exports block below so the Node
+   fast-check tests can require them. See .kiro/specs/creator-analytics.
+
+   Split (per the design's "Event_Recorder → Pure helpers"):
+     • ssIsRecordableClipId  — mock/prototype skip decision  (Req 1.6, 2.6, 3.5, 12.4)
+     • ssResolveEventUserId  — insert-payload user_id resolution (Req 1.2/1.3, 2.3/2.4, 3.2/3.3)
+     • ssShouldRecordView    — per-session view de-dup decision   (Req 1.5)
+     • ssBuildViewEvent      — view insert payload                (Req 1.1)
+     • ssBuildShareEvent     — share insert payload               (Req 3.1)
+     • ssBuildWatchEvent     — watch insert payload (+optional fields) (Req 2.1, 2.2)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Mock/prototype-clip skip decision (Req 1.6, 2.6, 3.5, 12.4). Only persisted
+   `content` rows have uuid ids; mock/prototype clips use small integers. Reuses
+   the same uuid test the fire helpers use (`_ssIsUuid`), so the recorder records
+   exactly the persisted clips and skips prototype integer ids, null, undefined,
+   and malformed strings. Returns true iff `clipId` is a uuid-form content id. */
+function ssIsRecordableClipId(clipId) {
+  // null/undefined are never uuids; _ssIsUuid stringifies defensively and
+  // never throws, so this stays pure for any input.
+  if (clipId === null || clipId === undefined) return false;
+  return _ssIsUuid(clipId);
+}
+
+/* Insert-payload user_id resolution (Req 1.2/1.3, 2.3/2.4, 3.2/3.3, 5.2/5.3).
+   A signed-in user object with an `id` resolves to that id; a guest
+   (null/undefined, or an object without a usable id) resolves to null. Never
+   throws and never returns any other value. */
+function ssResolveEventUserId(currentUser) {
+  if (currentUser && typeof currentUser === 'object') {
+    var id = currentUser.id;
+    if (typeof id === 'string' && id) return id;
+  }
+  return null;
+}
+
+/* Per-session view de-dup DECISION (Req 1.5). Pure: given the Set of clip ids
+   already viewed this session and a candidate clip id, returns true the first
+   time the id is seen and false thereafter. Does NOT mutate the Set — the impure
+   caller marks the id on a true result. Handles a missing/empty set gracefully. */
+function ssShouldRecordView(viewedSet, clipId) {
+  if (!viewedSet || typeof viewedSet.has !== 'function') return true;
+  return !viewedSet.has(clipId);
+}
+
+/* View_Event insert payload (Req 1.1). Pure builder so the shape is testable. */
+function ssBuildViewEvent(clipId, userId) {
+  return { content_id: clipId, user_id: userId };
+}
+
+/* Share_Event insert payload (Req 3.1). */
+function ssBuildShareEvent(clipId, userId) {
+  return { content_id: clipId, user_id: userId };
+}
+
+/* Watch_Event insert payload (Req 2.1, 2.2). Includes `title_id` / `platform_id`
+   / `region` ONLY when the Watch It selection provided them (truthy/defined);
+   each absent value is omitted entirely so the DB defaults/nulls apply — values
+   are never invented. */
+function ssBuildWatchEvent(clipId, userId, opts) {
+  var payload = { content_id: clipId, user_id: userId };
+  var o = (opts && typeof opts === 'object') ? opts : {};
+  if (o.title_id !== undefined && o.title_id !== null && o.title_id !== '') payload.title_id = o.title_id;
+  if (o.platform_id !== undefined && o.platform_id !== null && o.platform_id !== '') payload.platform_id = o.platform_id;
+  if (o.region !== undefined && o.region !== null && o.region !== '') payload.region = o.region;
+  return payload;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CREATOR ANALYTICS — Event_Recorder impure wrappers (browser-only,
+   fire-and-forget). These sit on top of the pure helpers above and write one
+   event row per captured action, mirroring the existing `_ssDbFire` /
+   `_ssDbFollow` DB pattern: guard `window.ssDB` + `window.ssCurrentUser`,
+   resolve the viewer, skip non-recordable (mock/prototype) clips, build the
+   payload with the pure builder, then INSERT without `await` on the caller's
+   path and swallow any rejection so playback / Watch It navigation / share are
+   never blocked or thrown into.
+
+     • ssRecordView  → view_events,  + per-session de-dup (Req 1.4, 1.5, 1.6, 13.1, 13.2)
+     • ssRecordWatch → watch_events, no de-dup / no self-collapse (Req 2.5, 2.6, 2.7, 13.1, 13.2)
+     • ssRecordShare → share_events  (Req 3.4, 3.5, 13.1, 13.2)
+
+   Per-session view de-dup state is a module-level Set keyed by clip id, reset
+   naturally on page load (one "playback session" per the requirement). Fires are
+   NOT written here — they keep the existing `content_fires` capture (Req 4.2).
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Clip ids viewed in this playback session (reset on page load). ssRecordView
+   consults this via ssShouldRecordView and marks an id only when a View_Event is
+   actually recorded, so a repeat view of the same clip is a clean no-op. */
+var _ssViewedThisSession = new Set();
+
+/* Record a View_Event fire-and-forget (Req 1.1, 1.4, 1.5, 1.6, 13.1, 13.2).
+   Resolves the viewer (null for a guest), no-ops when ssDB is missing or the
+   clip id isn't a persisted content row, and de-dups per session. */
+function ssRecordView(clipId) {
+  try {
+    if (!window.ssDB || !ssIsRecordableClipId(clipId)) return;          // clean no-op
+    var me = (typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+    var userId = ssResolveEventUserId(me);
+    if (!ssShouldRecordView(_ssViewedThisSession, clipId)) return;       // already viewed this session
+    _ssViewedThisSession.add(clipId);
+    var payload = ssBuildViewEvent(clipId, userId);
+    // Fire-and-forget: do NOT await on the caller's path; swallow rejections.
+    Promise.resolve(window.ssDB.from('view_events').insert(payload))
+      .then(function (res) { if (res && res.error) console.warn('ShowShak view:', res.error.message); })
+      .catch(function () { /* never block playback */ });
+  } catch (e) { /* keep playback working even if recording fails */ }
+}
+
+/* Record a Watch_Event fire-and-forget (Req 2.1, 2.2, 2.5, 2.6, 2.7, 13.1, 13.2).
+   No de-dup and no self-collapse — every tap inserts a row. `opts` may carry
+   title_id / platform_id / region, passed through by the pure builder. */
+function ssRecordWatch(clipId, opts) {
+  try {
+    if (!window.ssDB || !ssIsRecordableClipId(clipId)) return;          // clean no-op
+    var me = (typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+    var userId = ssResolveEventUserId(me);
+    var payload = ssBuildWatchEvent(clipId, userId, opts);
+    Promise.resolve(window.ssDB.from('watch_events').insert(payload))
+      .then(function (res) { if (res && res.error) console.warn('ShowShak watch:', res.error.message); })
+      .catch(function () { /* never block the Watch It navigation */ });
+  } catch (e) { /* keep navigation working even if recording fails */ }
+}
+
+/* Record a Share_Event fire-and-forget (Req 3.1, 3.4, 3.5, 13.1, 13.2). */
+function ssRecordShare(clipId) {
+  try {
+    if (!window.ssDB || !ssIsRecordableClipId(clipId)) return;          // clean no-op
+    var me = (typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+    var userId = ssResolveEventUserId(me);
+    var payload = ssBuildShareEvent(clipId, userId);
+    Promise.resolve(window.ssDB.from('share_events').insert(payload))
+      .then(function (res) { if (res && res.error) console.warn('ShowShak share:', res.error.message); })
+      .catch(function () { /* never block the share action */ });
+  } catch (e) { /* keep the share action working even if recording fails */ }
+}
+
+/* Expose the impure recorder wrappers on window (consistent with how other ss*
+   functions are exposed). They are browser-only, so they are NOT added to the
+   Node `module.exports` block — only the pure helpers they build on are. */
+if (typeof window !== 'undefined') {
+  window.ssRecordView  = ssRecordView;
+  window.ssRecordWatch = ssRecordWatch;
+  window.ssRecordShare = ssRecordShare;
+}
+
+/* ── VIEW dwell (Reach = genuine attention, not a scroll-by) ──────────────────
+   A View_Event is recorded only after a clip has been the ACTIVE (playing) clip
+   for SS_VIEW_DWELL_MS, so clips the viewer scrolls past quickly never inflate
+   Reach. The dwell lives in the engine's active-clip path so it covers BOTH
+   hosts (the inline Feed and the fullscreen viewer): every active-clip change
+   clears the pending timer and starts a fresh one (`_ssViewDwellTimer`), and the
+   timer records only if the SAME clip is still active when it fires. The timer
+   is also cleared when the fullscreen viewer tears down and when an inline mount
+   is rebuilt. ssRecordView already de-dups per session, so re-activating a clip
+   later is a harmless no-op. */
+var SS_VIEW_DWELL_MS = 2000;   // Reach attention threshold: a clip must stay active this long (ms) before it counts as a view.
+var _ssViewDwellTimer = null;  // pending dwell timer for the currently-active clip (module-level so every host shares it).
+
+/* Cancel any pending dwell-view timer. Called on every active-clip change,
+   on fullscreen teardown, and on inline mount rebuild, so a clip scrolled past
+   quickly never records. */
+function _ssCancelViewDwell() {
+  if (_ssViewDwellTimer) { clearTimeout(_ssViewDwellTimer); _ssViewDwellTimer = null; }
+  return undefined;
+}
+
+/* (Re)start the dwell timer for the clip that JUST became active in `mode`
+   ('INLINE' | 'FULLSCREEN'). When it fires, re-check the active index hasn't
+   changed before recording the correct host's active clip. Picks the clip from
+   the right host's state: _ssvClips[_ssvActiveIdx] for FULLSCREEN,
+   _inlineClips[_inlineActiveIdx] for INLINE. ssRecordView skips non-uuid mock
+   ids, so only real clips record. */
+function _ssScheduleViewDwell(mode) {
+  _ssCancelViewDwell();
+  var m = (mode === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
+  var idxAtStart = (m === 'INLINE') ? _inlineActiveIdx : _ssvActiveIdx;
+  _ssViewDwellTimer = setTimeout(function () {
+    _ssViewDwellTimer = null;
+    try {
+      // Guard: only record if the SAME clip is still the active one.
+      var idxNow = (m === 'INLINE') ? _inlineActiveIdx : _ssvActiveIdx;
+      if (idxNow !== idxAtStart) return;
+      var clip = (m === 'INLINE') ? _inlineClips[idxNow] : _ssvClips[idxNow];
+      if (clip && clip.id != null) ssRecordView(clip.id);
+    } catch (e) { /* never affect playback */ }
+  }, SS_VIEW_DWELL_MS);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CREATOR ANALYTICS — Analytics_Reader counting-model helpers (pure: no DOM,
+   no network, never throw). These are the EXECUTABLE SPECIFICATION the
+   migration `0019` SQL reader mirrors row-for-row
+   (creator_analytics_totals / creator_analytics_weekly /
+   creator_analytics_per_clip). The JS helpers and the SQL implement the SAME
+   counting rules, so property-testing the helpers validates the counting
+   contract `0019` must honor. Exported under the consolidated module.exports
+   block below. See .kiro/specs/creator-analytics.
+
+   Helpers (per the design's "Counting rules" + the 0019 SQL semantics):
+     • ssCountWithSelfCollapse — views/shares Self_Activity collapse  (Req 1.7/1.8/1.9, 3.6/3.7, 7.6, 10.4)
+     • ssCountWatch            — watch taps, no de-dup, no collapse    (Req 2.7, 2.8, 7.7, 10.4)
+     • ssCountFires            — at most one fire per distinct user     (Req 4.1, 4.4, 7.7, 10.4)
+     • ssFilterOwnClips        — owner-scoping filter                   (Req 7.1, 7.4, 10.2, 11.1)
+
+   These operate PER CLIP (the totals aggregate across clips by summing each
+   clip's per-clip result; ssFilterOwnClips narrows the clip set first). They
+   are composable and defensive: null/undefined/non-array inputs yield a sensible
+   empty result (0 or []), never a throw.
+
+   SQL "IS DISTINCT FROM" semantics, replicated exactly so the property tests
+   (3.2–3.5) can mirror them:
+     • A guest event (user_id = null) is IS DISTINCT FROM any non-null
+       creator_id, so guests ALWAYS count individually as non-owners.
+     • Two nulls are NOT distinct from each other (matches SQL), but the
+       self-collapse branch is keyed on SQL `=` to creator_id (not distinctness):
+       `null = anything` is NULL/false in SQL, so a guest user_id is never
+       treated as the owner's own activity.
+     • Self-collapse adds AT MOST 1 per clip when ≥1 self-event exists, and 0
+       when none exists — regardless of how many self-events there are.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Normalize a raw event user_id to JS null for guest (treat undefined as null),
+   so the distinctness/equality checks below match the DB's nullable user_id. */
+function _ssEventUserId(ev) {
+  if (!ev || typeof ev !== 'object') return null;
+  var u = ev.user_id;
+  return (u === undefined) ? null : u;
+}
+
+/* SQL `a IS DISTINCT FROM b`: two nulls are NOT distinct; a null and a value
+   ARE distinct; otherwise compare by equality. */
+function _ssIsDistinctFrom(a, b) {
+  if (a === null && b === null) return false;
+  if (a === null || b === null) return true;
+  return a !== b;
+}
+
+/* SQL `a = b` for the self branch: NULL on either side yields NULL (false);
+   otherwise strict equality. A guest (null) is therefore never the owner. */
+function _ssSqlEquals(a, b) {
+  if (a === null || b === null) return false;
+  return a === b;
+}
+
+/* Self_Activity collapse counter for VIEWS and SHARES (Req 1.7/1.8/1.9,
+   3.6/3.7, 7.6, 10.4). For a single clip owned by `creatorId` and a
+   list/multiset of events (each with a `user_id`; guest = null):
+
+     count = (events whose user_id IS DISTINCT FROM creatorId — each counted
+              individually, including guests and repeat views by the same
+              viewer)
+           + (1 if at least one event has user_id = creatorId, else 0)
+
+   Mirrors the 0019 SQL shape
+     count(*) where user_id is distinct from c.creator_id
+     + count(distinct clip) where user_id = c.creator_id
+   (which, per single clip, is 1 when any self-event exists, else 0).
+   Defensive: a non-array `events` yields 0; `creatorId` undefined is treated
+   as null. Never throws. */
+function ssCountWithSelfCollapse(events, creatorId) {
+  if (!Array.isArray(events)) return 0;
+  var owner = (creatorId === undefined) ? null : creatorId;
+  var nonOwner = 0;
+  var hasSelf = false;
+  for (var i = 0; i < events.length; i++) {
+    var uid = _ssEventUserId(events[i]);
+    if (_ssIsDistinctFrom(uid, owner)) nonOwner++;
+    else if (_ssSqlEquals(uid, owner)) hasSelf = true;
+  }
+  return nonOwner + (hasSelf ? 1 : 0);
+}
+
+/* Watch counter (Req 2.7, 2.8, 7.7, 10.4). Every Watch_Event counts: no
+   per-session de-dup and no self-collapse, so owner taps and repeated taps by
+   the same viewer are each counted. Mirrors the 0019 SQL `count(*)` over
+   watch_events. Defensive: a non-array input yields 0; never throws. */
+function ssCountWatch(events) {
+  if (!Array.isArray(events)) return 0;
+  return events.length;
+}
+
+/* Fire counter (Req 4.1, 4.4, 7.7, 10.4). For a single clip's fire records,
+   counts at most one fire per DISTINCT user (the owner included), so duplicate
+   records for the same user collapse to one. Mirrors the 0019 SQL `count(*)`
+   over content_fires, where the PK (user_id, content_id) already guarantees one
+   row per (user, clip). Defensive: a non-array input yields 0; undefined
+   user_id is normalized to null (a single distinct key); never throws. */
+function ssCountFires(fireRecords) {
+  if (!Array.isArray(fireRecords)) return 0;
+  var users = new Set();
+  for (var i = 0; i < fireRecords.length; i++) {
+    users.add(_ssEventUserId(fireRecords[i]));
+  }
+  return users.size;
+}
+
+/* Owner-scoping filter (Req 7.1, 7.4, 10.2, 11.1). Given a set of clips (each
+   with `id` + `creator_id`) and a caller id, returns only the clips whose
+   `creator_id` strictly equals `callerId` — so events on clips the caller does
+   not own never contribute to the caller's totals. Mirrors the 0019 SQL
+   `my_clips` CTE (`where creator_id = auth.uid()`). Defensive: a non-array
+   `clips` yields []; non-object entries are skipped; never throws. */
+function ssFilterOwnClips(clips, callerId) {
+  if (!Array.isArray(clips)) return [];
+  var out = [];
+  for (var i = 0; i < clips.length; i++) {
+    var clip = clips[i];
+    if (clip && typeof clip === 'object' && clip.creator_id === callerId) out.push(clip);
+  }
+  return out;
+}
+
+/* Insert-payload acceptance model (Req 5.2, 5.3, 5.4). Models the `0019`
+   anti-spoofing `with check (user_id is not distinct from auth.uid())` insert
+   policy on view_events / watch_events / share_events. Given the inserting
+   viewer's identity (`viewerId` — their auth.uid(), null/undefined for a Guest)
+   and the proposed payload `user_id`, returns whether the DB would ACCEPT the
+   insert:
+     • accept IFF `payloadUserId` IS NOT DISTINCT FROM `viewerId`
+     • signed-in (viewerId is a non-null id) → accept only when
+       payloadUserId === viewerId (their own id)
+     • guest (viewerId null/undefined) → accept only when payloadUserId is
+       null/undefined
+     • reject every other combination (forging another user's id, or a guest
+       sending a non-null id)
+   `undefined` is treated the same as `null` (Guest) for both arguments. Reuses
+   the same IS DISTINCT FROM semantics encoded by `_ssIsDistinctFrom`. Pure;
+   never throws. */
+function ssEventInsertAccepted(viewerId, payloadUserId) {
+  var viewer = (viewerId === undefined) ? null : viewerId;
+  var payload = (payloadUserId === undefined) ? null : payloadUserId;
+  // `is not distinct from` is the negation of `is distinct from`.
+  return !_ssIsDistinctFrom(payload, viewer);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CREATOR ANALYTICS — Weekly_Trend model helper (pure: no DOM, no network,
+   never throws). Executable specification of the `0019`
+   `creator_analytics_weekly()` SQL: it returns exactly one entry for EACH of
+   the last 7 calendar days (no day omitted; days with no events are
+   zero-filled), in ascending day order, mirroring the SQL
+   `generate_series(0, 6)` over the `current_date - 6 .. current_date` window
+   (inclusive of today, six days back). Each event is bucketed into its
+   calendar day and the SAME counting rules as the totals are applied
+   PER (clip, day), then summed across the owner's clips for each day:
+     • views  — Self_Activity collapse (ssCountWithSelfCollapse): non-owner
+                views counted individually; the owner's own views on a clip
+                collapse to exactly one per (clip, day) (Req 9.5)
+     • shares — same Self_Activity collapse as views (Req 9.5)
+     • watch_its — every Watch_Event counted (ssCountWatch); no de-dup, no
+                collapse (Req 9.5)
+     • fires  — at most one per distinct user per clip (ssCountFires) (Req 9.5)
+
+   Signature: ssWeeklyTrend(buckets, todayEpochDay)
+     • buckets: { views, shares, watches, fires } — four arrays of event
+       records. View/share/fire records have shape
+         { content_id, creator_id, user_id, day }
+       and watch records { content_id, day } (user_id/creator_id are ignored
+       for watch — no collapse). `creator_id` is the owning curator of the
+       clip (the events passed in are already owner-scoped upstream by
+       ssFilterOwnClips, matching the `my_clips` CTE); it is used only to
+       decide whether an event is the owner's own Self_Activity.
+     • A record's calendar day is derived by `_ssEpochDayOf`: a finite numeric
+       `day` is the UTC epoch-day (days since 1970-01-01) and is used directly;
+       otherwise `created_at` (a ms-since-epoch number, an ISO string, or a
+       Date) is converted to its UTC epoch-day. Records whose day cannot be
+       resolved, or that fall outside the 7-day window, are ignored (mirroring
+       the SQL `created_at >= current_date - 6` bound and the inner-join drop
+       of out-of-window / future rows).
+     • todayEpochDay (injectable): the UTC epoch-day treated as "today" (the
+       inclusive end of the window). Made a parameter so the helper is
+       deterministic and testable rather than reading the real clock. Default
+       when omitted/non-finite: Math.floor(Date.now() / 86400000) (today in
+       UTC).
+
+   Returns: an array of EXACTLY 7 entries, ascending by day from
+   (today - 6) to today, each of shape
+     { day, views, shares, watch_its, fires }
+   where `day` is the bucket's UTC epoch-day integer and the four counts are
+   the per-day aggregates (>= 0).
+
+   Defensive: a null/undefined/non-object `buckets`, or any missing/non-array
+   bucket, yields a fully zero-filled result — still EXACTLY 7 entries. Never
+   throws.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Resolve a raw event record to its UTC epoch-day (days since 1970-01-01), or
+   null when it cannot be derived. A finite numeric `day` is taken as the
+   epoch-day directly; otherwise `created_at` (ms number / ISO string / Date)
+   is converted. Never throws. */
+function _ssEpochDayOf(ev) {
+  if (!ev || typeof ev !== 'object') return null;
+  if (typeof ev.day === 'number' && isFinite(ev.day)) return Math.floor(ev.day);
+  var ca = ev.created_at;
+  if (typeof ca === 'number' && isFinite(ca)) return Math.floor(ca / 86400000);
+  if (ca instanceof Date) {
+    var t = ca.getTime();
+    return isFinite(t) ? Math.floor(t / 86400000) : null;
+  }
+  if (typeof ca === 'string') {
+    var p = Date.parse(ca);
+    return isFinite(p) ? Math.floor(p / 86400000) : null;
+  }
+  return null;
+}
+
+function ssWeeklyTrend(buckets, todayEpochDay) {
+  // "today" reference — injectable for determinism; default is the real UTC day.
+  var today = (typeof todayEpochDay === 'number' && isFinite(todayEpochDay))
+    ? Math.floor(todayEpochDay)
+    : Math.floor(Date.now() / 86400000);
+  var startDay = today - 6;
+
+  // Normalize buckets defensively — any missing/odd bucket becomes [].
+  var b = (buckets && typeof buckets === 'object') ? buckets : {};
+  var views   = Array.isArray(b.views)   ? b.views   : [];
+  var shares  = Array.isArray(b.shares)  ? b.shares  : [];
+  var watches = Array.isArray(b.watches) ? b.watches : [];
+  var fires   = Array.isArray(b.fires)   ? b.fires   : [];
+
+  // Zero-filled 7-day skeleton (ascending), plus a day -> entry index.
+  var result = [];
+  var index = {};
+  for (var d = startDay; d <= today; d++) {
+    var entry = { day: d, views: 0, shares: 0, watch_its: 0, fires: 0 };
+    result.push(entry);
+    index[d] = entry;
+  }
+
+  function clipKeyOf(ev) {
+    return (ev && typeof ev === 'object') ? ('cid:' + String(ev.content_id)) : 'cid:undefined';
+  }
+
+  // Views / shares: per day, group by clip then apply the Self_Activity
+  // collapse per (clip, day) (ssCountWithSelfCollapse), summing across clips.
+  function accumulateCollapse(eventList, field) {
+    var byDay = {}; // day -> { clipKey -> { creatorId, events:[] } }
+    for (var i = 0; i < eventList.length; i++) {
+      var ev = eventList[i];
+      var day = _ssEpochDayOf(ev);
+      if (day === null || day < startDay || day > today) continue;
+      var k = clipKeyOf(ev);
+      if (!byDay[day]) byDay[day] = {};
+      if (!byDay[day][k]) {
+        var cid = (ev && typeof ev === 'object' && ev.creator_id !== undefined) ? ev.creator_id : null;
+        byDay[day][k] = { creatorId: cid, events: [] };
+      }
+      byDay[day][k].events.push(ev);
+    }
+    for (var dayKey in byDay) {
+      if (!byDay.hasOwnProperty(dayKey)) continue;
+      var e = index[dayKey];
+      if (!e) continue;
+      var clips = byDay[dayKey];
+      var total = 0;
+      for (var ck in clips) {
+        if (!clips.hasOwnProperty(ck)) continue;
+        total += ssCountWithSelfCollapse(clips[ck].events, clips[ck].creatorId);
+      }
+      e[field] += total;
+    }
+  }
+
+  accumulateCollapse(views, 'views');
+  accumulateCollapse(shares, 'shares');
+
+  // Watch Its: count every tap in the window (ssCountWatch), grouped per day.
+  var wByDay = {};
+  for (var wi = 0; wi < watches.length; wi++) {
+    var wev = watches[wi];
+    var wday = _ssEpochDayOf(wev);
+    if (wday === null || wday < startDay || wday > today) continue;
+    if (!wByDay[wday]) wByDay[wday] = [];
+    wByDay[wday].push(wev);
+  }
+  for (var wKey in wByDay) {
+    if (!wByDay.hasOwnProperty(wKey)) continue;
+    if (index[wKey]) index[wKey].watch_its += ssCountWatch(wByDay[wKey]);
+  }
+
+  // Fires: per day, group by clip then count at most one per distinct user per
+  // clip (ssCountFires), summing across clips.
+  var fByDay = {};
+  for (var fi = 0; fi < fires.length; fi++) {
+    var fev = fires[fi];
+    var fday = _ssEpochDayOf(fev);
+    if (fday === null || fday < startDay || fday > today) continue;
+    var fk = clipKeyOf(fev);
+    if (!fByDay[fday]) fByDay[fday] = {};
+    if (!fByDay[fday][fk]) fByDay[fday][fk] = [];
+    fByDay[fday][fk].push(fev);
+  }
+  for (var fDayKey in fByDay) {
+    if (!fByDay.hasOwnProperty(fDayKey)) continue;
+    var fe = index[fDayKey];
+    if (!fe) continue;
+    var fclips = fByDay[fDayKey];
+    var ftotal = 0;
+    for (var fck in fclips) {
+      if (!fclips.hasOwnProperty(fck)) continue;
+      ftotal += ssCountFires(fclips[fck]);
+    }
+    fe.fires += ftotal;
+  }
+
+  return result;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    CURATOR UPLOAD v2 — pure helpers (no DOM, no network, Node-testable).
@@ -2613,6 +3149,10 @@ const ClipEngine = {
     // instant (smooth viewing). No-op for gradients / when there is no next.
     const nextSurface = _ssvSurfaces[idx + 1];
     if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
+
+    // Reach = genuine attention: record a view only after this clip has stayed
+    // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
+    _ssScheduleViewDwell('FULLSCREEN');
   },
 
   /* mountInline(container, clips, opts) — the INLINE render mode. Rebuilds the
@@ -2631,6 +3171,7 @@ const ClipEngine = {
     if (!container || !Array.isArray(clips) || !clips.length) return;  // no-op guard
 
     // Tear down any previous inline mount (no surface/observer/timer leaks).
+    _ssCancelViewDwell();   // drop any pending dwell-view from the old mount
     _inlineSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
     if (_inlineObserver) { _inlineObserver.disconnect(); _inlineObserver = null; }
     if (typeof _inlineInteractionCleanup === 'function') { _inlineInteractionCleanup(); _inlineInteractionCleanup = null; }
@@ -2994,6 +3535,10 @@ function _inlineSetActive(idx) {
 
   _inlineSyncRail(idx);
   _inlineAnimateRailIn();
+
+  // Reach = genuine attention: record a view only after this clip has stayed
+  // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
+  _ssScheduleViewDwell('INLINE');
 }
 
 /* Sync the single fixed desktop #action-rail to the active clip (mirrors the
@@ -3485,6 +4030,8 @@ function ssCloseClip() {
 // The actual close/teardown. Never touches history (so it's safe to call
 // from the popstate handler after the entry has already been popped).
 function _ssvTeardownViewer() {
+  // Cancel any pending dwell-view so a clip the viewer was leaving never records.
+  _ssCancelViewDwell();
   const viewer = document.getElementById('ss-clip-viewer');
   if (viewer) { viewer.classList.remove('open'); viewer.style.opacity = ''; }
   const feed = document.getElementById('ssv-feed');
@@ -4776,6 +5323,20 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssDraftToLinks = ssDraftToLinks;
   module.exports.ssRowToDraft = ssRowToDraft;
   module.exports.ssBuildEditPatch = ssBuildEditPatch;
+  // Creator Analytics — Event_Recorder pure helpers
+  module.exports.ssIsRecordableClipId = ssIsRecordableClipId;
+  module.exports.ssResolveEventUserId = ssResolveEventUserId;
+  module.exports.ssShouldRecordView = ssShouldRecordView;
+  module.exports.ssBuildViewEvent = ssBuildViewEvent;
+  module.exports.ssBuildShareEvent = ssBuildShareEvent;
+  module.exports.ssBuildWatchEvent = ssBuildWatchEvent;
+  // Creator Analytics — Analytics_Reader counting-model helpers (exec spec of 0019)
+  module.exports.ssCountWithSelfCollapse = ssCountWithSelfCollapse;
+  module.exports.ssCountWatch = ssCountWatch;
+  module.exports.ssCountFires = ssCountFires;
+  module.exports.ssFilterOwnClips = ssFilterOwnClips;
+  module.exports.ssWeeklyTrend = ssWeeklyTrend;
+  module.exports.ssEventInsertAccepted = ssEventInsertAccepted;
 }
 
 /* ── Mute_Preference ─────────────────────────────

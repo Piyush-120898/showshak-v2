@@ -21,8 +21,8 @@ keys, so it is marked founder-run.
 
 ## Tasks
 
-- [ ] 1. Secrets and ingest scaffolding (no behavior change to the live app)
-  - [ ] 1.1 Add env example and gitignore protection
+- [x] 1. Secrets and ingest scaffolding (no behavior change to the live app)
+  - [x] 1.1 Add env example and gitignore protection
     - Create `data/.env.example` with placeholder-only values for `TMDB_API_KEY`,
       `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` (no real keys)
     - Add `data/.env` and `.env` to `.gitignore` so the real env file can never be
@@ -30,7 +30,7 @@ keys, so it is marked founder-run.
     - Verify: `git status` shows `data/.env.example` and `.gitignore` only; a created
       `data/.env` is ignored. No real keys appear in any committed file (ingest
       dry-run/verification step 7). _Requirements: 1.1, 3.2_
-  - [ ] 1.2 Scaffold `data/ingest-tmdb.js` with env loading, fail-fast, and service client
+  - [x] 1.2 Scaffold `data/ingest-tmdb.js` with env loading, fail-fast, and service client
     - Create `data/ingest-tmdb.js` (standalone Node script, never `<script>`-included)
     - Add env loading supporting both `node --env-file=data/.env` and a self-contained
       `_loadEnv()` fallback (split on first `=`, ignore blanks/`#`, set `process.env`
@@ -45,8 +45,8 @@ keys, so it is marked founder-run.
       the fail-fast message and no stack-trace half-run; nothing committed contains a
       real key (ingest dry-run/verification step 7). _Requirements: 1.1, 3.1, 3.2_
 
-- [ ] 2. Ingest core — link, fetch, map, write
-  - [ ] 2.1 Implement title selection and TMDB search + ranking
+- [x] 2. Ingest core — link, fetch, map, write
+  - [x] 2.1 Implement title selection and TMDB search + ranking
     - Implement `selectTitles(force)`: non-forced selects `tmdb_id is null AND
       deleted_at is null`; `--force` selects all `deleted_at is null`
     - Implement `searchTmdb(name, year)` calling `/3/search/movie` and `/3/search/tv`,
@@ -57,7 +57,7 @@ keys, so it is marked founder-run.
     - Verify via ingest dry-run/verification steps 2, 5, 6 (founder-run): correct
       titles selected, sensible matches, unmatched left unchanged.
       _Requirements: 1.2, 1.3, 1.5, 1.6_
-  - [ ] 2.2 Implement provider fetch, catalog load, and `toCacheEntry`
+  - [x] 2.2 Implement provider fetch, catalog load, and `toCacheEntry`
     - Implement `fetchWatchProviders(mediaType, tmdbId)` calling
       `/3/{movie|tv}/{tmdbId}/watch/providers`; read `flatrate[]` only; a region with
       no entry yields `[]`
@@ -70,7 +70,7 @@ keys, so it is marked founder-run.
     - Verify via ingest dry-run/verification step 3 (founder-run): `providers.IN`
       arrays contain only flatrate entries of the correct shape; unmatched providers
       carry null catalog fields. _Requirements: 2.1, 2.2, 2.3, 11.1, 11.2_
-  - [ ] 2.3 Implement the main loop with write, per-title resilience, tally, and summary
+  - [x] 2.3 Implement the main loop with write, per-title resilience, tally, and summary
     - Implement `main()`: parse `--force`, call `selectTitles`, loop per title with the
       link → fetch → build region-keyed `providers` → update flow
     - Skip linking when already linked and not forced (`tally.skipped++`); on no match
@@ -100,8 +100,8 @@ keys, so it is marked founder-run.
     service-role or TMDB key.
   - Ensure the dry-run checklist passes, ask the user if questions arise.
 
-- [ ] 4. Frontend read path (user-facing) — additive edits to `showshak-shared.js`, ordered so the file stays valid between tasks; must not regress existing behavior
-  - [ ] 4.1 Extend `ssLoadClips()` select and row mapping
+- [x] 4. Frontend read path (user-facing) — additive edits to `showshak-shared.js`, ordered so the file stays valid between tasks; must not regress existing behavior
+  - [x] 4.1 Extend `ssLoadClips()` select and row mapping
     - Expand the `titles` join to pull `providers,cached_at`; add
       `platform:platform_id(id,name,color,abbr)` (include `id` for the curator
       fallback)
@@ -111,7 +111,7 @@ keys, so it is marked founder-run.
     - Verify via manual browser checklist step 7 (regression sweep): clips still load
       and render on feed/discover/watchlist/profile + viewer with no console error.
       _Requirements: 4.1, 4.3_
-  - [ ] 4.2 Add `ssGetRegion()` and `ssGetSubscribedPlatformIds()` with auth invalidation
+  - [x] 4.2 Add `ssGetRegion()` and `ssGetSubscribedPlatformIds()` with auth invalidation
     - Add module caches `_ssRegion` and `_ssSubIds`
     - Implement `ssGetRegion()`: signed-in → `users.region`; guest/unknown/error →
       default `'IN'`
@@ -123,7 +123,7 @@ keys, so it is marked founder-run.
     - Verify via manual browser checklist steps 4, 5 (founder-run sign-in vs guest):
       region/subs resolve correctly and re-resolve after sign-in/out, no error.
       _Requirements: 8.2, 8.3, 9.1, 9.2_
-  - [ ] 4.3 Add the `ssResolveWatchOptions(clip, region, subscribedPlatformIds)` resolver
+  - [x] 4.3 Add the `ssResolveWatchOptions(clip, region, subscribedPlatformIds)` resolver
     - Implement exactly per design: region providers → one option per cached entry with
       `included` (non-null `platform_id` present in subs) and In-plan-first sort,
       branded color/abbr when catalog-matched else neutral default
@@ -136,7 +136,7 @@ keys, so it is marked founder-run.
       curator fallback, neutral message, in-plan marking/ordering, guest no-badge,
       neutral styling for uncatalogued providers.
       _Requirements: 4.2, 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 8.1, 8.2, 8.3, 11.1, 11.2_
-  - [ ] 4.4 Edit `ssClipsForFeed()` and `ssClipsForDiscover()` to carry the cache forward
+  - [x] 4.4 Edit `ssClipsForFeed()` and `ssClipsForDiscover()` to carry the cache forward
     - Drop the single hardcoded mock platform; carry `providers` and `curatorPlat`
       through to the clip object for the resolver
     - Keep `platLabel`/`platColor` (derived from `curatorPlat`) for any existing card
@@ -144,7 +144,7 @@ keys, so it is marked founder-run.
     - Verify via manual browser checklist steps 1, 7: feed and discover clips resolve
       identically through the sheet; clip surface still hides the title; no card-style
       regression. _Requirements: 4.2, 10.1, 10.3_
-  - [ ] 4.5 Make `ssOpenSheet()` async-aware and add the neutral-message branch
+  - [x] 4.5 Make `ssOpenSheet()` async-aware and add the neutral-message branch
     - Make `ssOpenSheet(show)` async: `await ssGetRegion()`, `await
       ssGetSubscribedPlatformIds()`, run `ssResolveWatchOptions`, then render either the
       option list (preserving `ssHandleWatchNow` and title-only-in-sheet) or the

@@ -114,6 +114,12 @@
       (empty result / error). The checks need a clip owned by a <b>different</b>
       curator; the page discovers one automatically.
     </p>
+    <p class="muted">
+      Also includes the <b>creator-analytics</b> checks (anti-spoofing INSERT RLS +
+      no-raw-reads on <code>view_events</code> / <code>watch_events</code> /
+      <code>share_events</code>). These require migration <b>0019</b> to be applied
+      first; until then they fail gracefully (FAIL/SKIPPED with the error surfaced).
+    </p>
     <button id="run" disabled>Run RLS checks</button>
     <button id="rerun" class="secondary" style="display:none">Run again</button>
   </div>
@@ -193,6 +199,15 @@ function addRow(n, name, req, expected, actual, result) {
 
 function esc(v) {
   return String(v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+// Random v4-ish uuid for the "forged user_id" spoof cases (creator-analytics 0019 checks).
+function ssRandUuid() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0, v = c === 'x' ? r : ((r & 0x3) | 0x8);
+    return v.toString(16);
+  });
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -408,6 +423,228 @@ async function runChecks() {
       addRow(4, "Cannot DELETE another curator's content_titles link", '6.6',
         '0 rows deleted; link intact', actual, result);
       tally(result);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     CREATOR-ANALYTICS CHECKS (migration 0019) — task 8.1
+     ───────────────────────────────────────────────────────────────
+     Verify the 0019 anti-spoofing INSERT RLS and the no-raw-reads grants
+     on view_events / watch_events / share_events. These REQUIRE migration
+     0019 to have been applied first; until then they fail gracefully (the
+     error is surfaced in Actual and the row is marked FAIL/SKIPPED — the
+     page never throws).
+
+     Acceptance is asserted WITHOUT a select grant: we call .insert(payload)
+     WITHOUT .select() and read { error } — error === null ⇒ accepted,
+     error !== null ⇒ rejected (an RLS WITH CHECK violation).
+     ─────────────────────────────────────────────────────────────── */
+  ctx.push('');
+  ctx.push('── creator-analytics (migration 0019) checks ──');
+  ctx.push('NOTE: these analytics checks require migration 0019 to be applied first; until then they fail gracefully (FAIL/SKIPPED with the error text surfaced in Actual).');
+
+  // Discover a clip owned by ME (preferred — so accepted self-events are
+  // legitimate owner rows), falling back to any live clip like the checks above.
+  const { data: mine, error: mineErr } = await db()
+    .from('content')
+    .select('id, status')
+    .eq('creator_id', me.id)
+    .limit(5);
+  if (mineErr) ctx.push('My-clip discovery error: ' + mineErr.message);
+  const myClip = (mine || []).find((r) => r.status === 'live') || (mine || [])[0] || null;
+  const analyticsClipId = (myClip && myClip.id) || otherClipId || null;
+  const analyticsClipMine = !!(myClip && myClip.id);
+  if (analyticsClipId) {
+    ctx.push('Analytics target clip: ' + analyticsClipId +
+      (analyticsClipMine ? ' (MINE — accepted self-events are legitimate owner rows)' : ' (not mine — fallback live clip)'));
+  } else {
+    ctx.push('No clip id available for analytics checks — all 0019 checks SKIPPED.');
+  }
+  ctx.push('Residue note: an ACCEPTED insert writes a real, owner-scoped self-event row that the anon client CANNOT delete (no delete grant) — minor expected test residue. It is minimized to the accepted view_events case (CHECK 5) + the guest null-view case (CHECK 13); all spoof cases EXPECT rejection and so write nothing.');
+
+  // Insert WITHOUT .select() and classify by the returned error. Never throws.
+  const tryInsert = async (client, table, payload) => {
+    try {
+      const { error } = await client.from(table).insert(payload);
+      return { accepted: error === null, error };
+    } catch (e) {
+      return { accepted: false, error: { message: String((e && e.message) || e) } };
+    }
+  };
+  // Detect "0019 not applied" (missing grant / table / policy) so a reject-check
+  // is not reported as PASS for the wrong reason.
+  const missing0019 = (error) => {
+    if (!error) return false;
+    const m = ((error.message || '') + ' ' + (error.code || '') + ' ' +
+      (error.hint || '') + ' ' + (error.details || '')).toLowerCase();
+    return /permission denied|does not exist|42501|42p01|schema cache|could not find/.test(m);
+  };
+
+  /* ── A. ANTI-SPOOFING — signed-in / authenticated (Req 5.2, 5.4, 5.5) ── */
+  let analyticsReady = false; // true once the accepted self-insert succeeds (CHECK 5)
+  if (!analyticsClipId) {
+    addRow(5, 'view_events insert with own user_id (signed-in) → accepted', '5.2, 5.4',
+      'accepted (error null)', 'SKIPPED — no clip id available', 'SKIPPED'); tally('SKIPPED');
+    addRow(6, 'view_events insert with forged user_id → rejected', '5.4',
+      'rejected (error)', 'SKIPPED — no clip id available', 'SKIPPED'); tally('SKIPPED');
+    addRow(7, 'view_events insert with user_id=null while signed-in → rejected', '5.2, 5.4',
+      'rejected (error)', 'SKIPPED — no clip id available', 'SKIPPED'); tally('SKIPPED');
+    addRow(8, 'watch_events insert with forged user_id → rejected', '5.4, 5.5',
+      'rejected (error)', 'SKIPPED — no clip id available', 'SKIPPED'); tally('SKIPPED');
+    addRow(9, 'share_events insert with forged user_id → rejected', '5.4, 5.5',
+      'rejected (error)', 'SKIPPED — no clip id available', 'SKIPPED'); tally('SKIPPED');
+  } else {
+    // CHECK 5 — accepted: own id (writes a real self-event row).
+    {
+      const r = await tryInsert(db(), 'view_events', { content_id: analyticsClipId, user_id: me.id });
+      let result, actual;
+      if (r.accepted) {
+        analyticsReady = true;
+        result = 'PASS';
+        actual = 'accepted (error null); self-event row written' + (analyticsClipMine ? ' on my own clip' : '');
+        ctx.push('CHECK 5: accepted self-view residue written (cannot be deleted via the anon client).');
+      } else if (missing0019(r.error)) {
+        result = 'FAIL';
+        actual = 'insert errored — migration 0019 likely NOT applied yet: ' + esc(r.error.message || '');
+      } else {
+        result = 'FAIL';
+        actual = 'own-id insert REJECTED unexpectedly: ' + esc(r.error.message || '');
+      }
+      addRow(5, 'view_events insert with own user_id (signed-in) → accepted', '5.2, 5.4',
+        'accepted (error null)', actual, result); tally(result);
+    }
+
+    // Reject-case helper: EXPECT rejection (error present). If 0019 isn't applied
+    // (CHECK 5 failed), we cannot tell an RLS rejection from a missing grant, so SKIP.
+    const rejectCheck = async (n, table, payload, name, req) => {
+      if (!analyticsReady) {
+        addRow(n, name, req, 'rejected (error)',
+          'SKIPPED — cannot distinguish RLS rejection from a missing grant; apply migration 0019 first (see CHECK 5)', 'SKIPPED');
+        tally('SKIPPED'); return;
+      }
+      const r = await tryInsert(db(), table, payload);
+      let result, actual;
+      if (!r.accepted) {
+        result = 'PASS';
+        actual = 'rejected (' + esc((r.error && r.error.message) || 'error') + ')';
+      } else {
+        result = 'FAIL';
+        actual = 'ACCEPTED — anti-spoof WITH CHECK bypassed; spoofed row written (cannot clean via anon client)';
+        ctx.push('CHECK ' + n + ': SPOOFED insert was accepted — investigate the 0019 with-check policy on ' + table + '.');
+      }
+      addRow(n, name, req, 'rejected (error)', actual, result); tally(result);
+    };
+
+    await rejectCheck(6, 'view_events',  { content_id: analyticsClipId, user_id: ssRandUuid() },
+      'view_events insert with forged user_id → rejected', '5.4');
+    await rejectCheck(7, 'view_events',  { content_id: analyticsClipId, user_id: null },
+      'view_events insert with user_id=null while signed-in → rejected', '5.2, 5.4');
+    await rejectCheck(8, 'watch_events', { content_id: analyticsClipId, user_id: ssRandUuid() },
+      'watch_events insert with forged user_id → rejected', '5.4, 5.5');
+    await rejectCheck(9, 'share_events', { content_id: analyticsClipId, user_id: ssRandUuid() },
+      'share_events insert with forged user_id → rejected', '5.4, 5.5');
+  }
+
+  /* ── B. NO RAW READS — signed-in / authenticated (Req 6.1, 6.3) ──
+     No select grant exists, so a raw read must either error (permission denied)
+     or return 0 rows. PASS = denied OR 0 rows; FAIL = any raw row readable. */
+  const noReadCheck = async (n, table, req) => {
+    try {
+      const { data, error } = await db().from(table).select('*').limit(1);
+      let result, actual;
+      if (error) {
+        result = 'PASS';
+        actual = 'read denied (' + esc(error.message || 'error') + ')';
+      } else {
+        const rows = (data || []).length;
+        result = rows === 0 ? 'PASS' : 'FAIL';
+        actual = rows === 0
+          ? '0 rows readable'
+          : rows + ' raw row(s) READABLE — LEAK (select must not be granted)';
+      }
+      addRow(n, 'No raw reads on ' + table + ' (select returns nothing)', req,
+        'no rows (denied or 0)', actual, result); tally(result);
+    } catch (e) {
+      addRow(n, 'No raw reads on ' + table + ' (select returns nothing)', req,
+        'no rows (denied or 0)', 'error: ' + esc(String((e && e.message) || e)), 'FAIL'); tally('FAIL');
+    }
+  };
+  await noReadCheck(10, 'view_events',  '6.1, 6.3');
+  await noReadCheck(11, 'watch_events', '6.1, 6.3');
+  await noReadCheck(12, 'share_events', '6.1, 6.3');
+
+  /* ── C. GUEST cases — anon role, NO session (Req 5.3) — best effort ──
+     A guest is the anon role with no session. We build a FRESH no-session anon
+     client from the same url/key used to construct window.ssDB (declared at the
+     top of showshak-supabase.js, shared in this page's lexical scope) WITHOUT
+     signing in. We never sign it out (that could touch the founder's real
+     session); a persistSession:false client starts session-less by design. */
+  let guestClient = null, guestNote = null;
+  try {
+    if (window.supabase && window.supabase.createClient &&
+        typeof SS_SUPABASE_URL !== 'undefined' && typeof SS_SUPABASE_ANON !== 'undefined' &&
+        SS_SUPABASE_URL && SS_SUPABASE_ANON) {
+      guestClient = window.supabase.createClient(SS_SUPABASE_URL, SS_SUPABASE_ANON,
+        { auth: { persistSession: false, autoRefreshToken: false } });
+      const { data: { session: gsess } } = await guestClient.auth.getSession();
+      if (gsess) { guestClient = null; guestNote = 'a fresh anon client unexpectedly carried a session'; }
+    } else {
+      guestNote = 'anon url/key not reachable without hardcoding';
+    }
+  } catch (e) {
+    guestClient = null;
+    guestNote = 'could not build a no-session anon client: ' + String((e && e.message) || e);
+  }
+
+  if (!guestClient || !analyticsClipId) {
+    const why = !analyticsClipId ? 'no clip id available' : (guestNote || 'no-session anon client unavailable');
+    const note = 'SKIPPED — ' + why + '; run guest cases from a LOGGED-OUT browser / incognito tab (anon role, no session)';
+    addRow(13, 'GUEST insert view_events with user_id=null → accepted', '5.3',
+      'accepted (error null)', note, 'SKIPPED'); tally('SKIPPED');
+    addRow(14, 'GUEST insert view_events with non-null user_id → rejected', '5.3, 5.4',
+      'rejected (error)', note, 'SKIPPED'); tally('SKIPPED');
+    ctx.push('GUEST cases: ' + note + '.');
+  } else {
+    ctx.push('GUEST cases: using a fresh no-session anon client (persistSession:false) built from the same url/key as window.ssDB.');
+    let guestReady = false; // true once the guest null-insert is accepted (CHECK 13)
+    // CHECK 13 — guest null accepted (writes a guest residue row).
+    {
+      const r = await tryInsert(guestClient, 'view_events', { content_id: analyticsClipId, user_id: null });
+      let result, actual;
+      if (r.accepted) {
+        guestReady = true;
+        result = 'PASS';
+        actual = 'accepted (error null); guest view row written';
+        ctx.push('CHECK 13: accepted guest-view residue written (cannot be deleted via the anon client).');
+      } else if (missing0019(r.error)) {
+        result = 'FAIL';
+        actual = 'guest null insert errored — migration 0019 likely NOT applied yet: ' + esc(r.error.message || '');
+      } else {
+        result = 'FAIL';
+        actual = 'guest null insert REJECTED unexpectedly: ' + esc(r.error.message || '');
+      }
+      addRow(13, 'GUEST insert view_events with user_id=null → accepted', '5.3',
+        'accepted (error null)', actual, result); tally(result);
+    }
+    // CHECK 14 — guest non-null rejected (writes nothing when correctly rejected).
+    if (!guestReady) {
+      addRow(14, 'GUEST insert view_events with non-null user_id → rejected', '5.3, 5.4',
+        'rejected (error)',
+        'SKIPPED — cannot distinguish RLS rejection from a missing grant; apply migration 0019 first (see CHECK 13)', 'SKIPPED');
+      tally('SKIPPED');
+    } else {
+      const r = await tryInsert(guestClient, 'view_events', { content_id: analyticsClipId, user_id: ssRandUuid() });
+      let result, actual;
+      if (!r.accepted) {
+        result = 'PASS';
+        actual = 'rejected (' + esc((r.error && r.error.message) || 'error') + ')';
+      } else {
+        result = 'FAIL';
+        actual = 'ACCEPTED — guest forged a non-null user_id; anti-spoof bypassed (row written)';
+        ctx.push('CHECK 14: guest non-null insert accepted — investigate the 0019 with-check policy.');
+      }
+      addRow(14, 'GUEST insert view_events with non-null user_id → rejected', '5.3, 5.4',
+        'rejected (error)', actual, result); tally(result);
     }
   }
 

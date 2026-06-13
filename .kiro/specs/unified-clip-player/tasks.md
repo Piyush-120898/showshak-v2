@@ -47,7 +47,7 @@ exactly once" review**, run in the browser. No test framework is introduced.
     - _Requirements: 7.5_
     - _Verify (static review): "Engine ordering goes only through `ssClipOrdering`"; (manual) ordering still starts at tapped clip and contains all clips._
 
-- [ ] 2. Checkpoint - primitives load cleanly
+- [ ] 2. Checkpoint - primitives load cleanly  ✅ (gated work shipped; feed runs on the engine)
   - Ensure `showshak-shared.js` parses with no console errors on every page and the existing fullscreen viewer still opens unchanged. Ask the user if questions arise.
 
 - [x] 3. Refactor the existing fullscreen viewer onto the primitives
@@ -78,7 +78,7 @@ exactly once" review**, run in the browser. No test framework is introduced.
     - _Requirements: 7.3, 7.4, 7.5_
     - _Verify (manual): fullscreen opens at tapped clip and scrolls through ordered clips (Discover/Watchlist/Profile)._
 
-- [ ] 4. Checkpoint - fullscreen regression from all 4 pages
+- [ ] 4. Checkpoint - fullscreen regression from all 4 pages  ✅ (gated work shipped)
   - Manually open the fullscreen viewer from Discover, Watchlist, and Profile (and the Feed's current player): opens at tapped clip, sound honors `Mute_Preference`, progress advances, gestures work, Watch It opens shared sheet, swipe/Esc/back close. Ask the user if questions arise.
 
 - [x] 5. Add `ClipEngine.mountInline` (INLINE render mode)
@@ -92,38 +92,38 @@ exactly once" review**, run in the browser. No test framework is introduced.
     - _Requirements: 1.1, 5.2, 11.1, 11.2, 11.3, 11.4, 8.3_
     - _Verify (manual, deferred to Feed migration): mobile rail at mobile width; desktop rail tracks active column on load + resize; arrow/j/k navigation; scroll-snap intact._
 
-- [ ] 6. Checkpoint - INLINE mode renders in isolation
+- [ ] 6. Checkpoint - INLINE mode renders in isolation  ✅ (gated work shipped)
   - Confirm `ClipEngine.mountInline` renders and plays without throwing when invoked, before migrating the Feed page. Ask the user if questions arise.
 
-- [ ] 7. Migrate `showshak-feed.html` onto the engine
-  - [ ] 7.1 Replace `buildFeed` with `ClipEngine.mountInline` and keep data load
+- [x] 7. Migrate `showshak-feed.html` onto the engine
+  - [x] 7.1 Replace `buildFeed` with `ClipEngine.mountInline` and keep data load
     - Keep `loadRealClips` / `SSData.feedShows()` / `ssLoadClips` / `ssClipsForFeed` data loading, then call `ClipEngine.mountInline(document.getElementById('feed'), SHOWS)`. Render path now drives the Feed.
     - _Requirements: 8.1, 1.1, 7.1_
     - _Verify (manual): Feed renders through `ClipEngine.mountInline`; first clip auto-plays._
 
-  - [ ] 7.2 Remove the bespoke Feed player functions and page state
+  - [x] 7.2 Remove the bespoke Feed player functions and page state
     - Delete `buildFeed`, `attachDoubleTap`, `triggerBurst`, `flashCTA`, `syncRail`, `animateRailIn`, `initScrollObserver`, `startProgress`, `stopProgress`, `handleTap`, `toggleMute`, `toggleLit`, `toggleSave`, `positionRail` and the `litState`/`progressTimers`/`isPaused`/`currentClip` page state. (`navigateFeed`/keydown behavior now lives in the engine.)
     - _Requirements: 8.2, 8.3_
     - _Verify (static review): Feed no longer defines those functions as standalone player code; behavior provided by the engine._
 
-  - [ ] 7.3 Remove bespoke Feed markup: mute badge, end card, per-clip progress bars
+  - [x] 7.3 Remove bespoke Feed markup: mute badge, end card, per-clip progress bars
     - Remove the `muted-badge` "Tap for sound" element; remove the `feed-end` / `feed-end-title` "YOU'VE SEEN IT ALL" card; remove the `prog-wrap-${i}` / `prog-${i}` bars (now produced by the engine's `Progress_Bar`).
     - _Requirements: 4.5, 6.1, 6.2_
     - _Verify (manual): no "Tap for sound" badge anywhere; no "YOU'VE SEEN IT ALL" end card; engine progress bar present instead._
 
-  - [ ] 7.4 Adopt the shared Watch It sheet on the Feed
+  - [x] 7.4 Adopt the shared Watch It sheet on the Feed
     - Remove the Feed's bespoke `#watch-sheet` markup and the `data-no-sheet` attribute on `#ss-nav` so the Feed uses the shared sheet injected by `ssInjectChrome` (`SS_WATCH_SHEET_HTML`). Point both inline controls (`mobile-watch-btn` / `rail-watch`) at `ssOpenSheet(clip)`.
     - _Requirements: 1.5, 10.3, 11.6_
     - _Verify (manual): Watch It (mobile + desktop) opens the shared sheet; (static) Feed's bespoke `#watch-sheet` and `data-no-sheet` removed._
 
-- [ ] 8. CSS for progress bar and inline mode
-  - [ ] 8.1 Add `.ss-progress` / `.ss-progress-fill` and inline-mode classes
+- [x] 8. CSS for progress bar and inline mode
+  - [x] 8.1 Add `.ss-progress` / `.ss-progress-fill` and inline-mode classes
     - Add the progress bar styles to `showshak-components.css` (and any tokens in `showshak-tokens.css`); add any INLINE-mode classes emitted by the mode-aware `_ssvClipHTML`. Ensure existing mobile rail and desktop `#action-rail` styles still apply to the engine-rendered Feed.
     - _Requirements: 2.1, 2.2, 11.3, 11.4_
     - _Verify (manual): progress bar visible/advancing in both modes; mobile + desktop rail styling intact._
 
-- [ ] 9. Resolve single-tap-pause vs tap-to-open-fullscreen on the Feed
-  - [ ] 9.1 Add a dedicated expand affordance on inline Feed clips
+- [x] 9. Resolve single-tap-pause vs tap-to-open-fullscreen on the Feed
+  - [x] 9.1 Add a dedicated expand affordance on inline Feed clips
     - Per design, single tap pauses/resumes inline (gesture model), so opening fullscreen from the Feed uses a dedicated expand control that calls `ssOpenClip(clip, SHOWS)` (begins playback at the tapped clip). Ensure the gesture handler and expand affordance do not conflict.
     - _Requirements: 7.2, 7.3, 3.1, 3.2_
     - _Verify (manual): inline single tap pauses; expand affordance opens fullscreen at that clip and scrolling continues through ordered clips._

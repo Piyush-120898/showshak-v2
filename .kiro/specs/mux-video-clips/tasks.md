@@ -73,12 +73,12 @@ Founder-only deploy/setup actions (Edge Function deploy, `supabase secrets set`,
 - [x] 5. Checkpoint - loader + surface render real video
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Supabase Edge Functions (Deno)
+- [x] 6. Supabase Edge Functions (Deno)
   - [x] 6.1 Create shared function helpers
     - Create `supabase/functions/_shared/cors.ts` (CORS headers allowing the app origin) and `supabase/functions/_shared/mux.ts` (Mux REST Basic-auth helpers reading credentials from function secrets)
     - _Requirements: 1.2_
 
-  - [ ] 6.2 Implement mux-upload-url function (auth-gated mint)
+  - [x] 6.2 Implement mux-upload-url function (auth-gated mint)
     - Create `supabase/functions/mux-upload-url/index.ts`: handle OPTIONS/CORS; resolve the caller via a Supabase client bound to the `Authorization` bearer token; return `401` and mint nothing when there is no authenticated user
     - Mint via Mux `POST /video/uploads` using Basic auth from `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` (read only from function secrets); body sets `new_asset_settings.playback_policy=["public"]` and `cors_origin=APP_ORIGIN`
     - Return only `{ uploadUrl, uploadId }`; never serialize the Mux secret

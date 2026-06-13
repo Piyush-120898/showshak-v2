@@ -421,6 +421,8 @@ html, body { overflow: hidden; }
 .g-card:hover .g-bg { transform: scale(1.07); }
 .g-vig { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 100%); }
 .g-fires { position: absolute; bottom: 8px; left: 9px; display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.92); text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.g-stats { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--gray); letter-spacing: 0.3px; }
+.g-stats .g-stat { display: inline-flex; align-items: center; gap: 3px; }
 .g-card.top .g-thumb { border-color: var(--border2); box-shadow: 0 0 0 1px rgba(234,59,50,0.25), 0 6px 24px rgba(234,59,50,0.2); }
 .g-top-badge { position: absolute; top: 8px; left: 8px; z-index: 2; background: var(--red); border-radius: 5px; padding: 2px 7px; font-size: 8px; font-weight: 800; color: #fff; letter-spacing: 0.5px; }
 .g-cap { padding: 7px 2px 0; font-size: 11px; font-weight: 400; color: var(--gray2); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1497,13 +1499,16 @@ function renderShelf() {
 function renderCockpit() {
   const el = document.getElementById('cockpit');
   if (!isOwner()) { el.classList.remove('show'); el.innerHTML = ''; return; }
-  // Signed-in owner → real numbers. These analytics aren't tracked on the
-  // frontend yet, so a real account correctly reads 0 until a backend
-  // source is wired. Logged-out/demo owner keeps the mock showcase.
+  // Signed-in owner reads the REAL owner-scoped aggregates cached on
+  // PROFILE.analytics by fetchOwnAnalytics() (0019 reader). Until that
+  // async read lands — or if it fails / migration 0019 isn't applied yet —
+  // the cache is the initialized zeros, so the cockpit renders 0 without
+  // breaking (fail-to-zero, Req 8.5).
   const own = isSignedInOwn();
-  const fires = own ? 0 : PROFILE.firesReceived;
-  const taps  = own ? 0 : PROFILE.watchItTaps;
-  const reach = own ? 0 : PROFILE.clipsPosted * 820;
+  const a = PROFILE.analytics || {};
+  const fires = own ? (a.fires    || 0) : PROFILE.firesReceived;
+  const taps  = own ? (a.watchIts || 0) : PROFILE.watchItTaps;
+  const reach = own ? (a.reach    || 0) : PROFILE.clipsPosted * 820;
   const trend = (txt) => own
     ? `<div class="an-trend" style="color:var(--gray2)">No change yet</div>`
     : `<div class="an-trend">${txt}</div>`;
@@ -1621,6 +1626,13 @@ function renderPrimary() {
   const list = isSignedInOwn() ? mine : [...mine, ...MOCK_CLIPS];
   window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the array
   const owner = isOwner();
+  // Owner-only per-clip analytics (Req 10.1, 11.2, 11.3): the signed-in
+  // owner sees Fire / View / Watch_Event counts on each of their own clips,
+  // read from the owner-scoped 0019 reader cached on PROFILE.perClip by
+  // fetchOwnAnalytics(). Never shown on the public or non-owner face. A clip
+  // missing from the map renders zeros, not blanks (Req 10.3).
+  const showClipStats = isSignedInOwn();
+  const perClip = PROFILE.perClip || {};
   if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">🎬</div><div class="empty-t">No clips yet</div><div class="empty-d">Your posted clips will appear here. Tap Create to share your first recommendation.</div></div>`;
     return;
@@ -1637,6 +1649,14 @@ function renderPrimary() {
         <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
       </div>
       <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Recommendation'}</div>
+      ${showClipStats ? (() => {
+        const s = perClip[c.id] || { fires:0, views:0, watchIts:0 };
+        return `<div class="g-stats" title="Your clip's impact">
+          <span class="g-stat" title="Fires">🔥 ${fmtFires(s.fires||0)}</span>
+          <span class="g-stat" title="Views">👁 ${fmtFires(s.views||0)}</span>
+          <span class="g-stat" title="Watch It taps">▶ ${fmtFires(s.watchIts||0)}</span>
+        </div>`;
+      })() : ''}
     </div>`).join('')}</div>`;
 }
 
@@ -1770,14 +1790,29 @@ function unfollowFromList(handle, btn) {
 
 /* ── ANALYTICS ── */
 function renderAnalytics() {
-  // Signed-in owner → real numbers (0 until a backend analytics source is
-  // wired) and a flat chart. Logged-out/demo keeps the mock showcase.
+  // Signed-in owner → REAL numbers from PROFILE.analytics + the 7-day
+  // trend from PROFILE.weekly (both cached by fetchOwnAnalytics() off the
+  // 0019 reader). Before that async read lands, or if it fails / migration
+  // 0019 isn't applied yet, the caches are the initialized zeros / empty
+  // weekly, so the panel renders zeros and a flat chart without breaking
+  // (fail-to-zero, Req 8.5). Logged-out/demo keeps the mock showcase.
   const own = isSignedInOwn();
-  const chart = own ? [0,0,0,0,0,0,0] : CHART;
-  const fires = own ? 0 : PROFILE.firesReceived;
-  const taps  = own ? 0 : PROFILE.watchItTaps;
-  const reach = own ? 0 : PROFILE.clipsPosted * 820;
-  const max = Math.max(...chart, 1), days=['M','T','W','T','F','S','S'], peak=chart.indexOf(Math.max(...chart));
+  const a = PROFILE.analytics || {};
+  const weekly = own ? (PROFILE.weekly || []) : [];
+  // Weekly trend: one point per returned day (reader returns exactly 7
+  // ascending days, zero-filled), so zero days render as zeros not omitted
+  // (Req 9.2, 9.3). The chart shows Fires/day, matching its title.
+  const chart = own
+    ? (weekly.length ? weekly.map(d => d.fires || 0) : [0,0,0,0,0,0,0])
+    : CHART;
+  const fires = own ? (a.fires    || 0) : PROFILE.firesReceived;
+  const taps  = own ? (a.watchIts || 0) : PROFILE.watchItTaps;
+  const reach = own ? (a.reach    || 0) : PROFILE.clipsPosted * 820;
+  const dayInitial = (ds) => ['S','M','T','W','T','F','S'][new Date(ds).getDay()];
+  const days = (own && weekly.length)
+    ? weekly.map(d => dayInitial(d.day))
+    : ['M','T','W','T','F','S','S'];
+  const max = Math.max(...chart, 1), peak=chart.indexOf(Math.max(...chart));
   const trend = (txt) => own
     ? `<div class="an-trend" style="color:var(--gray2)">No change yet</div>`
     : `<div class="an-trend">${txt}</div>`;
@@ -2189,6 +2224,79 @@ async function fetchOwnFollowers() {
   } catch (e) { /* keep 0 on any failure */ }
 }
 
+/* ── REAL CREATOR ANALYTICS ─────────────────────────
+   Owner-scoped aggregates from the migration `0019` reader functions.
+   Mirrors fetchOwnFollowers(): gated on isSignedInOwn() + window.ssDB so
+   it only runs for a signed-in curator viewing THEIR OWN profile (the
+   numbers are never exposed on the public / non-owner face — Req 11.2,
+   11.3; the RPCs are themselves owner-scoped via auth.uid()).
+
+   Each RPC is wrapped in its OWN try/catch so a failure (network, RLS, or
+   — expected until the founder applies migration `0019` — the RPC not yet
+   existing) leaves that metric at its initialized 0 / empty weekly and
+   NEVER throws, so the rest of the profile renders regardless (fail-to-
+   zero, Req 8.5). The follower count stays on the existing
+   fetchOwnFollowers() path (Req 8.3) and is not touched here. */
+async function fetchOwnAnalytics() {
+  if (!isSignedInOwn() || !window.ssDB) return;
+  // ── Totals (Req 8.1, 8.2). creator_analytics_totals returns a single
+  // row (a one-element array via PostgREST) → read data[0] defensively. ──
+  try {
+    const { data, error } = await window.ssDB.rpc('creator_analytics_totals');
+    if (!error && data) {
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        PROFILE.analytics = {
+          fires:    Number(row.fires_received) || 0,   // Fires_Received
+          watchIts: Number(row.watch_count)    || 0,   // Watch_Event count
+          reach:    Number(row.reach)          || 0,   // View_Event count
+          shares:   Number(row.share_count)    || 0,   // Share_Event count
+        };
+        renderCockpit();
+        renderAnalytics();
+      }
+    }
+  } catch (e) { /* keep zeros on any failure (Req 8.5) */ }
+  // ── Weekly 7-day trend (Req 9.2, 9.3). The reader already returns
+  // exactly 7 ascending days, zero-filled, so zeros stay zeros (not
+  // omitted). ──
+  try {
+    const { data, error } = await window.ssDB.rpc('creator_analytics_weekly');
+    if (!error && Array.isArray(data)) {
+      PROFILE.weekly = data.map(d => ({
+        day:      d.day,
+        views:    Number(d.views)     || 0,
+        watchIts: Number(d.watch_its) || 0,
+        shares:   Number(d.shares)    || 0,
+        fires:    Number(d.fires)     || 0,
+      }));
+      renderAnalytics();
+    }
+  } catch (e) { /* keep the flat 7-day chart on any failure (Req 8.5) */ }
+  // ── Per-clip stats (Req 10.1, 10.3). creator_analytics_per_clip returns
+  // one owner-scoped row per owned clip { content_id, fires, views,
+  // watch_its }. Cache as a content_id → { fires, views, watchIts } lookup
+  // so renderPrimary() can attach numbers to each clip card; a clip absent
+  // from the map renders zeros (Req 10.3). Wrapped in its OWN try/catch so a
+  // failure leaves the map empty and never throws (fail-to-zero, Req 8.5). ──
+  try {
+    const { data, error } = await window.ssDB.rpc('creator_analytics_per_clip');
+    if (!error && Array.isArray(data)) {
+      const map = {};
+      for (const r of data) {
+        if (!r || !r.content_id) continue;
+        map[r.content_id] = {
+          fires:    Number(r.fires)     || 0,   // Fires for this clip
+          views:    Number(r.views)     || 0,   // View_Event count (Reach)
+          watchIts: Number(r.watch_its) || 0,   // Watch_Event count
+        };
+      }
+      PROFILE.perClip = map;
+      renderPrimary();
+    }
+  } catch (e) { /* leave per-clip stats empty (zeros per clip) on any failure (Req 8.5) */ }
+}
+
 /* ── HYDRATE MY CLIPS FROM THE DB ───────────────────────────────
    Load the signed-in owner's real uploads (processing + live) from the
    `content` table and cache them as the authoritative My Clips source,
@@ -2219,10 +2327,16 @@ async function hydrateMyClipsFromDB() {
     PROFILE.followers     = 0;
     PROFILE.firesReceived = 0;
     PROFILE.watchItTaps   = 0;
+    // Owner-scoped analytics caches start CLEAN (fail-to-zero baseline);
+    // fetchOwnAnalytics() fills them from the 0019 reader when it resolves.
+    PROFILE.analytics     = { fires:0, watchIts:0, reach:0, shares:0 };
+    PROFILE.weekly        = [];
+    PROFILE.perClip       = {};   // content_id → { fires, views, watchIts }
   }
   renderWall();
   renderAll();
   fetchOwnFollowers();   // async → re-renders creds/cockpit/analytics when it resolves
+  fetchOwnAnalytics();   // async → fills real totals + 7-day trend from the 0019 reader (fail-to-zero)
   hydrateMyClipsFromDB();  // async → replaces the session mirror with real DB clips
 })();
 
