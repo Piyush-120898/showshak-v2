@@ -1971,10 +1971,47 @@ function bcNext() {
   bcStep++;
   bcRender();
 }
-function bcActivate() {
-  // Apply the chosen identity to the profile, then flip into creator mode.
+async function bcActivate() {
+  // Persist curator status + identity to the DB BEFORE flipping into creator mode.
   const handle = (document.getElementById('bc-handle').value || '').trim();
   const bio = (document.getElementById('bc-bio').value || '').trim();
+
+  const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+
+  if (user && window.ssDB) {
+    // Real persistence path.
+    try {
+      let avatarUrl;   // undefined unless an upload succeeds (R1.6: never overwrite with empty)
+      // If a new data-URL photo was chosen, upload it to Storage (mirror saveEditProfile).
+      if (bcPhoto && bcPhoto.startsWith('data:')) {
+        try {
+          const blob = await (await fetch(bcPhoto)).blob();
+          const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg','jpg');
+          const path = user.id + '/' + Date.now() + '.' + ext;
+          const up = await window.ssDB.storage.from('avatars').upload(path, blob, { upsert: true, contentType: blob.type });
+          if (up.error) throw up.error;
+          const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
+          if (!pub || !pub.publicUrl) throw new Error('no_public_url');
+          avatarUrl = pub.publicUrl;
+        } catch (e) {
+          // Leave avatarUrl undefined — do NOT block role persistence (R1.6).
+          console.error('ShowShak: curator avatar upload failed', e);
+        }
+      }
+
+      const patch = ssBuildOnboardingPatch({ handle, bio, genres: bcGenres, avatarUrl });
+      const { error } = await window.ssDB.from('users').update(patch).eq('id', user.id);
+      if (error) throw error;
+    } catch (e) {
+      // R2.1/R2.2: keep modal open, do NOT flip to owner face, stay interactive.
+      console.error('ShowShak: curator activation failed', e);
+      ssToast('Couldn’t activate curator — please try again');
+      return;
+    }
+  }
+
+  // SUCCESS path (and the no-backend demo fallback when !user || !ssDB):
+  // apply the chosen identity to the in-memory PROFILE for instant feedback.
   if (handle) { PROFILE.handle = '@' + handle; PROFILE.letter = handle.charAt(0).toUpperCase(); }
   if (bio) PROFILE.bio = bio;
   if (bcPhoto) PROFILE.photo = bcPhoto;
@@ -2128,6 +2165,10 @@ function renderAll() {
     document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
 }
 function setFace(f) {
+  // Preview_Toggle is inert for persisted state (curator-role-persistence
+  // R7.2–R7.5): this only re-renders the chosen face — it issues NO write to
+  // users.role. After a reload the face is re-decided by hydrateOwnProfile()
+  // from the persisted role, not by the prior toggle selection.
   if (!['user','owner','public'].includes(f)) f = 'user';
   face = f;
   activeTab = defaultTabFor(f);
@@ -2227,7 +2268,17 @@ async function hydrateOwnProfile() {
     PROFILE.photo  = data.avatar_url || null;
     if (data.bio)            PROFILE.bio    = data.bio;
     if (Array.isArray(data.genres) && data.genres.length) PROFILE.genres = data.genres;
-    // If they're a real curator, reflect the owner face (unless a deep-link set one).
+    // ── PERSISTED ROLE IS THE SINGLE SOURCE OF TRUTH FOR THE OWN-PROFILE FACE ──
+    //   (curator-role-persistence R6.1/R6.2/R7.1) The own-profile face is decided
+    //   ONLY by the persisted users.role read above (WHERE id = auth.uid()):
+    //     role === 'curator'  → owner face   (set here, the curator's own dashboard)
+    //     role === 'user'     → user  face   (the default; nothing flips it)
+    //   A real curator opening their OWN profile with NO ?face / ?creator / ?curator
+    //   param ALWAYS lands on the owner face (both guards below are true), so a
+    //   curator never renders the user face for their own profile (R6.4). The
+    //   ?face= / ?creator=1 guards are intentional dev/deep-link overrides only.
+    //   Owner face is set EXCLUSIVELY inside this role === 'curator' branch, so a
+    //   non-curator (or a failed read, caught below) is never promoted (R6.6).
     if (data.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
       face = 'owner';
       activeTab = defaultTabFor(face);
@@ -2479,6 +2530,12 @@ async function hydrateMyClipsFromDB() {
   if (_params.get('curator')) {
     await hydrateCuratorProfile();   // public/by-username path; forces face='public'
   } else {
+    // No-flash contract (curator-role-persistence R6.5): we AWAIT
+    // hydrateOwnProfile() BEFORE the first renderWall()/renderAll() below, so
+    // the first painted own-profile face already reflects the persisted role.
+    // The resolved user face is never painted before the role read completes
+    // for a signed-in user. (The logged-out mock is the demo fallback, not a
+    // resolved own-profile face, so guests are not blocked.)
     await hydrateOwnProfile();
     // Brand-new signed-in user: start every account-linked number CLEAN so
     // the mock vanity figures never flash. Real values fill in live.

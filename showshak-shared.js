@@ -2304,6 +2304,82 @@ if (typeof window !== 'undefined') {
   window.ssBuildEditPatch = ssBuildEditPatch;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   CURATOR ROLE PERSISTENCE — ssBuildOnboardingPatch
+   (Req 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 7.2, 7.3, 9.2; design
+   Components → "The patch shape", Properties 1-3)
+   ───────────────────────────────────────────────────────────────
+   Curator onboarding completion (`bcActivate`) persists the chosen
+   identity together with `role = 'curator'` in a single self-scoped
+   `users` update. This PURE helper turns the collected onboarding
+   fields into that UPDATE patch. The patch is built by an explicit
+   ALLOWLIST (never by spreading the input), so an unknown field on the
+   input can never leak in, and identity keys are included ONLY when
+   their source value is present/valid so an empty value never
+   overwrites an existing one (Req 1.6 — no overwrite-with-empty).
+
+   ── ALLOWLIST (the ONLY keys the patch may ever own) ──
+     { role, username, bio, genres, avatar_url }
+
+   ── INPUT CONTRACT (input, all keys optional; input may be
+      null/undefined/{}) ──
+     handle    : string  — raw handle field (may include a leading '@'
+                           and surrounding whitespace)
+     bio       : string  — raw bio value
+     genres    : string[]— selected specialties
+     avatarUrl : string|null — resolved Storage public URL when an
+                           upload succeeded; null/undefined otherwise
+
+   ── KEY RULES (locked, so the Property tests mirror them) ──
+   • role        : ALWAYS 'curator' for every input, including {} /
+     null / undefined (Req 1.1, 9.2).
+   • username    : included ONLY when `handle` is a string that is
+     non-empty after (a) trimming surrounding whitespace and (b)
+     stripping exactly ONE leading '@'. Stored value is that trimmed,
+     '@'-free string. Empty after stripping → OMITTED (Req 1.2).
+   • bio         : included ONLY when `bio` is a string non-empty after
+     trim(); stored value is the trimmed bio. Else OMITTED (Req 1.3).
+   • genres      : included ONLY when `genres` is an array of length
+     1..6 (inclusive); stored as a shallow copy. Length 0 or >6, or a
+     non-array → OMITTED (Req 1.4).
+   • avatar_url  : included ONLY when `avatarUrl` is a non-empty string;
+     stored as-is. null/undefined/'' → OMITTED (Req 1.5).
+
+   Pure: no DOM, no Supabase, no network, never throws. */
+function ssBuildOnboardingPatch(input){
+  var i = (input && typeof input === 'object') ? input : {};
+  var patch = { role: 'curator' };                // ALLOWLIST: role is always set
+
+  // username — trim whitespace, strip a single leading '@', include when non-empty.
+  if (typeof i.handle === 'string') {
+    var handle = i.handle.trim();
+    if (handle.charAt(0) === '@') { handle = handle.slice(1); }
+    handle = handle.trim();
+    if (handle !== '') { patch.username = handle; }
+  }
+
+  // bio — include the trimmed value only when non-empty.
+  if (typeof i.bio === 'string') {
+    var bio = i.bio.trim();
+    if (bio !== '') { patch.bio = bio; }
+  }
+
+  // genres — include a shallow copy only for an array of length 1..6.
+  if (Array.isArray(i.genres) && i.genres.length >= 1 && i.genres.length <= 6) {
+    patch.genres = i.genres.slice();
+  }
+
+  // avatar_url — include a non-empty string as-is.
+  if (typeof i.avatarUrl === 'string' && i.avatarUrl !== '') {
+    patch.avatar_url = i.avatarUrl;
+  }
+
+  return patch;
+}
+if (typeof window !== 'undefined') {
+  window.ssBuildOnboardingPatch = ssBuildOnboardingPatch;
+}
+
 /* ── MY CLIPS (owner profile) ───────────────────────────────────
    Loads the SIGNED-IN user's OWN clips straight from the DB, scoped to
    creator_id = me. Unlike ssLoadClips (feed = live only), this includes
@@ -5413,6 +5489,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssDraftToLinks = ssDraftToLinks;
   module.exports.ssRowToDraft = ssRowToDraft;
   module.exports.ssBuildEditPatch = ssBuildEditPatch;
+
+  // Curator Role Persistence — pure onboarding patch builder
+  module.exports.ssBuildOnboardingPatch = ssBuildOnboardingPatch;
   // Creator Analytics — Event_Recorder pure helpers
   module.exports.ssIsRecordableClipId = ssIsRecordableClipId;
   module.exports.ssResolveEventUserId = ssResolveEventUserId;
