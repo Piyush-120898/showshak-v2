@@ -298,7 +298,8 @@ const SS_SIDEBAR_HTML = `
     <a class="nav-item" data-nav="profile" href="showshak-profile.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span class="nav-item-label">Profile</span></a>
   </div>
   <div class="sidebar-bottom">
-    <a class="nav-item-settings" data-nav="settings" href="showshak-settings.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></a>
+    <a class="nav-item-settings ss-auth-settings" data-nav="settings" href="showshak-settings.html"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span class="nav-item-label">Settings</span></a>
+    <a class="nav-item-settings ss-auth-login" href="#" onclick="if(window.ssOpenSignup)ssOpenSignup('login');return false;" style="display:none"><div class="nav-item-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></div><span class="nav-item-label">Log in</span></a>
   </div>
 </nav>`;
 
@@ -328,7 +329,26 @@ function ssInjectChrome() {
   const includeSheet = slot.getAttribute('data-no-sheet') === null;
   slot.outerHTML = SS_SIDEBAR_HTML + (includeSheet ? SS_WATCH_SHEET_HTML : '') + SS_MOBILE_NAV_HTML;
   highlightActiveNav();
+  ssSyncAuthChrome();
 }
+
+/* ════════════════════════════════════════════════
+   AUTH CHROME — Login ⇄ Settings
+   ─────────────────────────────────────────────────
+   The sidebar-bottom slot shows "Log in" for guests (opens the shared
+   signup sheet) and flips to "Settings" once a real session exists. Driven
+   by ssIsSignedUp(); re-run on the initial async session read and on every
+   onAuthStateChange (login / logout) from the guest gate. Safe to call
+   before auth resolves — defaults to the guest (Log in) view.
+════════════════════════════════════════════════ */
+function ssSyncAuthChrome() {
+  const signedIn = (typeof window.ssIsSignedUp === 'function') ? window.ssIsSignedUp() : false;
+  document.querySelectorAll('.ss-auth-settings').forEach(el => { el.style.display = signedIn ? '' : 'none'; });
+  document.querySelectorAll('.ss-auth-login').forEach(el => { el.style.display = signedIn ? 'none' : ''; });
+  // Let any page (e.g. the Profile hero gear) react to the same flip.
+  if (typeof window.ssOnAuthChromeSync === 'function') { try { window.ssOnAuthChromeSync(signedIn); } catch (e) {} }
+}
+window.ssSyncAuthChrome = ssSyncAuthChrome;
 
 /* ════════════════════════════════════════════════
    NAV HIGHLIGHT
@@ -955,7 +975,7 @@ function ssMapContentRowsToClips(rows){
     return {
       id: row.id,
       title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
-      caption: row.description||"", fires: row.fires_count||0,
+      caption: row.description||"", fires: row.fires_count||0, views: row.views_count||0,
       genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
       bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
       // Mux playback fields: null muxPlaybackId → GradientSurface fallback (Req 4.2, 4.4).
@@ -983,7 +1003,7 @@ async function ssLoadClips(limit, offset){
   var n = limit||50, off = offset||0;
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).range(off, off + n - 1);
     if(res.error || !res.data || !res.data.length) return [];
     // Filter + projection delegated to the pure helper (the SQL filter above
@@ -994,17 +1014,33 @@ async function ssLoadClips(limit, offset){
 /* FEED shape: titles shown, raw cache carried for the Watch It sheet resolver. */
 function ssClipsForFeed(base){ return base.map(function(c){ return {
   id:c.id, title:(c.title||"").toUpperCase(), year:c.year, genre:c.genre, lang:c.lang,
-  season:c.season, synopsis:c.synopsis, caption:c.caption, creator:c.creator, litCount:c.fires,
+  season:c.season, synopsis:c.synopsis, caption:c.caption, creator:c.creator, litCount:c.fires, views:c.views,
   providers:c.providers, curatorPlat:c.curatorPlat,
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   platLabel:(c.curatorPlat&&c.curatorPlat.name)||c.platLabel, platColor:(c.curatorPlat&&c.curatorPlat.color)||c.platColor, platRgb:c.platRgb, bg:c.bg }; }); }
 /* DISCOVER shape: title hidden, mood[] kept, raw cache carried for the resolver. */
 function ssClipsForDiscover(base){ return base.map(function(c){ return {
   id:c.id, caption:c.caption, genre:c.genre, lang:c.lang, platLabel:c.platLabel, platColor:c.platColor,
-  platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, bg:c.bg, mood:c.mood,
+  platAbbr:c.platAbbr, platRgb:c.platRgb, creator:c.creator, fires:c.fires, views:c.views, bg:c.bg, mood:c.mood,
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
+
+/* ── Views display helper ────────────────────────────
+   The clip "views" trust signal (eye-count), companion to the fire count.
+   Uses the REAL views_count once it's populated (the 0021 trigger keeps
+   content.views_count in sync from view_events). For demo/seed clips that
+   carry no real views yet, fall back to a plausible fires-derived number so
+   the badge looks alive while we evaluate the feature. Returns 0 when there's
+   nothing to show. (A "hide below ~1000" floor can be layered on later.) */
+function ssDisplayViews(clip){
+  if(!clip) return 0;
+  var v = Number(clip.views);
+  if(isFinite(v) && v > 0) return v;                 // real once populated
+  var f = Number(clip.fires != null ? clip.fires : clip.litCount) || 0;
+  return f > 0 ? Math.round(f * 11) : 0;             // demo fallback (~fire→view ratio)
+}
+window.ssDisplayViews = ssDisplayViews;
 
 /* ═══════════════════════════════════════════════════════════════
    PUBLIC CURATOR PROFILE — pure helpers (no Supabase, no DOM, no network,
@@ -3308,6 +3344,10 @@ const ClipEngine = {
     const muted = _ssvResolveMuted(m);
     surface._ssPaused = false;
     _ssActivateSurface(surface, muted);   // muted-first then unmute (autoplay-safe)
+    // Reflect this clip's REAL muted state immediately (it starts muted under
+    // the autoplay-safe sequence); the onMutedChange listener then live-updates
+    // the icon if/when the unmute actually succeeds or the browser refuses it.
+    if (typeof surface.isMuted === 'function') _ssvPaintMuteBtn(surface.isMuted());
 
     // Preload the NEXT clip while this one loops, so scrolling to it is
     // instant (smooth viewing). No-op for gradients / when there is no next.
@@ -4269,6 +4309,12 @@ function _ssvWireClip(i) {
   surface.mount(mediaEl);
   const bar = _ssvBars[i] || ssMakeProgressBar(clipEl);
   surface.onTimeupdate(p => bar.set(p));
+  // Keep the mute icon in sync with the clip's REAL muted state (not just the
+  // saved preference): repaint whenever THIS surface's effective muted state
+  // changes (incl. a browser-forced autoplay mute), but only while it's active.
+  if (typeof surface.onMutedChange === 'function') {
+    surface.onMutedChange(function (m) { if (i === _ssvActiveIdx) _ssvPaintMuteBtn(m); });
+  }
   _ssvSurfaces[i] = surface;
   _ssvBars[i] = bar;
   const tapZone = document.getElementById(`ssv-tap-${i}`);
@@ -4367,6 +4413,7 @@ function _ssvSetupObserver(feed) {
     // Initial read (async) — paints buttons correctly once it resolves.
     window.ssDB.auth.getSession().then(({ data }) => {
       _ssSession = data && data.session ? data.session : null;
+      if (typeof ssSyncAuthChrome === 'function') ssSyncAuthChrome();
       if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
       if (_ssSession && typeof ssHydrateStacks === 'function') ssHydrateStacks();
@@ -4378,6 +4425,7 @@ function _ssvSetupObserver(feed) {
       // Watch It region + subscription caches must re-resolve after any
       // sign-in / sign-out / token change.
       _ssRegion = null; _ssSubIds = null;
+      if (typeof ssSyncAuthChrome === 'function') ssSyncAuthChrome();
       if (session) {
         _ssCloseSignupSheet();
         // Only react on a genuine new login (not token refreshes on every page).
@@ -4560,6 +4608,9 @@ function _ssvSetupObserver(feed) {
     } else if (reason === 'follow') {
       title.innerHTML = 'FOUND YOUR <em>PEOPLE?</em>';
       sub.textContent = 'Sign up to follow the curators whose taste you trust and get their new picks.';
+    } else if (reason === 'login') {
+      title.innerHTML = 'WELCOME TO <em>SHOWSHAK</em>';
+      sub.textContent = 'Sign in or create your account to build your Watchlist, follow curators, and make this space yours.';
     } else { // view threshold
       title.innerHTML = 'ENJOYING THE <em>VIBE?</em>';
       sub.textContent = 'Sign up to save clips, follow curators, and pick up right where you left off.';
@@ -4582,6 +4633,13 @@ function _ssvSetupObserver(feed) {
     if (ssIsSignedUp()) return false;
     _ssOpenSignupSheet(reason || 'fire');
     return true;
+  };
+
+  /* Public opener for an explicit Log in / Sign up entry point (sidebar
+     bottom, mobile profile gear). Opens the same sheet; no-op-safe. */
+  window.ssOpenSignup = function (reason) {
+    _ensureSheet();
+    _ssOpenSignupSheet(reason || 'login');
   };
 
   /* ── Inline email sign-up / sign-in form (reuses the same sheet) ──
@@ -4720,6 +4778,11 @@ function _ssvSetupObserver(feed) {
     else if (a === 'google' || a === 'apple') { _ssGuestDoSignup(a); }
     else { _ssOpenSignupSheet('save'); }
   })();
+
+  // Reflect auth state in the shared chrome now that ssIsSignedUp() exists
+  // (covers the no-Supabase / local-flag path; the async session read above
+  // refines it once it resolves).
+  if (typeof ssSyncAuthChrome === 'function') ssSyncAuthChrome();
 })();
 
 
@@ -5185,7 +5248,7 @@ function GradientSurface(clip, opts) {
   var DURATION_MS = (opts && opts.durationMs) || 16000; // ~ Feed 40ms*0.25%
   var el = null, raf = null, startedAt = 0, elapsedBase = 0;
   var muted = true, ended = false;
-  var onTick = [], onEnd = [];
+  var onTick = [], onEnd = [], onMute = [];
   var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function loop(now) {
@@ -5220,8 +5283,11 @@ function GradientSurface(clip, opts) {
       cancelAnimationFrame(raf);
       elapsedBase += performance.now() - startedAt;
     },
-    setMuted: function (m) { muted = !!m; },   // gradient has no audio track
+    // gradient has no audio track, but it still honors a muted flag through the
+    // contract; notify listeners so the engine can keep the mute icon in sync.
+    setMuted: function (m) { muted = !!m; onMute.forEach(function (cb) { cb(muted); }); },
     isMuted: function () { return muted; },
+    onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     preload: function () {},                   // nothing to buffer for a gradient
     getProgress: function () {
       return Math.max(0, Math.min(1, elapsedBase / DURATION_MS));
@@ -5229,7 +5295,7 @@ function GradientSurface(clip, opts) {
     seek: function (f) { elapsedBase = Math.max(0, Math.min(1, f)) * DURATION_MS; },
     onTimeupdate: function (cb) { onTick.push(cb); },
     onEnded: function (cb) { onEnd.push(cb); },
-    destroy: function () { cancelAnimationFrame(raf); if (el) el.remove(); el = null; },
+    destroy: function () { cancelAnimationFrame(raf); if (el) el.remove(); el = null; onMute = []; },
   };
 }
 
@@ -5244,13 +5310,22 @@ function GradientSurface(clip, opts) {
  */
 function VideoSurface(clip, opts) {
   var el = null, ended = false;
-  var onTick = [], onEnd = [];
+  var onTick = [], onEnd = [], onMute = [];
   var muted = true, errored = false;
   var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function handleTimeupdate() {
     var p = ssClipProgress(el && el.currentTime, el && el.duration);
     onTick.forEach(function (cb) { cb(p); });
+  }
+  // The media element's muted state can change for reasons OTHER than an
+  // explicit setMuted() call — most importantly the browser forcing muted
+  // playback under the autoplay policy. `volumechange` fires on every such
+  // change, so we relay the REAL muted state to listeners; the engine uses
+  // this to keep the mute icon in sync with what the user actually hears.
+  function handleVolumeChange() {
+    var m = el ? !!el.muted : muted;
+    onMute.forEach(function (cb) { cb(m); });
   }
   function handleEnded() {
     if (ended) return;
@@ -5287,6 +5362,7 @@ function VideoSurface(clip, opts) {
       el.addEventListener('timeupdate', handleTimeupdate);
       el.addEventListener('ended', handleEnded);
       el.addEventListener('error', handleError);
+      el.addEventListener('volumechange', handleVolumeChange);
       container.appendChild(el);
       return el;
     },
@@ -5300,6 +5376,7 @@ function VideoSurface(clip, opts) {
     },
     setMuted: function (m) { muted = !!m; if (el) el.muted = muted; },
     isMuted: function () { return el ? !!el.muted : muted; },
+    onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
     seek: function (f) { if (el && isFinite(el.duration)) el.currentTime = ssSeekToTime(f, el.duration); },
     onTimeupdate: function (cb) { onTick.push(cb); },
@@ -5309,10 +5386,11 @@ function VideoSurface(clip, opts) {
         el.removeEventListener('timeupdate', handleTimeupdate);
         el.removeEventListener('ended', handleEnded);
         el.removeEventListener('error', handleError);
+        el.removeEventListener('volumechange', handleVolumeChange);
         try { el.pause(); } catch (e) {}
         el.remove();
       }
-      el = null; onTick = []; onEnd = [];
+      el = null; onTick = []; onEnd = []; onMute = [];
     },
   };
 }
@@ -5616,5 +5694,11 @@ ssOnMuteChange(function (muted) {
     var inlineSurface = _inlineSurfaces[_inlineActiveIdx];
     if (inlineSurface) inlineSurface.setMuted(muted);
   }
-  if (typeof _ssvPaintMuteBtn === 'function') _ssvPaintMuteBtn(muted);
+  // Paint from the active surface's REAL muted state when we have one (it was
+  // just set above), falling back to the preference — so the icon always
+  // reflects actual audio, never just intent.
+  if (typeof _ssvPaintMuteBtn === 'function') {
+    var act = (typeof _ssvSurfaces !== 'undefined') ? _ssvSurfaces[_ssvActiveIdx] : null;
+    _ssvPaintMuteBtn(act && typeof act.isMuted === 'function' ? act.isMuted() : muted);
+  }
 });
