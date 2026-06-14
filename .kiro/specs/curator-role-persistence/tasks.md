@@ -45,7 +45,7 @@ agent coding task; applying/running/verifying it is a clearly-marked **FOUNDER-R
     - **Property 3: Onboarding patch keys are confined to the self-update allowlist** — **Validates: Requirements 1.1, 7.2, 7.3**
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 7.2, 7.3, 9.2_
 
-- [~] 2. Checkpoint — pure helper is green
+- [ ] 2. Checkpoint — pure helper is green
   - Run `npm test` and ensure all tests pass (including the new `prop-onboarding-patch` file). Ask the user if questions arise.
 
 - [x] 3. Persist role + identity on onboarding completion — rewrite `bcActivate()`
@@ -92,7 +92,7 @@ agent coding task; applying/running/verifying it is a clearly-marked **FOUNDER-R
     - Assert that an account whose persisted `role = 'curator'` resolves as an eligible curator on its public profile by username directly from persisted `role`, not merely via the live-clip fallback
     - _Requirements: 8.1, 8.2, 8.3_
 
-- [x] 7. Checkpoint — all code + authored SQL complete
+- [ ] 7. Checkpoint — all code + authored SQL complete
   - Run `npm test` and ensure all tests pass; confirm `0020_promote_curator_on_post.sql` and the backfill/reversal block are authored. Ask the user if questions arise.
 
 ---
@@ -104,7 +104,7 @@ agent coding task; applying/running/verifying it is a clearly-marked **FOUNDER-R
 > end-to-end. These are listed for the founder's checklist and are intentionally excluded
 > from the Task Dependency Graph.
 
-- [~] 8. FOUNDER-RUN — apply, backfill, and verify
+- [ ] 8. FOUNDER-RUN — apply, backfill, and verify
   - **8.1 Apply the migration:** paste `0020_promote_curator_on_post.sql` into the Supabase SQL editor and run it.
   - **8.2 Run the backfill:** execute the commented run-once backfill `UPDATE`.
   - **8.3 SQL-verify the trigger (R3, R4, R9.1):**

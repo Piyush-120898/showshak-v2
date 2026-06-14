@@ -314,6 +314,20 @@ Closest references for mental model:
                                 the Profile Following list. Tapping a
                                 curator's name/avatar opens their profile.
 
+  Public curator profile + curator role (pure, property-tested helpers):
+    ssNormalizeCuratorUsername(raw)   decode/trim/strip one leading '@';
+                                      → cleaned username or null
+    ssResolveCuratorViewModel(usersRow, contentRows, followerCount)
+                                      → { found, profile, clips, stats }
+                                      (existence gate; identity fallbacks;
+                                      clips via ssMapContentRowsToClips)
+    ssBuildOnboardingPatch(input)     build the Become-a-Curator users
+                                      update {role:'curator', username?,
+                                      bio?, genres?, avatar_url?} — omits
+                                      empty fields, allowlisted keys
+    Used by the public-curator-profile + curator-role-persistence features
+    (hydrateCuratorProfile / bcActivate in showshak-profile.html).
+
   SVG mark injection:
     SS_MARK_SVG constant injected into body on every page load.
     Use <svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg>
@@ -492,8 +506,10 @@ Closest references for mental model:
 ── PROFILE PAGE (showshak-profile.html) ────────────────────────
 
   THREE FACES, ONE PAGE (philosophy: "show identity & taste,
-  hide the scoreboard"). A prototype "Preview as" switcher in the
-  hero stands in for real auth and lets you demo all three:
+  hide the scoreboard"). Faces are now driven by REAL auth + the
+  persisted users.role (NOT the toggle anymore — see UPDATE 2026 note
+  at the end of this section). A "Preview as" switcher remains in the
+  hero as DEV-ONLY scaffolding to demo all three:
     - face='user'   → a normal user viewing THEIR OWN profile
     - face='owner'  → a curator viewing THEIR OWN profile (cockpit)
     - face='public' → ANYONE viewing a curator (trust surface)
@@ -560,7 +576,25 @@ Closest references for mental model:
   Settings: the ⚙ (hero top-right AND sidebar) now navigates to the
   separate showshak-settings.html (NOT a modal). goSettings().
 
-  All data is MOCK (hardcoded) — no real auth yet.
+  ── UPDATE 2026 — REAL DATA & ROLE (no longer all-mock) ──────────
+  This page is now backed by REAL Supabase data, not hardcoded mocks:
+    • OWN profile (no ?curator= param): hydrateOwnProfile() reads your
+      real users row by auth.uid() — name, @username, avatar, bio,
+      genres — and routes the face from your PERSISTED role: role=
+      'curator' → owner face (always); role='user' → user face. The
+      persisted role is the SINGLE SOURCE OF TRUTH; the Preview toggle
+      is dev-only and never writes role.
+    • PUBLIC profile (?curator=<username>): hydrateCuratorProfile() (the
+      public-curator-profile feature) reads the REAL curator by username
+      — identity, live clips, followers + clip counts, public stacks —
+      with a clean "Curator unavailable" fail-soft and NO mock fallback.
+    • BECOMING a curator (bcActivate) PERSISTS role='curator' + identity
+      to the DB; publishing a clip also promotes you via the 0020 DB
+      trigger ("you post, you're a creator"). See BACKEND BUILD STATUS →
+      curator-role-persistence + public-curator-profile.
+  Remaining MOCK on this page: the logged-out/guest DEMO fallback (so the
+  page is never blank for visitors with no session) and the History tab
+  (no real watch-history source wired yet).
 
   Key functions:
     setFace(f) / renderAll()  switch face + full re-render
@@ -697,10 +731,14 @@ Closest references for mental model:
   in shared.js persists it and live-re-renders. No longer a stub.
 
   [DONE 2026] Clickable curator profiles from search: a curator result
-  in Discover now opens showshak-profile.html?face=public&curator=<u>,
-  which hydrates PROFILE from the stashed curator object
-  ('ss_view_curator_v1') and renders the public (trust-surface) face.
-  The "Preview as" dev switcher is hidden when viewing another curator.
+  in Discover (and a curator link from a feed clip) opens
+  showshak-profile.html?face=public&curator=<username>. UPDATE 2026:
+  this now fetches the curator's REAL data from Supabase by username
+  (hydrateCuratorProfile → public-curator-profile feature) — real name,
+  photo, bio, live clips, counts — NOT the old mock 'ss_view_curator_v1'
+  stash. Fail-soft "Curator unavailable" when the handle doesn't resolve;
+  never falls back to the default mock identity. The "Preview as" dev
+  switcher is hidden when viewing another curator.
 
   [REMOVED 2026] profile-redesign-preview.html — orphaned old mockup,
   linked nowhere. Deleted.
@@ -838,7 +876,7 @@ Closest references for mental model:
   Functions, Mumbai) + Mux + TMDB. Migrations are applied MANUALLY by the
   founder in the Supabase SQL editor. Pure logic lives in showshak-shared.js
   and is covered by Node + fast-check property tests (run: `npm test` /
-  `node tests/run-all.js`). Current suite: 23 test files, all green.
+  `node tests/run-all.js`). Current suite: 29 test files, all green.
 
   ── DONE (built + verified) ─────────────────────────────────────
 
@@ -898,6 +936,44 @@ Closest references for mental model:
     The metrics philosophy is enforced in the DB by RLS (hide-the-scoreboard
     is structural, not a UI promise).
 
+  public-curator-profile  ✓ built
+    The public profile (showshak-profile.html?face=public&curator=<username>)
+    is now a REAL window into any curator — what a normal user or another
+    curator sees when they open someone from search or from a feed clip.
+    Before: it rendered from a mock-derived sessionStorage stash and fell
+    back to the default mock identity (Arjun Mehta). Now hydrateCuratorProfile()
+    looks the curator up BY USERNAME in the DB and renders their real name,
+    avatar photo, bio, verified badge, taste tags, real LIVE clips (grid +
+    hero wall, tappable into the shared viewer), real followers + clip counts,
+    and public shared stacks. Hide-the-scoreboard preserved (no cockpit/
+    analytics on the public face). Fail-soft: clean "Curator unavailable"
+    state when the handle doesn't resolve; clean empty state for zero clips;
+    never falls back to the mock identity. Two pure helpers in
+    showshak-shared.js — ssNormalizeCuratorUsername + ssResolveCuratorViewModel
+    — are property-tested. NO new DB migrations/RLS (reads already granted by
+    0002/0003/0006).
+
+  curator-role-persistence  ✓ built  (migration 0020 — FOUNDER APPLIES the trigger)
+    Root fix: a user's curator status is now actually PERSISTED to the DB,
+    so role is finally trustworthy everywhere. Three parts:
+      1. Onboarding write: bcActivate() (Become a Curator) now writes
+         users.role='curator' + the chosen handle/bio/genres/avatar via a
+         self-scoped update (id=auth.uid(), allowed by users_update_own).
+         Fail-soft — surfaces an error and does NOT flip to owner / claim
+         success if the write fails. Pure ssBuildOnboardingPatch() builder
+         (omits empty fields, allowlisted keys) is property-tested.
+      2. Migration 0020 — a security-definer AFTER INSERT trigger on
+         public.content that promotes the author to 'curator' on first
+         publish ("you post, you're a creator"), so the client can never
+         skip it. Never demotes, never aborts the insert, no recursion.
+         FOUNDER applies the trigger SQL in the Supabase editor.
+      3. Routing: a curator opening their OWN profile always lands on the
+         owner face (persisted role is the single source of truth); the
+         "Preview as" toggle is now dev-only scaffolding and never writes
+         role. + a one-time BACKFILL (already run) promoted existing real
+         accounts that had posted live clips (simran, piyush791, media_mike,
+         gpiyush791) to 'curator'.
+
   ── WHAT'S REMAINING ────────────────────────────────────────────
 
   creator-analytics — founder-run verification (the build is done; these are
@@ -922,6 +998,10 @@ Closest references for mental model:
       TMDB-reachable network.
     • Final manual browser regression for unified-clip-player + watch-it.
     • Confirm migrations 0012–0019 are all applied in Supabase.
+    • Apply migration 0020 (curator-role-persistence) — paste the
+      promote_curator_on_post trigger into the Supabase SQL editor. (The
+      0020 backfill UPDATE has ALREADY been run; do not re-run. Skip the
+      documented reversal unless undoing.)
 
   Bigger picture (NOT yet started — these are the real company milestones,
   see "pitch points" file): the THREE-SIDED COLD-START (≈15 hungry curators
