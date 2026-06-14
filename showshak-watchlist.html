@@ -857,6 +857,7 @@ function openNewStack() {
    RECOMMENDED CLIPS GRID
 ════════════════════════════════════════════════ */
 const FIRE_SVG  = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const EYE_SVG   = `<svg width="11" height="11" viewBox="0 0 24 24"><path fill="#EA3B32" d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7C21.3 8.1 17 5 12 5z"/><circle cx="12" cy="12" r="3.4" fill="#0B0B0F"/><circle cx="12" cy="12" r="1.5" fill="#EA3B32"/></svg>`;
 const PLAY_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 const BKMK_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
 
@@ -879,7 +880,7 @@ function buildRec() {
         </div>
       </div>
       <div class="rec-clip-foot">
-        <div class="rec-fire-row">${FIRE_SVG} ${fmtFires(c.fires)}</div>
+        <div class="rec-fire-row">${FIRE_SVG} ${fmtFires(c.fires)} <span style="opacity:.4;margin:0 3px">·</span> ${EYE_SVG} ${fmtFires(typeof ssDisplayViews==='function'?ssDisplayViews(c):0)}</div>
         <div class="rec-save-btn"
           data-save-id="${c.id}"
           onclick="event.stopPropagation(); ssToggleSave(ALL_CLIPS.find(x=>String(x.id)==='${c.id}'), this)">

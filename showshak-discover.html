@@ -630,6 +630,7 @@ function rebuildCuratorsFromClips() {
 
 /* Fire SVG for inline use */
 const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const EYE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24"><path fill="#EA3B32" d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7C21.3 8.1 17 5 12 5z"/><circle cx="12" cy="12" r="3.4" fill="#0B0B0F"/><circle cx="12" cy="12" r="1.5" fill="#EA3B32"/></svg>`;
 const PLAY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 
 function clipCardHTML(clip, size = 'lg') {
@@ -663,9 +664,15 @@ function clipCardHTML(clip, size = 'lg') {
       <div class="${capClass}">
         <div class="${textClass}">${clip.caption}</div>
         <div class="${fireRowClass}" style="justify-content:space-between;align-items:center">
-          <div style="display:flex;align-items:center;gap:4px">
-            ${FIRE_SVG}
-            <span class="${fireCountClass}">${fmtFires(clip.fires)}</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;align-items:center;gap:4px">
+              ${FIRE_SVG}
+              <span class="${fireCountClass}">${fmtFires(clip.fires)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px">
+              ${EYE_SVG}
+              <span class="${fireCountClass}">${fmtFires(typeof ssDisplayViews==='function'?ssDisplayViews(clip):0)}</span>
+            </div>
           </div>
           <div class="disc-save-btn"
             data-save-id="${clip.id}"
@@ -906,7 +913,7 @@ function showResultsView(clips, label, curators) {
           ${clip.genre.map(g=>`<span class="result-clip-tag">${g}</span>`).join('')}
           <span class="result-clip-tag">${clip.lang}</span>
         </div>
-        <div class="result-clip-fire">${FIRE_SVG} ${fmtFires(clip.fires)} fires</div>
+        <div class="result-clip-fire">${FIRE_SVG} ${fmtFires(clip.fires)} fires &nbsp;·&nbsp; ${EYE_SVG} ${fmtFires(typeof ssDisplayViews==='function'?ssDisplayViews(clip):0)} views</div>
       </div>
     </div>
   `).join('');
