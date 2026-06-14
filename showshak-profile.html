@@ -421,6 +421,7 @@ html, body { overflow: hidden; }
 .g-card:hover .g-bg { transform: scale(1.07); }
 .g-vig { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 100%); }
 .g-fires { position: absolute; bottom: 8px; left: 9px; display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.92); text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.g-views { position: absolute; bottom: 8px; right: 9px; display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.92); text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
 .g-stats { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--gray); letter-spacing: 0.3px; }
 .g-stats .g-stat { display: inline-flex; align-items: center; gap: 3px; }
 .g-card.top .g-thumb { border-color: var(--border2); box-shadow: 0 0 0 1px rgba(234,59,50,0.25), 0 6px 24px rgba(234,59,50,0.2); }
@@ -755,7 +756,10 @@ html, body { overflow: hidden; }
         <div class="hero-icon-btn" id="hero-share-btn" onclick="ssToast('🔗 Profile link copied')" title="Share profile">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </div>
-        <div class="hero-icon-btn" onclick="goSettings()" title="Settings">
+        <div class="hero-icon-btn ss-auth-login" onclick="if(window.ssOpenSignup)ssOpenSignup('login')" title="Log in" style="display:none">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        </div>
+        <div class="hero-icon-btn ss-auth-settings" onclick="goSettings()" title="Settings">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </div>
       </div>
@@ -1058,6 +1062,7 @@ const MOCK_COLLECTIONS = [
 const MOCK_FOLLOWING = [];
 const CHART = [28,42,35,68,91,57,84];
 const FIRE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
+const EYE_SVG = `<svg width="12" height="12" viewBox="0 0 24 24"><path fill="#EA3B32" d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7C21.3 8.1 17 5 12 5z"/><circle cx="12" cy="12" r="3.4" fill="#0B0B0F"/><circle cx="12" cy="12" r="1.5" fill="#EA3B32"/></svg>`;
 const VIS_ICON = {
   public:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>`,
   friends:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87M9 21v-2a4 4 0 0 1 3-3.87"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="8" r="2.5"/></svg>`,
@@ -1094,6 +1099,33 @@ function isSignedInOwn() { return _signedIn && !_params.get('curator'); }
    caches (instead of MOCK_CLIPS / the mock stash) when this is true. */
 function isViewingCurator() { return !!_params.get('curator'); }
 
+/* True when a NOT-signed-in visitor is on their own profile page (not a
+   ?curator= view). Drives the clean, empty "your space" guest state instead
+   of the old Arjun-Mehta demo mock. Uses the resolved _signedIn flag (set by
+   hydrateOwnProfile before the first render), so it's reliable at render time. */
+function isGuestOwn() { return !isViewingCurator() && !_signedIn; }
+
+/* Neutralize PROFILE into an empty "your space" preview for a logged-out
+   visitor: real structure, no fake identity, no mock numbers, a sign-in CTA.
+   Mirrors the not-found neutralization in applyCuratorViewModel so the page
+   never falls back to the hardcoded mock (Arjun Mehta). */
+function applyGuestProfile() {
+  face = 'user';
+  PROFILE.name        = 'YOUR PROFILE';
+  PROFILE.handle      = '';
+  PROFILE.letter      = '?';
+  PROFILE.photo       = null;
+  PROFILE.bio         = 'This is your space on ShowShak. Sign in to fire clips, build your Watchlist, follow the curators you trust, and shape your own feed.';
+  PROFILE.genres      = [];
+  PROFILE.verified    = false;
+  PROFILE.stacks      = 0;
+  PROFILE.following   = 0;
+  PROFILE.clipsPosted = 0;
+  PROFILE.followers   = 0;
+  PROFILE.firesReceived = 0;
+  PROFILE.watchItTaps   = 0;
+}
+
 /* Tasteful default brand gradients for the hero backdrop of a brand-new
    signed-in user who has no clips yet (so the wall is never empty/flat). */
 const DEFAULT_WALL_GRADS = [
@@ -1116,7 +1148,7 @@ function ownCollections() {
 }
 /* Collections source for the CURRENT view: real Stacks for the signed-in
    own profile, mock for logged-out/public demo. */
-function currentCollections() { return isSignedInOwn() ? ownCollections() : MOCK_COLLECTIONS; }
+function currentCollections() { return isSignedInOwn() ? ownCollections() : (isGuestOwn() ? [] : MOCK_COLLECTIONS); }
 
 /* Curator 7-day watch history (user utility) */
 const MOCK_HISTORY = [
@@ -1144,8 +1176,8 @@ function renderWall() {
     const mine = getMyClips();
     grads = mine.length ? mine.map(c => c.bg) : null;
   } else {
-    // Logged-out / public ?curator= demo keeps the rich mock wall.
-    grads = [...MOCK_CLIPS, ...MOCK_CLIPS].map(c => c.bg);
+    // Logged-out visitor: clean default brand backdrop, no mock wall.
+    grads = null;
   }
   if (!grads || !grads.length) {
     grads = Array.from({ length: 18 }, (_, i) => DEFAULT_WALL_GRADS[i % DEFAULT_WALL_GRADS.length]);
@@ -1392,7 +1424,14 @@ function renderHeader() {
       View as public
     </button>`;
 
-  if (isPublic()) {
+  if (isGuestOwn()) {
+    // Logged-out visitor on their own space → one clear path: sign in.
+    actions.innerHTML = `
+      <button class="btn btn-primary" onclick="if(window.ssOpenSignup)ssOpenSignup('login')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Log in / Sign up
+      </button>`;
+  } else if (isPublic()) {
     // A stranger viewing a curator → Follow + Share. No edit, no scoreboard.
     actions.innerHTML = followBtn + shareBtn;
   } else if (isOwner()) {
@@ -1608,6 +1647,7 @@ function myClipsCount() {
   // Signed-in own profile counts REAL uploads only (0 for a new user).
   // Logged-out/public demo keeps the mock count so the showcase isn't empty.
   if (isViewingCurator()) return _viewedCuratorClips.length;
+  if (isGuestOwn()) return 0;
   return isSignedInOwn() ? getMyClips().length : (getMyClips().length + MOCK_CLIPS.length);
 }
 
@@ -1665,15 +1705,18 @@ function renderPrimary() {
   // ?curator= demo keeps merging the mock clips so the grid isn't empty.
   const list = isViewingCurator() ? _viewedCuratorClips
              : isSignedInOwn() ? mine
+             : isGuestOwn() ? []
              : [...mine, ...MOCK_CLIPS];
   window._PROFILE_PRIMARY = list;   // so ssOpenClip can read the array
   const owner = isOwner();
   // Owner-only per-clip analytics (Req 10.1, 11.2, 11.3): the signed-in
   // owner sees Fire / View / Watch_Event counts on each of their own clips,
   // read from the owner-scoped 0019 reader cached on PROFILE.perClip by
-  // fetchOwnAnalytics(). Never shown on the public or non-owner face. A clip
-  // missing from the map renders zeros, not blanks (Req 10.3).
-  const showClipStats = isSignedInOwn();
+  // fetchOwnAnalytics(). Never shown on the public or non-owner face — gated on
+  // the OWNER face (not just sign-in) so "Preview as public" and any public
+  // ?curator= view hide the Watch-It/views scoreboard entirely. A clip missing
+  // from the map renders zeros, not blanks (Req 10.3).
+  const showClipStats = isSignedInOwn() && isOwner();
   const perClip = PROFILE.perClip || {};
   if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">🎬</div><div class="empty-t">No clips yet</div><div class="empty-d">Your posted clips will appear here. Tap Create to share your first recommendation.</div></div>`;
@@ -1689,6 +1732,7 @@ function renderPrimary() {
         ${c.poster ? `<img class="g-poster" src="${c.poster}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}
         <div class="g-vig"></div>
         <div class="g-fires">${FIRE_SVG} ${fmtFires(c.fires||0)}</div>
+        <div class="g-views">${EYE_SVG} ${fmtFires(typeof ssDisplayViews==='function'?ssDisplayViews(c):0)}</div>
       </div>
       <div class="g-cap">${(c.caption||'').replace(/<[^>]+>/g,'') || 'Recommendation'}</div>
       ${showClipStats ? (() => {
@@ -1709,7 +1753,7 @@ function renderHistory() {
   const el = document.getElementById('history');
   // No real watch-history source is wired yet, so a signed-in user starts
   // clean. Logged-out demo keeps the mock history so the page isn't blank.
-  const list = isSignedInOwn() ? [] : MOCK_HISTORY;
+  const list = (isSignedInOwn() || isGuestOwn()) ? [] : MOCK_HISTORY;
   window._PROFILE_HISTORY = list;
   if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">🕑</div><div class="empty-t">Nothing here yet</div><div class="empty-d">Clips you watch show up here for 7 days, so you can always find your way back.</div></div>`;
@@ -2160,7 +2204,7 @@ function renderAll() {
   renderStacks();
   renderFollowing();
   renderAnalytics();
-  document.getElementById('cta-wrap').style.display = isUserOwn() ? 'block' : 'none';
+  document.getElementById('cta-wrap').style.display = (isUserOwn() && !isGuestOwn()) ? 'block' : 'none';
   ALL_PANEL_IDS.forEach(id =>
     document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
 }
@@ -2548,6 +2592,13 @@ async function hydrateMyClipsFromDB() {
       PROFILE.analytics     = { fires:0, watchIts:0, reach:0, shares:0 };
       PROFILE.weekly        = [];
       PROFILE.perClip       = {};   // content_id → { fires, views, watchIts }
+    } else {
+      // Logged-out visitor → clean, empty "your space" preview + sign-in CTA
+      // (no Arjun-Mehta demo mock). Hide the dev-only Preview switcher so the
+      // guest sees exactly what a real visitor sees.
+      applyGuestProfile();
+      const pv = document.getElementById('pv-switch');
+      if (pv) pv.style.display = 'none';
     }
   }
   renderWall();
