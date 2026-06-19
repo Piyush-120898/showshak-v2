@@ -3448,11 +3448,12 @@ const ClipEngine = {
     const prev = _ssvSurfaces[_ssvActiveIdx];
     if (prev) { prev.pause(); prev._ssPaused = false; }
     const prevEl = document.getElementById(`ssv-clip-${_ssvActiveIdx}`);
-    if (prevEl) prevEl.classList.remove('ssv-paused');
+    _ssvClearPause(prevEl);                 // clear dim + lingering pause glyph on the old clip
 
     _ssvActiveIdx = idx;
     const surface = _ssvSurfaces[idx];
     if (!surface) return;
+    _ssvClearPause(document.getElementById(`ssv-clip-${idx}`));   // new clip is playing → no pause UI
 
     const muted = _ssvResolveMuted(m);
     surface._ssPaused = false;
@@ -3622,6 +3623,19 @@ function _inlineWireClip(i) {
     tapZone.addEventListener('click', function () {
       ssOpenClip(_inlineClips[i], _inlineClips);
     });
+  }
+}
+
+/* Clear any pause UI (the dim + the center pause/play glyph) from a clip element.
+   Called when a clip becomes active or is scrolled away from, so a clip that was
+   paused earlier never keeps showing the pause icon while it's actually playing. */
+function _ssvClearPause(clipEl) {
+  if (!clipEl) return;
+  clipEl.classList.remove('ssv-paused');
+  var icon = clipEl.querySelector('.ssv-pause-icon');
+  if (icon) {
+    clearTimeout(icon._ssTimer);
+    icon.classList.remove('is-paused', 'is-playing', 'is-playing-out');
   }
 }
 
