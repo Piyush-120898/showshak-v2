@@ -3099,6 +3099,35 @@ function _ssvBuildList(clicked, list) {
       content: ''; position: absolute; inset: 0;
       background: rgba(0,0,0,0.28);
     }
+    /* Center pause/play feedback glyph (fullscreen). Hidden by default; held
+       visible while paused; on resume it shows the play glyph then quickly
+       blurs/scales out as the video starts. */
+    .ssv-pause-icon {
+      position: absolute; top: 50%; left: 50%; z-index: 22;
+      width: 76px; height: 76px; border-radius: 50%;
+      transform: translate(-50%,-50%) scale(0.7);
+      background: rgba(0,0,0,0.42); backdrop-filter: blur(2px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; filter: none;
+      transition: opacity .2s ease, transform .2s ease, filter .2s ease;
+    }
+    .ssv-pause-icon .ssv-pi-play { display: none; }
+    /* Paused → pause bars, held visible. */
+    .ssv-pause-icon.is-paused {
+      opacity: 1; transform: translate(-50%,-50%) scale(1); filter: none;
+    }
+    .ssv-pause-icon.is-paused .ssv-pi-pause { display: block; }
+    .ssv-pause-icon.is-paused .ssv-pi-play  { display: none; }
+    /* Resuming → play glyph appears (start state), then .is-playing-out animates
+       it out (fade + scale up + blur) quickly while playback resumes. */
+    .ssv-pause-icon.is-playing {
+      opacity: 1; transform: translate(-50%,-50%) scale(1); filter: none;
+    }
+    .ssv-pause-icon.is-playing .ssv-pi-pause { display: none; }
+    .ssv-pause-icon.is-playing .ssv-pi-play  { display: block; }
+    .ssv-pause-icon.is-playing.is-playing-out {
+      opacity: 0; transform: translate(-50%,-50%) scale(1.6); filter: blur(8px);
+    }
     .ssv-vig {
       position: absolute; inset: 0; pointer-events: none;
       background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.35) 100%);
@@ -3355,10 +3384,12 @@ const ClipEngine = {
       surface._ssPaused = false;
       surface.play().catch(() => {});
       if (clipEl) clipEl.classList.remove('ssv-paused');
+      _ssvPauseFeedback(clipEl, false);   // play glyph → quick blur-out, video resumes
     } else {
       surface._ssPaused = true;
       surface.pause();
       if (clipEl) clipEl.classList.add('ssv-paused');
+      _ssvPauseFeedback(clipEl, true);    // hold the pause glyph
     }
   },
 
@@ -3530,6 +3561,11 @@ function _inlineWireClip(i) {
   surface.mount(mediaEl);
   const bar = _inlineBars[i] || ssMakeProgressBar(card);
   surface.onTimeupdate(p => bar.set(p));
+  // Keep the frame mute buttons in sync with this clip's REAL muted state while
+  // it's the active clip (incl. a browser-forced autoplay mute).
+  if (typeof surface.onMutedChange === 'function') {
+    surface.onMutedChange(function (m) { if (i === _inlineActiveIdx) _inlinePaintMuteBtns(); });
+  }
   _inlineSurfaces[i] = surface;
   _inlineBars[i] = bar;
   // FEED MODEL: a single tap OPENS the full Clip Viewer (where all actions +
@@ -3544,6 +3580,29 @@ function _inlineWireClip(i) {
   }
 }
 
+/* _ssvPauseFeedback(clipEl, paused) — the center pause/play glyph feedback in
+   the fullscreen viewer. paused=true → show the pause bars and hold them; on
+   resume (paused=false) → flash the play glyph then quickly blur/scale it out
+   while playback continues. */
+function _ssvPauseFeedback(clipEl, paused) {
+  if (!clipEl) return;
+  var icon = clipEl.querySelector('.ssv-pause-icon');
+  if (!icon) return;
+  clearTimeout(icon._ssTimer);
+  icon.classList.remove('is-paused', 'is-playing', 'is-playing-out');
+  void icon.offsetWidth;                 // restart any in-flight transition
+  if (paused) {
+    icon.classList.add('is-paused');     // hold the pause bars
+  } else {
+    icon.classList.add('is-playing');    // play glyph at full opacity (start state)
+    void icon.offsetWidth;
+    icon.classList.add('is-playing-out'); // animate out (fade + scale + blur)
+    icon._ssTimer = setTimeout(function () {
+      icon.classList.remove('is-playing', 'is-playing-out');
+    }, 280);
+  }
+}
+
 /* Mute corner control helpers. The live re-apply subscription
    (ssOnMuteChange) is registered at the end of this file, AFTER the
    Mute_Preference module is defined. */
@@ -3554,9 +3613,14 @@ function _ssvPaintMuteBtn(muted) {
   btn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
 }
 function ssvToggleMute() {
-  ssMarkAudioUnlocked();   // toggling sound is a gesture → unlock the session
-  const next = !ssGetMutePref();
-  ssSetMutePref(next);   // persists + fires ssOnMuteChange (re-applies + repaints)
+  // Toggle based on what the user currently HEARS (the resolved state), NOT the
+  // raw Mute_Preference. Before Audio_Unlock a feed clip is force-muted while the
+  // pref may still say "sound on" — toggling the raw pref then flips it the wrong
+  // way and the first tap appears to do nothing (the "click twice" bug). Flip the
+  // heard state instead so a single tap always does what the icon implies.
+  var heardMuted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+  ssMarkAudioUnlocked();          // any toggle is a gesture → unlock the session
+  ssSetMutePref(!heardMuted);     // muted → sound on, sound on → muted (one tap)
 }
 
 /* Paint every inline frame's mute button to the current EFFECTIVE muted state
@@ -3564,7 +3628,13 @@ function ssvToggleMute() {
    Mute_Preference). Called on activate, on the first-gesture unlock, and from
    the global ssOnMuteChange subscription. */
 function _inlinePaintMuteBtns() {
-  var muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+  // Reflect the ACTIVE clip's REAL muted state (what's actually audible) when we
+  // have a live surface; fall back to the resolved preference otherwise.
+  var act = (typeof _inlineActiveIdx === 'number' && _inlineActiveIdx >= 0)
+    ? _inlineSurfaces[_inlineActiveIdx] : null;
+  var muted = (act && typeof act.isMuted === 'function')
+    ? act.isMuted()
+    : ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
   var btns = document.querySelectorAll('.clip-mute');
   for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('muted', !!muted);
 }
@@ -4171,6 +4241,10 @@ function _ssvClipHTML(c, i, mode) {
       <div class="ssv-vig"></div>
 
       <div class="ssv-tap" id="ssv-tap-${i}"></div>
+      <div class="ssv-pause-icon" id="ssv-pause-icon-${i}">
+        <svg class="ssv-pi-pause" width="30" height="30" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        <svg class="ssv-pi-play" width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+      </div>
       <div class="ssv-burst" id="ssv-burst-${i}">
         <svg width="110" height="110" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
       </div>
@@ -4517,6 +4591,8 @@ function _poolRecycle(activeIdx, host) {
     bars[ei] = bar;
     if (!isInline && typeof surf.onMutedChange === 'function') {
       surf.onMutedChange(function (m) { if (ei === _ssvActiveIdx) _ssvPaintMuteBtn(m); });
+    } else if (isInline && typeof surf.onMutedChange === 'function') {
+      surf.onMutedChange(function (m) { if (ei === _inlineActiveIdx) _inlinePaintMuteBtns(); });
     }
     var tapZone = document.getElementById((isInline ? 'tap-' : 'ssv-tap-') + ei);
     if (tapZone) {
