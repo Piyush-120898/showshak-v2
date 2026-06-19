@@ -31,6 +31,23 @@ const SS_MARK_SVG = `
 
 document.body.insertAdjacentHTML('afterbegin', SS_MARK_SVG);
 
+/* ── PWA: register the service worker (install + smart caching) ──
+   Runs on every app page that loads shared.js. Relative path so it works under
+   the GitHub Pages project subpath; HTTPS/localhost only. The SW handles its own
+   updates (skipWaiting + clients.claim), so deploys propagate without stale cache.
+   Fully guarded + try/caught so it never affects Node (test) loads or non-PWA env. */
+(function ssRegisterSW() {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    if (typeof location === 'undefined') return;
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* best-effort */ });
+    });
+  } catch (e) { /* never block the app on SW registration */ }
+})();
+
 
 /* ════════════════════════════════════════════════
    TOAST

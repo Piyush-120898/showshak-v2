@@ -1,0 +1,15 @@
+{
+  "name": "ShowShak",
+  "short_name": "ShowShak",
+  "description": "Trust-based, creator-curated streaming discovery. Curators post clips; you tap Watch It.",
+  "start_url": "showshak-feed.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B0B0F",
+  "theme_color": "#0B0B0F",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
