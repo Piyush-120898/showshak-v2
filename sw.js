@@ -13,7 +13,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v2';
+var CACHE_VERSION = 'v3';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 // Best-effort precache of the app shell (failures are ignored so install never
@@ -63,8 +63,30 @@ self.addEventListener('fetch', function (event) {
   var url = new URL(req.url);
   var sameOrigin = (url.origin === self.location.origin);
 
-  // Cross-origin (Mux video/images, Supabase, fonts, CDN libs) → don't intercept.
-  // The browser handles them; video is never stored in our cache.
+  // Versioned, immutable CDN libraries (ffmpeg.wasm trim engine, mux-player,
+  // supabase-js) all come from jsdelivr → CACHE-FIRST. The ~25MB trim engine and
+  // the player libs download ONCE then load instantly on every later upload /
+  // app open — the big PWA smoothness win for the upload flow. jsdelivr is
+  // CORS-enabled so responses are non-opaque (real-size cache, no quota trap),
+  // and they're only fetched on demand (a viewer who never uploads never caches
+  // ffmpeg). The URLs are version-pinned, so we never need to revalidate.
+  if (url.origin === 'https://cdn.jsdelivr.net') {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req).then(function (cached) {
+          if (cached) return cached;
+          return fetch(req).then(function (res) {
+            if (res && res.status === 200 && res.type !== 'opaque') cache.put(req, res.clone());
+            return res;
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // Other cross-origin (Mux video/images, Supabase, Google Fonts) → don't
+  // intercept. The browser handles them; video is never stored in our cache.
   if (!sameOrigin) return;
 
   // HTML navigations → STALE-WHILE-REVALIDATE so a visited page paints INSTANTLY

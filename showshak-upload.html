@@ -832,6 +832,13 @@ async function upHandleFile(e) {
   draft.trimIn = 0;
   draft.trimOut = durationSec;
   draft.trim = null;
+  // Start warming the ~25 MB ffmpeg.wasm trim engine NOW (the moment a clip is
+  // added) so the download overlaps the entire Titles→Cover flow and is cached
+  // by the time the curator hits Post — fixing the "Preparing editor…" stall.
+  // Most curators trim, so this is the right tradeoff; it's cached per session
+  // and is a no-op if already warmed. (Full-source uploads still skip the trim
+  // EXEC; the real elimination is server-side trim on Mux — see notes.)
+  if (typeof ssWarmFfmpeg === 'function') ssWarmFfmpeg();
 
   const vid = document.getElementById('up-video');
   vid.src = draft.videoUrl;
