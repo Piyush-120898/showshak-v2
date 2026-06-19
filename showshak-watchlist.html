@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ShowShak — Watchlist</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0B0F">
@@ -66,7 +66,7 @@ html, body { overflow: hidden; }
 .new-stack-btn:hover { background: rgba(234,59,50,0.18); }
 .new-stack-btn:active { transform: scale(0.95); }
 @media (max-width:700px) {
-  .page-header { padding: 18px 20px 14px; }
+  .page-header { padding: calc(18px + env(safe-area-inset-top, 0px)) 20px 14px; }
   .new-stack-btn span { display: none; }
   .new-stack-btn { padding: 9px 12px; }
 }

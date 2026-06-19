@@ -3192,7 +3192,7 @@ function _ssvBuildList(clicked, list) {
 
     /* Close button */
     .ssv-close {
-      position: absolute; top: 14px; left: 14px; z-index: 40;
+      position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 14px; z-index: 40;
       width: 38px; height: 38px; border-radius: 50%;
       background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);
       display: flex; align-items: center; justify-content: center;
@@ -3206,7 +3206,7 @@ function _ssvBuildList(clicked, list) {
        "Tap for sound" badge). Shows the "on" icon by default; the "off"
        (crossed) icon when muted. */
     .ssv-mute {
-      position: absolute; top: 14px; right: 14px; z-index: 40;
+      position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; z-index: 40;
       width: 38px; height: 38px; border-radius: 50%;
       background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);
       display: flex; align-items: center; justify-content: center;
@@ -3221,7 +3221,7 @@ function _ssvBuildList(clicked, list) {
 
     /* Top "showing related" pill */
     .ssv-top-pill {
-      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
       z-index: 35; display: flex; align-items: center; gap: 6px;
       background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12);
       border-radius: 100px; padding: 5px 12px;

@@ -11,6 +11,12 @@
   position: fixed;
   bottom: 0; left: 0; right: 0;
   height: var(--mobile-nav-h);
+  /* Keep the icon row at 64px and let the bar background fill the iOS home-
+     indicator safe area below it, so the icons sit lifted on a straight line
+     above the home bar (like YouTube/Instagram/TikTok) instead of jammed at the
+     very bottom edge. On devices without an inset, env() is 0 → unchanged. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
   background: rgba(8, 8, 12, 0.96);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -45,7 +51,7 @@
 .mob-nav-item.active::after {
   content: '';
   position: absolute;
-  bottom: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
   left: 50%;
   transform: translateX(-50%);
   width: 20px;

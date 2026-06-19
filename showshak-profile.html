@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ShowShak — Profile</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0B0F">
@@ -79,7 +79,7 @@ html, body { overflow: hidden; }
 .hero-top {
   position: relative; z-index: 3;
   display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  padding-top: 18px;
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
 }
 .hero-icon-btn {
   width: 38px; height: 38px; border-radius: 50%;

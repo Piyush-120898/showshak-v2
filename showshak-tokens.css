@@ -41,7 +41,7 @@
   /* Layout */
   --sidebar-collapsed: 64px;
   --sidebar-expanded:  220px;
-  --mobile-nav-h:      64px;
+  --mobile-nav-h:      calc(64px + env(safe-area-inset-bottom, 0px));
 
   /* Clip / feed */
   --clip-w: 400px;
