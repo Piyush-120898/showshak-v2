@@ -2868,28 +2868,70 @@ let _ssvActiveIdx  = -1;      // index of the currently-active (playing) clip
 // INLINE first-clip muted-autoplay flag. FULLSCREEN opens are always
 // gesture-initiated so this stays false here; INLINE mode (later task)
 // flips it on for the first clip until the first user interaction.
-let _inlineAwaitingGesture = false;
+// Session-level Audio_Unlock (clip-player-performance Phase 2, Req 1.1, 2.5).
+// Browsers force muted autoplay until a real user gesture occurs; after the
+// FIRST gesture on a feed-bearing page, unmuted playback is allowed for the
+// rest of the session. This flag is shared by BOTH hosts (inline Feed +
+// fullscreen viewer) through the single engine, so once it flips, scrolling
+// between clips no longer needs the muted→unmuted "dance" that dropped audio.
+let _ssAudioUnlocked = false;
 
-/* resolveMuted(mode) — the single sound-resolution rule (design: Sound model).
-   INLINE while awaiting the first gesture → forced muted (autoplay policy);
-   otherwise (and always for FULLSCREEN) → the persisted Mute_Preference. */
+/* ssMarkAudioUnlocked() — flip the session unlock once, on the first user
+   gesture in EITHER host (or on a gesture-initiated fullscreen open / mute
+   toggle). Idempotent. (Req 1.1, 2.5) */
+function ssMarkAudioUnlocked() {
+  if (_ssAudioUnlocked) return;
+  _ssAudioUnlocked = true;
+}
+
+/* ssResolveSurfaceMuted(unlocked, mutePref) — the PURE audio-resolution rule
+   (Req 1.4, 1.5; design Property 1). Before Audio_Unlock the browser forces
+   muted, so the answer is always true; after unlock we honor the persisted
+   Mute_Preference. Total and DOM-free for Node + fast-check. */
+function ssResolveSurfaceMuted(unlocked, mutePref) {
+  if (!unlocked) return true;        // autoplay policy: muted until first gesture
+  return Boolean(mutePref);          // post-unlock: honor persisted intent
+}
+
+/* resolveMuted(mode) — the single sound-resolution rule (design: Sound model),
+   now expressed through the pure ssResolveSurfaceMuted + the session unlock
+   flag. Mode is retained for call-site compatibility but no longer branches:
+   the unlock flag is shared across hosts, so the rule is uniform. */
 function _ssvResolveMuted(mode) {
-  if (mode === 'INLINE' && _inlineAwaitingGesture) return true;
-  return ssGetMutePref();
+  return ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+}
+
+/* _activatePostUnlock(prevSurface, surface) — the unlock-aware activate
+   (Req 1.3, 1.4, 1.8). Once Audio_Unlock is granted, activating a clip is just
+   "pause prev, play active": we set the resolved sound state ONCE (never the
+   muted→unmuted transition that caused audio to drop on scroll) and play. If
+   the browser still rejects play() (e.g. a re-point landed mid gesture-expiry),
+   retry once, then fall back to a muted play so the VIDEO keeps moving — the
+   onMutedChange listener repaints the icon to the real state. The session
+   unlock flag is NOT cleared by a single rejection. */
+function _activatePostUnlock(prevSurface, surface) {
+  if (prevSurface) { try { prevSurface.pause(); } catch (e) {} }
+  if (!surface) return;
+  // Apply the resolved sound state once (idempotent; no mute→unmute dance).
+  try { surface.setMuted(ssResolveSurfaceMuted(true, ssGetMutePref())); } catch (e) {}
+  var p = surface.play();
+  Promise.resolve(p).catch(function () {
+    var p2 = surface.play();                 // retry once
+    Promise.resolve(p2).catch(function () {
+      try { surface.setMuted(true); surface.play(); } catch (e) {}  // keep video moving, muted
+    });
+  });
 }
 
 /* _ssActivateSurface(surface, wantMuted) — the autoplay-policy-safe play+sound
-   sequence used by BOTH hosts (inline feed + fullscreen viewer).
+   sequence for the PRE-UNLOCK case only (the very first clip, before any
+   gesture). Once _ssAudioUnlocked is true, setActive uses _activatePostUnlock
+   instead, so this path runs with wantMuted === true (muted-first, no unmute).
 
-   WHY: browsers ALWAYS allow MUTED autoplay but block UNMUTED play() unless it
-   happens during a transient user activation. A freshly-mounted player (e.g.
-   the next clip when you scroll) therefore gets its unmuted play() rejected and
-   the video would stall or silently fall back to muted. So we:
-     1) start MUTED and play() → guaranteed to start (never a black/stalled frame)
-     2) then honor the unmute preference on the NOW-PLAYING element
-     3) if the browser refuses the unmute (re-pauses), fall back to muted
-        playback so the VIDEO KEEPS PLAYING; the next tap / mute-toggle restores
-        sound. Fixes "video plays but audio doesn't come" on scroll. */
+   WHY (pre-unlock): browsers ALWAYS allow MUTED autoplay but block UNMUTED
+   play() unless it happens during a transient user activation. So the first
+   clip starts MUTED and plays — never a black/stalled frame — and the first
+   gesture then unlocks + applies the Mute_Preference. */
 function _ssActivateSurface(surface, wantMuted) {
   if (!surface) return;
   surface.setMuted(true);
@@ -3343,7 +3385,11 @@ const ClipEngine = {
 
     const muted = _ssvResolveMuted(m);
     surface._ssPaused = false;
-    _ssActivateSurface(surface, muted);   // muted-first then unmute (autoplay-safe)
+    // Post-unlock: just pause-prev + play (no muted→unmuted dance → audio stays
+    // continuous on scroll). Pre-unlock (first clip, no gesture yet): muted-first
+    // autoplay-safe sequence. prev was already paused above, so pass null.
+    if (_ssAudioUnlocked) _activatePostUnlock(null, surface);
+    else _ssActivateSurface(surface, muted);
     // Reflect this clip's REAL muted state immediately (it starts muted under
     // the autoplay-safe sequence); the onMutedChange listener then live-updates
     // the icon if/when the unmute actually succeeds or the browser refuses it.
@@ -3367,8 +3413,8 @@ const ClipEngine = {
      IntersectionObserver, owns the mobile per-clip rail + the fixed desktop
      #action-rail (positionRail), and the arrow/j/k keyboard navigation.
 
-     The first clip plays MUTED (browser autoplay policy) via
-     _inlineAwaitingGesture until the first user interaction (tap/scroll/key),
+     The first clip plays MUTED (browser autoplay policy) until the session
+     Audio_Unlock fires on the first user interaction (tap/scroll/key),
      which then applies the persisted Mute_Preference. No-ops if container or
      clips are absent. */
   mountInline(container, clips, opts) {
@@ -3388,8 +3434,11 @@ const ClipEngine = {
     _inlineBars     = [];
     _inlineFired    = new Set();
     _inlineActiveIdx = -1;
-    // First clip is forced muted until the first user interaction (Req 4.2).
-    _inlineAwaitingGesture = true;
+    // First clip plays muted until the session Audio_Unlock (first gesture);
+    // _ssAudioUnlocked is the single source of truth, shared across both hosts.
+    // If a gesture already unlocked audio earlier this session (e.g. the viewer
+    // came back from a fullscreen open), the first inline clip may play with
+    // sound — no forced re-mute.
 
     // Render the clip frames (Feed's existing classes/ids).
     container.innerHTML = _inlineClips.map((c, i) => _inlineClipHTML(c, i)).join('');
@@ -3453,23 +3502,13 @@ const ClipEngine = {
     if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(container);
   },
 
-  /* pruneInlineSurfaces() — ADDITIVE bounded-concurrency step (Req 9.5).
-     Keeps only the sliding band of mounted Media_Surfaces around the active
-     clip (ssMountedPlayerSet): re-mounts any in-band clip that was pruned and
-     destroys out-of-band players, so the number of live <mux-player>s stays
-     bounded no matter how many windows have been appended. Contract-only — it
-     never branches on surface type. */
+  /* pruneInlineSurfaces() — INLINE host entry point for the Player_Pool
+     recycler (Req 2.x, 9.6). Delegates to the shared _poolRecycle so the inline
+     Feed and the fullscreen viewer recycle identically through one engine
+     (Req 2.7). Re-points freed surfaces onto entering clips instead of
+     destroy-and-recreate; never branches on surface type. */
   pruneInlineSurfaces(activeIdx) {
-    const a = (activeIdx == null) ? _inlineActiveIdx : activeIdx;
-    const keep = ssMountedPlayerSet(a, _inlineClips.length, SS_MAX_LIVE_PLAYERS);
-    const keepSet = new Set(keep);
-    keep.forEach(i => { if (!_inlineSurfaces[i]) _inlineWireClip(i); });
-    for (let i = 0; i < _inlineSurfaces.length; i++) {
-      if (!keepSet.has(i) && _inlineSurfaces[i]) {
-        try { _inlineSurfaces[i].destroy(); } catch (e) {}
-        _inlineSurfaces[i] = null;
-      }
-    }
+    _poolRecycle(activeIdx, 'INLINE');
   },
 };
 // Expose globally so inline onclick handlers (rail flame) resolve it.
@@ -3513,6 +3552,7 @@ function _ssvPaintMuteBtn(muted) {
   btn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
 }
 function ssvToggleMute() {
+  ssMarkAudioUnlocked();   // toggling sound is a gesture → unlock the session
   const next = !ssGetMutePref();
   ssSetMutePref(next);   // persists + fires ssOnMuteChange (re-applies + repaints)
 }
@@ -3731,7 +3771,10 @@ function _inlineSetActive(idx) {
 
   const muted = _ssvResolveMuted('INLINE');
   surface._ssPaused = false;
-  _ssActivateSurface(surface, muted);   // muted-first then unmute (autoplay-safe)
+  // Post-unlock: pause-prev + play with no muted→unmuted dance (audio stays on
+  // through scroll). Pre-unlock first clip: muted-first autoplay-safe sequence.
+  if (_ssAudioUnlocked) _activatePostUnlock(null, surface);
+  else _ssActivateSurface(surface, muted);
 
   // Preload the NEXT clip while this one loops, for smooth scrolling.
   const nextSurface = _inlineSurfaces[idx + 1];
@@ -3964,10 +4007,10 @@ if (typeof window !== 'undefined') {
 function _inlineBindFirstInteraction(container) {
   function clear() {
     detach();
-    if (!_inlineAwaitingGesture) return;
-    _inlineAwaitingGesture = false;
+    if (_ssAudioUnlocked) return;
+    ssMarkAudioUnlocked();   // session unlock (shared across both hosts)
     const surface = _inlineSurfaces[_inlineActiveIdx];
-    if (surface) surface.setMuted(ssGetMutePref());
+    if (surface) surface.setMuted(ssResolveSurfaceMuted(true, ssGetMutePref()));
   }
   function detach() {
     container.removeEventListener('scroll', clear);
@@ -4137,7 +4180,9 @@ function ssOpenClip(clipOrId, list) {
   feed.scrollTop = 0;
   _ssvSetupObserver(feed);
   document.getElementById('ssv-clip-0')?.classList.add('active');
-  // FULLSCREEN opens are gesture-initiated → start playback (sound per pref).
+  // FULLSCREEN opens are gesture-initiated → mark the session Audio_Unlock so
+  // the first clip can play with sound and later scrolls skip the mute dance.
+  ssMarkAudioUnlocked();
   _ssvPaintMuteBtn(ssGetMutePref());
   ClipEngine.setActive(0, 'FULLSCREEN');
   ssSyncAllSaveBtns();
@@ -4252,10 +4297,13 @@ function _ssvTeardownViewer() {
   _ssvSurfaces = [];
   _ssvBars = [];
   _ssvActiveIdx = -1;
-  // Resume the inline feed behind us where it left off (paused on open).
+  // Resume the inline feed behind us where it left off (paused on open). By now
+  // a gesture has occurred (the viewer was opened by one), so use the
+  // unlock-aware path when unlocked to avoid the mute→unmute dance.
   try {
     if (typeof _inlineActiveIdx === 'number' && _inlineActiveIdx >= 0 && _inlineSurfaces[_inlineActiveIdx]) {
-      _ssActivateSurface(_inlineSurfaces[_inlineActiveIdx], _ssvResolveMuted('INLINE'));
+      if (_ssAudioUnlocked) _activatePostUnlock(null, _inlineSurfaces[_inlineActiveIdx]);
+      else _ssActivateSurface(_inlineSurfaces[_inlineActiveIdx], _ssvResolveMuted('INLINE'));
     }
   } catch (e) {}
   // Re-sync any save buttons on the underlying page
@@ -4324,22 +4372,90 @@ function _ssvWireClip(i) {
   }
 }
 
-/* _ssvPruneSurfaces(activeIdx) — bounded-concurrency for the FULLSCREEN viewer
-   (mirror of ClipEngine.pruneInlineSurfaces). Keep only the sliding band of
-   mounted <mux-player>s around the active clip (ssMountedPlayerSet): mount any
-   in-band clip that isn't mounted, destroy out-of-band players. This is what
-   stops N parallel video players from saturating the network. */
-function _ssvPruneSurfaces(activeIdx) {
-  const a = (activeIdx == null) ? _ssvActiveIdx : activeIdx;
-  const keep = ssMountedPlayerSet(a, _ssvClips.length, SS_MAX_LIVE_PLAYERS);
-  const keepSet = new Set(keep);
-  keep.forEach(i => { if (!_ssvSurfaces[i]) _ssvWireClip(i); });
-  for (let i = 0; i < _ssvSurfaces.length; i++) {
-    if (!keepSet.has(i) && _ssvSurfaces[i]) {
-      try { _ssvSurfaces[i].destroy(); } catch (e) {}
-      _ssvSurfaces[i] = null;
+/* _poolRecycle(activeIdx, host) — the Player_Pool recycler (clip-player-
+   performance Phase 3, Req 2.x, 9.6). Replaces destroy-and-recreate pruning:
+   it keeps in-band surfaces untouched, and for clips ENTERING the band it
+   RE-POINTS a surface freed by a clip LEAVING the band (no destroy/recreate)
+   so scroll-back is instant and element churn/jank is avoided. Re-point is
+   like-for-like by surface type (video→video, gradient→gradient); anything it
+   can't cleanly reuse (type change, or more entering than freed at the feed
+   ends) falls back to a fresh mount / bounded destroy — so the Feed can never
+   end up in a worse state than the previous prune. host = 'INLINE' | 'FULLSCREEN'
+   selects the per-host state arrays + DOM id scheme; behavior is identical
+   across both through the single engine (Req 2.7, 10.1). */
+function _poolRecycle(activeIdx, host) {
+  var isInline = (host === 'INLINE');
+  var clips    = isInline ? _inlineClips    : _ssvClips;
+  var surfaces = isInline ? _inlineSurfaces : _ssvSurfaces;
+  var bars     = isInline ? _inlineBars     : _ssvBars;
+  var a = (activeIdx == null) ? (isInline ? _inlineActiveIdx : _ssvActiveIdx) : activeIdx;
+
+  var band = ssMountedPlayerSet(a, clips.length, SS_MAX_LIVE_PLAYERS);
+  var bandSet = new Set(band);
+
+  // Current mounted clip indices.
+  var mounted = [];
+  for (var i = 0; i < surfaces.length; i++) if (surfaces[i]) mounted.push(i);
+
+  var entering = band.filter(function (idx) { return !surfaces[idx]; });
+  var leaving  = mounted.filter(function (idx) { return !bandSet.has(idx); });
+
+  // Detach leaving surfaces (DO NOT destroy) into reuse queues split by type.
+  var reuseVideo = [], reuseGradient = [];
+  leaving.forEach(function (li) {
+    var s = surfaces[li];
+    surfaces[li] = null;
+    if (!s) return;
+    try { s.pause(); } catch (e) {}
+    if (s._ssIsVideo) reuseVideo.push(s); else reuseGradient.push(s);
+  });
+
+  // Re-point / mount each entering clip onto a reused or fresh surface.
+  entering.forEach(function (ei) {
+    var clip    = clips[ei];
+    var mediaEl = document.getElementById((isInline ? 'clip-media-' : 'ssv-media-') + ei);
+    var frameEl = document.getElementById((isInline ? 'clip-' : 'ssv-clip-') + ei);
+    if (!clip || !mediaEl || !frameEl) return;
+    var wantVideo = !!clip.muxPlaybackId;
+    var queue = wantVideo ? reuseVideo : reuseGradient;
+    var surf = queue.shift();
+    if (surf && typeof surf.repoint === 'function') {
+      surf.repoint(clip, mediaEl);          // REUSE existing element — no churn
+    } else {
+      surf = ssCreateSurface(clip, { bgClass: isInline ? 'clip-bg' : 'ssv-bg' });
+      surf.mount(mediaEl);                  // fail-safe: fresh mount
     }
-  }
+    var bar = bars[ei] || ssMakeProgressBar(frameEl);
+    surf.onTimeupdate(function (p) { bar.set(p); });
+    bars[ei] = bar;
+    if (!isInline && typeof surf.onMutedChange === 'function') {
+      surf.onMutedChange(function (m) { if (ei === _ssvActiveIdx) _ssvPaintMuteBtn(m); });
+    }
+    var tapZone = document.getElementById((isInline ? 'tap-' : 'ssv-tap-') + ei);
+    if (tapZone) {
+      if (isInline && !tapZone.dataset.ssTapBound) {
+        tapZone.dataset.ssTapBound = '1';
+        tapZone.addEventListener('click', function () { ssOpenClip(_inlineClips[ei], _inlineClips); });
+      } else if (!isInline && !tapZone.dataset.ssvTapBound) {
+        tapZone.dataset.ssvTapBound = '1';
+        ssAttachGestures(tapZone, ei, ClipEngine);
+      }
+    }
+    surfaces[ei] = surf;
+  });
+
+  // Leftover reusable surfaces (band shrank at the feed ends → more leaving than
+  // entering) are destroyed to stay bounded. During steady scroll entering ==
+  // leaving, so this destroys nothing (Req 2.6).
+  reuseVideo.forEach(function (s) { try { s.destroy(); } catch (e) {} });
+  reuseGradient.forEach(function (s) { try { s.destroy(); } catch (e) {} });
+}
+
+/* _ssvPruneSurfaces(activeIdx) — FULLSCREEN host entry point, now delegating to
+   the shared Player_Pool recycler (kept as a named wrapper so existing callers
+   are unchanged). */
+function _ssvPruneSurfaces(activeIdx) {
+  _poolRecycle(activeIdx, 'FULLSCREEN');
 }
 
 function _ssvSetupObserver(feed) {
@@ -5295,6 +5411,19 @@ function GradientSurface(clip, opts) {
     seek: function (f) { elapsedBase = Math.max(0, Math.min(1, f)) * DURATION_MS; },
     onTimeupdate: function (cb) { onTick.push(cb); },
     onEnded: function (cb) { onEnd.push(cb); },
+    // repoint(newClip, container) — pool reuse for a gradient slot. Gradients are
+    // cheap (no network/hls), so this just resets the timer, repaints the new
+    // gradient, moves the node into the new container, and clears listeners for
+    // the engine to rebind. Keeps the engine from branching on surface type.
+    repoint: function (newClip, container) {
+      clip = newClip || clip;
+      ended = false; elapsedBase = 0; cancelAnimationFrame(raf);
+      onTick = []; onMute = [];
+      if (!el) { return this.mount(container); }
+      el.style.background = clip.bg;
+      if (container && el.parentNode !== container) container.appendChild(el);
+      return el;
+    },
     destroy: function () { cancelAnimationFrame(raf); if (el) el.remove(); el = null; onMute = []; },
   };
 }
@@ -5344,6 +5473,25 @@ function VideoSurface(clip, opts) {
       el = document.createElement('mux-player');
       el.setAttribute('playback-id', clip.muxPlaybackId);
       el.setAttribute('stream-type', 'on-demand');
+      // ── Mux Data QoE labeling (clip-player-performance Phase 1, Req 8.1–8.3) ──
+      // Mux Data is built into <mux-player> and auto-reports startup time and
+      // rebuffering. We attribute each playback to its clip so per-clip QoE is
+      // reviewable as the objective scoreboard. `env-key` is set only when a
+      // global is provided (mux-player otherwise infers the env from the
+      // playback id). The show title here is INTERNAL telemetry only — it lives
+      // in the private Mux dashboard, never a user-facing surface, so it does
+      // not break the "title hidden until Watch It" rule. Tracking stays ENABLED
+      // (no `disable-tracking` attribute). Best-effort; never blocks playback.
+      try {
+        var _muxEnv = (typeof window !== 'undefined' && window.SS_MUX_ENV_KEY) || null;
+        if (_muxEnv) el.setAttribute('env-key', String(_muxEnv));
+        if (clip.id != null && clip.id !== '') el.setAttribute('metadata-video-id', String(clip.id));
+        var _vTitle = clip.title || (clip.creator && clip.creator.name) || '';
+        if (_vTitle) el.setAttribute('metadata-video-title', String(_vTitle));
+        var _viewer = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function')
+          ? window.ssCurrentUser() : null;
+        if (_viewer && _viewer.id) el.setAttribute('metadata-viewer-user-id', String(_viewer.id));
+      } catch (e) { /* labeling is best-effort — never block playback */ }
       el.setAttribute('playsinline', '');
       el.setAttribute('preload', 'auto');  // mounted = look-ahead band → buffer ahead (Req 9.2)
       // Loop the active clip (TikTok/Reels-style) so it replays until the
@@ -5381,6 +5529,33 @@ function VideoSurface(clip, opts) {
     seek: function (f) { if (el && isFinite(el.duration)) el.currentTime = ssSeekToTime(f, el.duration); },
     onTimeupdate: function (cb) { onTick.push(cb); },
     onEnded: function (cb) { onEnd.push(cb); },
+    // repoint(newClip, container) — the Player_Pool reuse step (Req 2.2, 2.4,
+    // 2.5, 3.2, 3.3). Re-points THIS already-upgraded <mux-player> at a new clip
+    // instead of destroying + recreating it: paint the new poster FIRST (so the
+    // slot is never black), move the element into the new clip's container, swap
+    // the playback-id + per-clip Mux Data labels, reset ended/error, and
+    // re-apply the current muted state so Audio_Unlock is preserved. Clears the
+    // progress/mute listeners so the engine can rebind them to the new clip.
+    repoint: function (newClip, container) {
+      clip = newClip || clip;
+      ended = false; errored = false;
+      onTick = []; onMute = [];                 // engine rebinds for the new clip
+      if (!el) { return this.mount(container); } // nothing to reuse → mount fresh
+      // Poster-first paint for the NEW clip before the stream swaps.
+      if (clip.poster) el.setAttribute('poster', clip.poster);
+      else { el.removeAttribute('poster'); if (container) container.style.background = clip.bg || '#000'; }
+      // Move the SAME element into the new clip's container (no DOM churn).
+      if (container && el.parentNode !== container) container.appendChild(el);
+      // Per-clip Mux Data re-labeling (best-effort; never blocks).
+      try {
+        if (clip.id != null && clip.id !== '') el.setAttribute('metadata-video-id', String(clip.id));
+        var _t = clip.title || (clip.creator && clip.creator.name) || '';
+        if (_t) el.setAttribute('metadata-video-title', String(_t));
+      } catch (e) {}
+      el.setAttribute('playback-id', clip.muxPlaybackId);   // new clean hls + Mux Data view
+      el.muted = muted;                          // preserve unlocked/muted state (Req 2.5)
+      return el;
+    },
     destroy: function () {
       if (el) {
         el.removeEventListener('timeupdate', handleTimeupdate);
@@ -5401,9 +5576,14 @@ function VideoSurface(clip, opts) {
  * elsewhere; both arms satisfy the same MediaSurfaceContract.
  */
 function ssCreateSurface(clip, opts) {
-  return (clip && clip.muxPlaybackId)
+  var isVideo = !!(clip && clip.muxPlaybackId);
+  var surface = isVideo
     ? VideoSurface(clip, opts)      // real Mux video (HLS via <mux-player>)
     : GradientSurface(clip, opts);  // gradient fallback (no playback id)
+  // Type tag so the Player_Pool can tell whether a freed slot's surface can be
+  // re-pointed at an entering clip (same type) or must be rebuilt (Req 10.1).
+  surface._ssIsVideo = isVideo;
+  return surface;
 }
 
 /* ── Pure surface math (DOM-free, Node-testable) ─────────────────
@@ -5516,6 +5696,98 @@ function ssMountedPlayerSet(activeIdx, totalLoaded, maxLive) {
   return set;
 }
 
+/**
+ * ssPoolPlan(prevAssignment, mountedBand, poolSize) — the recycling decision for
+ * the Player_Pool (clip-player-performance Phase 3, Req 2.1-2.3, 2.6; design
+ * Property 5). PURE and Node-testable.
+ *
+ *   prevAssignment : { [clipIdx]: slotId } currently-mounted clip → pool slot.
+ *   mountedBand    : array of clip indices that SHOULD be mounted now
+ *                    (from ssMountedPlayerSet).
+ *   poolSize       : SS_MAX_LIVE_PLAYERS (max live slots).
+ *
+ * Returns {
+ *   assignment : { [clipIdx]: slotId },   // band clip → slot after recycle
+ *   keep       : [clipIdx],               // already-mounted band clips (stay in place)
+ *   repoint    : [{ clipIdx, slotId }],   // entering clips assigned a freed/empty slot
+ *   release    : [clipIdx]                // leaving clips whose slot is reused (NOT destroyed)
+ * }
+ *
+ * Invariants (enforced + asserted by the property test):
+ *   - |assignment| ≤ poolSize
+ *   - every band clip appears in assignment exactly once
+ *   - no slot is shared by two clips
+ *   - a clip in BOTH prevAssignment and band keeps its original slot (stability)
+ *   - slots freed by `release` are exactly the slots offered to `repoint`
+ *     (recycling, never destroy-and-recreate).
+ */
+function ssPoolPlan(prevAssignment, mountedBand, poolSize) {
+  var cap = (poolSize && poolSize > 0) ? Math.floor(poolSize) : SS_MAX_LIVE_PLAYERS;
+  var prev = (prevAssignment && typeof prevAssignment === 'object') ? prevAssignment : {};
+  // De-dupe the band, keep only finite non-negative integers, cap at poolSize.
+  var seen = {};
+  var band = [];
+  if (Array.isArray(mountedBand)) {
+    for (var bi = 0; bi < mountedBand.length && band.length < cap; bi++) {
+      var ci = mountedBand[bi];
+      if (typeof ci === 'number' && isFinite(ci) && ci >= 0 && !seen[ci]) {
+        seen[ci] = true; band.push(ci);
+      }
+    }
+  }
+  var bandSet = seen;
+
+  var assignment = {};
+  var keep = [];
+  var repoint = [];
+  var release = [];
+  var usedSlots = {};
+
+  // Pass 1 — clips already mounted that remain in band keep their slot (stable).
+  for (var k = 0; k < band.length; k++) {
+    var c = band[k];
+    if (Object.prototype.hasOwnProperty.call(prev, c)) {
+      var slot = prev[c];
+      assignment[c] = slot;
+      usedSlots[slot] = true;
+      keep.push(c);
+    }
+  }
+
+  // Leaving clips (mounted before, not in band now) → released; their slots free.
+  var freed = [];
+  for (var pc in prev) {
+    if (!Object.prototype.hasOwnProperty.call(prev, pc)) continue;
+    var pcNum = Number(pc);
+    if (!bandSet[pcNum]) {
+      release.push(pcNum);
+      freed.push(prev[pc]);
+    }
+  }
+
+  // Build the free-slot pool: released slots first (reuse), then any never-used
+  // slot ids in [0, cap) not currently held by a kept clip.
+  var freeSlots = [];
+  for (var f = 0; f < freed.length; f++) {
+    if (!usedSlots[freed[f]]) { freeSlots.push(freed[f]); usedSlots[freed[f]] = true; }
+  }
+  for (var s = 0; s < cap; s++) {
+    if (!usedSlots[s]) { freeSlots.push(s); usedSlots[s] = true; }
+  }
+
+  // Pass 2 — entering clips (in band, not previously mounted) take a free slot.
+  var fp = 0;
+  for (var e = 0; e < band.length; e++) {
+    var ec = band[e];
+    if (Object.prototype.hasOwnProperty.call(assignment, ec)) continue;  // already kept
+    var slotId = freeSlots[fp++];
+    assignment[ec] = slotId;
+    repoint.push({ clipIdx: ec, slotId: slotId });
+  }
+
+  return { assignment: assignment, keep: keep, repoint: repoint, release: release };
+}
+
 /* Expose consistently with the other ss* helpers (window in the browser),
    plus a guarded CommonJS export so the Node property tests can require these
    pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
@@ -5527,6 +5799,8 @@ if (typeof window !== 'undefined') {
   window.ssMuteRoundTrip = ssMuteRoundTrip;
   window.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   window.ssMountedPlayerSet = ssMountedPlayerSet;
+  window.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
+  window.ssPoolPlan = ssPoolPlan;
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssClipProgress = ssClipProgress;
@@ -5539,6 +5813,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssResolveCuratorViewModel = ssResolveCuratorViewModel;
   module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
+  module.exports.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
+  module.exports.ssPoolPlan = ssPoolPlan;
   module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;
   module.exports.SS_PRELOAD_AHEAD = SS_PRELOAD_AHEAD;
   module.exports.SS_MAX_LIVE_PLAYERS = SS_MAX_LIVE_PLAYERS;
@@ -5688,9 +5964,9 @@ ssOnMuteChange(function (muted) {
     var surface = _ssvSurfaces[_ssvActiveIdx];
     if (surface) surface.setMuted(muted);
   }
-  // INLINE host: re-apply to its active surface too (unless still awaiting the
-  // first gesture, where the first clip stays forced-muted).
-  if (typeof _inlineSurfaces !== 'undefined' && !_inlineAwaitingGesture) {
+  // INLINE host: re-apply to its active surface too (only once audio is
+  // unlocked; before the first gesture the first clip stays forced-muted).
+  if (typeof _inlineSurfaces !== 'undefined' && _ssAudioUnlocked) {
     var inlineSurface = _inlineSurfaces[_inlineActiveIdx];
     if (inlineSurface) inlineSurface.setMuted(muted);
   }
