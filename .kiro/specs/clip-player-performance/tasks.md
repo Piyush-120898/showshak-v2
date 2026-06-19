@@ -110,15 +110,15 @@ Conventions honored throughout:
     - _Requirements: 9.6, 10.5, 10.6_
 
 - [ ] 4. Phase 4 — Instant-start stack
-  - [ ] 4.1 Configure low Start_Rendition on the Video_Surface
+  - [x] 4.1 Configure low Start_Rendition on the Video_Surface
     - In `VideoSurface.mount`/`repoint`, set `max-auto-resolution` from `ssNetworkPolicy` (default tier in this phase) and seed `initial-bandwidth-estimate-kbps` low (`SS_START_BW_KBPS`) so the first segment is a small/low rendition before ABR climbs
     - _Requirements: 3.1_
 
-  - [ ] 4.2 Poster-first paint on mount and recycle
+  - [x] 4.2 Poster-first paint on mount and recycle
     - Paint the clip's Poster_Image (slotted `<img slot="poster">`) before video frames render on mount/recycle; when `clip.poster` is absent paint the clip's gradient (`clip.bg`) so the slot is never black
     - _Requirements: 3.2, 3.3, 3.5_
 
-  - [ ] 4.3 Warm the First_Clip during the Loading_Curtain
+  - [x] 4.3 Warm the First_Clip during the Loading_Curtain
     - While the Loading_Curtain is shown, warm the First_Clip's manifest + first segment via the existing `ssWarmClips()` priming; if the First_Clip identity is not yet known, warm as soon as it resolves so landing playback does not wait on a cold fetch
     - _Requirements: 3.4, 7.1, 7.2, 7.3_
 
@@ -126,36 +126,36 @@ Conventions honored throughout:
     - Assert the poster is set before `playback-id` on mount/recycle, and that a clip without a poster paints the gradient background
     - _Requirements: 3.2, 3.5_
 
-  - [ ] 4.5 Checkpoint — Ensure all tests pass
+  - [x] 4.5 Checkpoint — Ensure all tests pass
     - Run `node tests/run-all.js`; verify no black/blank first frame and the Feed is not regressed. Ask the user if questions arise.
     - _Requirements: 10.5, 10.6_
 
 - [ ] 5. Phase 5 — Network-aware adaptation + bandwidth discipline
-  - [ ] 5.1 Implement `ssNetworkTier(effectiveType)` pure helper
+  - [x] 5.1 Implement `ssNetworkTier(effectiveType)` pure helper
     - Add to `showshak-shared.js`: total classifier returning `'slow' | 'medium' | 'fast'`, never throwing, defaulting to `'medium'` for absent/unknown input; export in **both** the `window.*` and `module.exports` blocks
     - _Requirements: 4.1, 4.5_
 
-  - [ ]* 5.2 Write property test for network tier classification
+  - [x]* 5.2 Write property test for network tier classification
     - File `tests/prop-network-tier.test.js`, **Property 2: Network tier classification is total**
     - **Validates: Requirements 4.1, 4.5**
 
-  - [ ] 5.3 Implement `ssNetworkPolicy(tier)` pure helper
+  - [x] 5.3 Implement `ssNetworkPolicy(tier)` pure helper
     - Add to `showshak-shared.js`: maps tier to `{ preloadDepth, maxResolution }` (slow→1/480p, medium→3/720p, fast→5/1080p), unknown tier falls back to the medium row; export in **both** blocks
     - _Requirements: 4.2, 4.3, 4.4, 4.6_
 
-  - [ ]* 5.4 Write property test for network policy
+  - [x]* 5.4 Write property test for network policy
     - File `tests/prop-network-policy.test.js`, **Property 3: Network policy is monotonic in tier**
     - **Validates: Requirements 4.2, 4.3, 4.4, 4.6**
 
-  - [ ] 5.5 Implement `ssPreloadAction(state)` pure helper
+  - [x] 5.5 Implement `ssPreloadAction(state)` pure helper
     - Add to `showshak-shared.js`: returns `'start'|'pause'|'resume'|'cancel'|'idle'` — `'pause'` when active not ready, `'cancel'` when `inFlight > 1`, `'start'/'resume'` only when active ready, `inFlight === 0`, `warmed < preloadDepth`, else `'idle'`; export in **both** blocks
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [ ]* 5.6 Write property test for the preload gate
+  - [x]* 5.6 Write property test for the preload gate
     - File `tests/prop-preload-action.test.js`, **Property 4: Preload gate always prioritizes the active clip**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
 
-  - [ ] 5.7 Implement `_warmNext` gated by tier/policy/preload
+  - [x] 5.7 Implement `_warmNext` gated by tier/policy/preload
     - Add `_warmNext(activeIdx, host)`: warm the next clip(s) up to `ssNetworkPolicy(ssNetworkTier(...)).preloadDepth`, gated by `ssPreloadAction(state)`, keeping a single in-flight off-screen prefetch and prioritizing the active clip's requests; wire into both hosts and set the tier-driven `max-auto-resolution` ceiling on the surface
     - _Requirements: 3.4, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4_
 
@@ -163,7 +163,7 @@ Conventions honored throughout:
     - Assert single-in-flight discipline, off-screen preloading pauses while the active clip buffers and resumes when ready, and the active clip is prioritized
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-  - [ ] 5.9 Checkpoint — Ensure all tests pass
+  - [x] 5.9 Checkpoint — Ensure all tests pass
     - Run `node tests/run-all.js`; verify smooth playback on a throttled connection and no Feed regression. Ask the user if questions arise.
     - _Requirements: 10.5, 10.6_
 

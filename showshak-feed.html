@@ -657,6 +657,10 @@ async function loadRealClips() {
   // 1) Instant shell from the per-user cache (no spinner, posters show at once).
   if (cache && cache.clips && cache.clips.length) {
     SHOWS = cache.clips;
+    // First-clip priority (clip-player Phase 4, Req 7.1-7.3): kick off the very
+    // first clip's manifest + poster fetch BEFORE we mount, so landing playback
+    // doesn't wait on a cold fetch.
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, 1);
     ClipEngine.mountInline(feedEl, SHOWS);
     if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS);
     mountedFromCache = true;

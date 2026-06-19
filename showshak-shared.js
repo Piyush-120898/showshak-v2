@@ -3399,6 +3399,8 @@ const ClipEngine = {
     // instant (smooth viewing). No-op for gradients / when there is no next.
     const nextSurface = _ssvSurfaces[idx + 1];
     if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
+    // Network-aware deeper look-ahead + resolution ceiling + bandwidth gate.
+    _warmNext(idx, 'FULLSCREEN');
 
     // Reach = genuine attention: record a view only after this clip has stayed
     // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
@@ -3779,6 +3781,8 @@ function _inlineSetActive(idx) {
   // Preload the NEXT clip while this one loops, for smooth scrolling.
   const nextSurface = _inlineSurfaces[idx + 1];
   if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
+  // Network-aware deeper look-ahead + resolution ceiling + bandwidth gate.
+  _warmNext(idx, 'INLINE');
 
   _inlineSyncRail(idx);
   _inlineAnimateRailIn();
@@ -3924,6 +3928,12 @@ var SS_FEED_CACHE_MAX     = 10;                   // cap stored clips (~first wi
 var SS_FEED_CACHE_TTL_MS  = 6 * 60 * 60 * 1000;   // 6h: render stale, then refresh
 var SS_FEED_FRESH_MS      = 30 * 1000;            // <30s old → skip revalidation (saves a query)
 var SS_WARM_AHEAD         = 2;                     // warm only the next N clips
+// Instant-first-frame seed (clip-player-performance Phase 4, Req 3.1). A LOW
+// initial bandwidth estimate makes mux-player/hls.js pick a small, low-bitrate
+// FIRST segment that renders almost immediately, before ABR climbs to full
+// quality. This is the universal first-frame lever; Phase 5 layers a
+// tier-driven max-auto-resolution ceiling on top for slow connections.
+var SS_START_BW_KBPS      = 700;                   // kbps seed for the first segment
 
 function _ssFeedCacheKey() {
   var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
@@ -3986,6 +3996,67 @@ function ssWarmClips(clips, n) {
     // Prime the poster image (instant first frame when the clip is reached).
     if (c.poster && typeof Image === 'function') { try { var im = new Image(); im.src = c.poster; } catch (e) {} }
   }
+}
+
+/* _connEffectiveType() — read navigator.connection.effectiveType safely
+   (clip-player-performance Phase 5, Req 4.1, 4.5). Returns undefined when the
+   Network Information API is absent or throws; ssNetworkTier then defaults to
+   the 'medium' tier. Impure (reads a global); the classification itself is the
+   pure ssNetworkTier. */
+function _connEffectiveType() {
+  try {
+    var c = (typeof navigator !== 'undefined') &&
+            (navigator.connection || navigator.mozConnection || navigator.webkitConnection);
+    return (c && c.effectiveType) ? c.effectiveType : undefined;
+  } catch (e) { return undefined; }
+}
+
+/* Network-aware look-ahead + bandwidth discipline (Phase 5, Req 3.4, 4.x, 5.x).
+   The active clip ALWAYS wins the pipe: we apply the tier's resolution ceiling
+   to the active surface immediately, then defer off-screen warming by a short
+   window so the active clip grabs its initial buffer first, and keep a single
+   prefetch in flight (gated by the pure ssPreloadAction). Warm depth comes from
+   the pure ssNetworkPolicy(ssNetworkTier(...)). */
+var _ssWarmInFlight = 0;
+var _ssActiveReady  = false;
+var _ssWarmTimer    = null;
+
+function _warmNext(activeIdx, host) {
+  var isInline = (host === 'INLINE');
+  var clips    = isInline ? _inlineClips : _ssvClips;
+  var surfaces = isInline ? _inlineSurfaces : _ssvSurfaces;
+  var a = (typeof activeIdx === 'number') ? activeIdx : (isInline ? _inlineActiveIdx : _ssvActiveIdx);
+  if (!Array.isArray(clips) || a < 0 || a >= clips.length) return;
+
+  var policy = ssNetworkPolicy(ssNetworkTier(_connEffectiveType()));
+
+  // Tier-driven resolution ceiling on the active surface (Req 4.3, 4.4).
+  var act = surfaces[a];
+  if (act && typeof act.setMaxResolution === 'function') act.setMaxResolution(policy.maxResolution);
+
+  // Active wins the pipe: reset readiness, then warm ahead only after a short
+  // window so the active clip buffers first (Req 5.2, 5.4).
+  _ssActiveReady = false;
+  clearTimeout(_ssWarmTimer);
+  _ssWarmTimer = setTimeout(function () {
+    _ssActiveReady = true;
+    _warmTick(a, clips, policy);
+  }, 500);
+}
+
+function _warmTick(a, clips, policy) {
+  var action = ssPreloadAction({
+    activeReady: _ssActiveReady,
+    inFlight: _ssWarmInFlight,
+    warmed: 0,                       // ssWarmClips de-dupes per pid, so each tick warms the next un-warmed
+    preloadDepth: policy.preloadDepth
+  });
+  if (action !== 'start') return;    // 'pause'/'cancel'/'idle' → leave the pipe to the active clip
+  var ahead = clips.slice(a + 1, a + 1 + policy.preloadDepth);
+  if (!ahead.length) return;
+  _ssWarmInFlight++;                 // single in-flight discipline (Req 5.1)
+  ssWarmClips(ahead, policy.preloadDepth);   // de-duped, fire-and-forget
+  setTimeout(function () { if (_ssWarmInFlight > 0) _ssWarmInFlight--; }, 600);
 }
 
 if (typeof window !== 'undefined') {
@@ -5405,6 +5476,7 @@ function GradientSurface(clip, opts) {
     isMuted: function () { return muted; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     preload: function () {},                   // nothing to buffer for a gradient
+    setMaxResolution: function () {},          // gradients have no resolution ceiling
     getProgress: function () {
       return Math.max(0, Math.min(1, elapsedBase / DURATION_MS));
     },
@@ -5494,6 +5566,10 @@ function VideoSurface(clip, opts) {
       } catch (e) { /* labeling is best-effort — never block playback */ }
       el.setAttribute('playsinline', '');
       el.setAttribute('preload', 'auto');  // mounted = look-ahead band → buffer ahead (Req 9.2)
+      // Instant first frame (Phase 4, Req 3.1): seed ABR LOW so the first
+      // segment is a small/low rendition that renders fast. ABR climbs to full
+      // quality after the first frame is on screen.
+      try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
       // Loop the active clip (TikTok/Reels-style) so it replays until the
       // viewer scrolls to another clip. Native loop never fires 'ended', so
       // the error→advance path (handleError) is unaffected.
@@ -5521,6 +5597,11 @@ function VideoSurface(clip, opts) {
     // call repeatedly; never interrupts the currently-playing surface.
     preload: function () {
       if (el) { try { el.preload = 'auto'; el.setAttribute('preload', 'auto'); } catch (e) {} }
+    },
+    // setMaxResolution(res) — apply the tier-driven quality ceiling (Phase 5,
+    // Req 4.3/4.4). '480p'|'720p'|'1080p'. No-op if the element isn't mounted.
+    setMaxResolution: function (res) {
+      if (el && res) { try { el.setAttribute('max-resolution', String(res)); } catch (e) {} }
     },
     setMuted: function (m) { muted = !!m; if (el) el.muted = muted; },
     isMuted: function () { return el ? !!el.muted : muted; },
@@ -5552,6 +5633,8 @@ function VideoSurface(clip, opts) {
         var _t = clip.title || (clip.creator && clip.creator.name) || '';
         if (_t) el.setAttribute('metadata-video-title', String(_t));
       } catch (e) {}
+      // Re-seed ABR low for the new clip's fresh hls instance (Phase 4, Req 3.1).
+      try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
       el.setAttribute('playback-id', clip.muxPlaybackId);   // new clean hls + Mux Data view
       el.muted = muted;                          // preserve unlocked/muted state (Req 2.5)
       return el;
@@ -5788,6 +5871,64 @@ function ssPoolPlan(prevAssignment, mountedBand, poolSize) {
   return { assignment: assignment, keep: keep, repoint: repoint, release: release };
 }
 
+/**
+ * ssNetworkTier(effectiveType) — classify the connection into a Network_Tier
+ * (clip-player-performance Phase 5, Req 4.1, 4.5; design Property 2). Total and
+ * never throws: any unknown/absent input falls back to the safe 'medium' tier.
+ *   'slow-2g','2g'    → 'slow'
+ *   '3g'              → 'medium'
+ *   '4g' (and better) → 'fast'
+ *   undefined/unknown → 'medium'
+ */
+function ssNetworkTier(effectiveType) {
+  switch (effectiveType) {
+    case 'slow-2g':
+    case '2g': return 'slow';
+    case '3g': return 'medium';
+    case '4g': return 'fast';
+    default:   return 'medium';
+  }
+}
+
+/**
+ * ssNetworkPolicy(tier) — map a Network_Tier to the preload depth and the
+ * resolution ceiling (Req 4.2, 4.3, 4.4, 4.6; design Property 3). Pure; an
+ * unknown tier falls back to the medium row. preloadDepth strictly increases
+ * slow<medium<fast; maxResolution is non-decreasing across the same order.
+ */
+function ssNetworkPolicy(tier) {
+  switch (tier) {
+    case 'slow': return { preloadDepth: 1, maxResolution: '480p' };
+    case 'fast': return { preloadDepth: 5, maxResolution: '1080p' };
+    case 'medium':
+    default:     return { preloadDepth: 3, maxResolution: '720p' };
+  }
+}
+
+/**
+ * ssPreloadAction(state) — the bandwidth-discipline decision (Req 5.1-5.5;
+ * design Property 4). The active clip ALWAYS wins the pipe.
+ *   state = { activeReady, inFlight, warmed, preloadDepth }
+ *   - active not ready            → 'pause'  (regardless of everything else)
+ *   - inFlight > 1                → 'cancel' (single in-flight discipline)
+ *   - warmed >= preloadDepth      → 'idle'   (look-ahead window full)
+ *   - active ready, inFlight == 0 → 'start'  (begin/resume the single prefetch)
+ *   - otherwise (one in flight)   → 'idle'   (let it finish)
+ * Pure and total; non-numeric fields default to 0.
+ */
+function ssPreloadAction(state) {
+  var s = (state && typeof state === 'object') ? state : {};
+  var activeReady = !!s.activeReady;
+  var inFlight = (typeof s.inFlight === 'number' && isFinite(s.inFlight) && s.inFlight > 0) ? s.inFlight : 0;
+  var warmed = (typeof s.warmed === 'number' && isFinite(s.warmed) && s.warmed > 0) ? s.warmed : 0;
+  var depth = (typeof s.preloadDepth === 'number' && isFinite(s.preloadDepth) && s.preloadDepth > 0) ? s.preloadDepth : 0;
+  if (!activeReady) return 'pause';
+  if (inFlight > 1) return 'cancel';
+  if (warmed >= depth) return 'idle';
+  if (inFlight === 0) return 'start';
+  return 'idle';
+}
+
 /* Expose consistently with the other ss* helpers (window in the browser),
    plus a guarded CommonJS export so the Node property tests can require these
    pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
@@ -5801,6 +5942,9 @@ if (typeof window !== 'undefined') {
   window.ssMountedPlayerSet = ssMountedPlayerSet;
   window.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   window.ssPoolPlan = ssPoolPlan;
+  window.ssNetworkTier = ssNetworkTier;
+  window.ssNetworkPolicy = ssNetworkPolicy;
+  window.ssPreloadAction = ssPreloadAction;
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssClipProgress = ssClipProgress;
@@ -5815,6 +5959,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
   module.exports.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   module.exports.ssPoolPlan = ssPoolPlan;
+  module.exports.ssNetworkTier = ssNetworkTier;
+  module.exports.ssNetworkPolicy = ssNetworkPolicy;
+  module.exports.ssPreloadAction = ssPreloadAction;
   module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;
   module.exports.SS_PRELOAD_AHEAD = SS_PRELOAD_AHEAD;
   module.exports.SS_MAX_LIVE_PLAYERS = SS_MAX_LIVE_PLAYERS;
