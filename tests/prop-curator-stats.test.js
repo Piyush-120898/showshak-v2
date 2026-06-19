@@ -28,6 +28,19 @@ const ss = require('../showshak-shared.js');
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 
+// Safe stringifier for diagnostics: fast-check's fc.object() can generate objects
+// whose `toString`/`valueOf` is a non-function primitive (e.g. { toString: "" }),
+// which makes a bare String(v) throw "Cannot convert object to primitive value"
+// even when the assertion itself passes. Never let a diagnostic crash the test.
+function show(v) {
+  try {
+    if (v !== null && typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  } catch (_) {
+    return Object.prototype.toString.call(v);
+  }
+}
+
 // Oracle for the expected clamped follower value.
 function expectedFollowers(followerCount) {
   if (typeof followerCount === 'number' && isFinite(followerCount) && followerCount >= 0) {
@@ -74,12 +87,12 @@ try {
 
     // followers is always a non-negative integer.
     assert(Number.isInteger(result.stats.followers) && result.stats.followers >= 0,
-      `followers must be a non-negative integer: got ${result.stats.followers} for input ${String(followerCount)}`);
+      `followers must be a non-negative integer: got ${result.stats.followers} for input ${show(followerCount)}`);
 
     // followers matches the clamp oracle exactly.
     const exp = expectedFollowers(followerCount);
     assert(result.stats.followers === exp,
-      `followers clamp mismatch for ${String(followerCount)}: got ${result.stats.followers} expected ${exp}`);
+      `followers clamp mismatch for ${show(followerCount)}: got ${result.stats.followers} expected ${exp}`);
 
     // clips count equals the resolved clip array length.
     assert(result.stats.clips === result.clips.length,
@@ -108,9 +121,9 @@ try {
   for (const [input, want] of examples) {
     const r = ss.ssResolveCuratorViewModel(curatorRow, [], input);
     assert(r.stats.followers === want,
-      `example followers mismatch for ${String(input)}: got ${r.stats.followers} expected ${want}`);
+      `example followers mismatch for ${show(input)}: got ${r.stats.followers} expected ${want}`);
     assert(Number.isInteger(r.stats.followers) && r.stats.followers >= 0,
-      `example followers must be non-negative integer for ${String(input)}: got ${r.stats.followers}`);
+      `example followers must be non-negative integer for ${show(input)}: got ${r.stats.followers}`);
   }
 
   // ── Empty rows array → clips count 0 (explicit) ──
