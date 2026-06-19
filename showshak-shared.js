@@ -121,13 +121,15 @@ async function _ssFetchSheetTitles(show) {
     curatorPlat: show.curatorPlat
   }];
   if (!window.ssDB || !_ssIsUuid(show.id)) return single;
+  // Prewarmed/previously-opened → return the cached titles instantly (no network).
+  if (_ssSheetTitlesCache[show.id]) return _ssSheetTitlesCache[show.id];
   try {
     const res = await window.ssDB.from('content_titles')
       .select('sort_no, titles:title_id ( id, name, year, providers )')
       .eq('content_id', show.id)
       .order('sort_no');
     if (res.error || !res.data || !res.data.length) return single;
-    return res.data.map(function (row) {
+    const titles = res.data.map(function (row) {
       const t = row.titles || {};
       return {
         name:        t.name || show.title,
@@ -136,10 +138,28 @@ async function _ssFetchSheetTitles(show) {
         curatorPlat: show.curatorPlat   // per-title curator fallback (Req 1.4/2.5/6.1)
       };
     });
+    _ssSheetTitlesCache[show.id] = titles;   // cache so reopen / post-prewarm is instant
+    return titles;
   } catch (e) {
     return single;   // any failure → graceful single-title fallback
   }
 }
+
+/* Prewarm the Watch It sheet data for a clip so the sheet opens INSTANTLY:
+   warm the (already-memoized) region + subscriptions, and prefetch + cache this
+   clip's linked titles/providers. Idempotent, fire-and-forget; never throws.
+   Called when a clip becomes active so the data is ready before the tap. */
+function ssPrewarmWatch(show) {
+  if (!show) return;
+  try {
+    if (typeof ssGetRegion === 'function') ssGetRegion();
+    if (typeof ssGetSubscribedPlatformIds === 'function') ssGetSubscribedPlatformIds();
+    if (window.ssDB && _ssIsUuid(show.id) && !_ssSheetTitlesCache[show.id]) {
+      _ssFetchSheetTitles(show);   // resolves into _ssSheetTitlesCache; ignore the promise
+    }
+  } catch (e) { /* prewarm is best-effort */ }
+}
+if (typeof window !== 'undefined') window.ssPrewarmWatch = ssPrewarmWatch;
 
 /* Render one option row's markup. Title/platform free-text is HTML-escaped;
    the platform + owning-title names ride on data-* attributes so the click
@@ -162,6 +182,9 @@ function _ssRenderSheetOption(p, titleName) {
    clip. Reset/overwritten each time the sheet opens. */
 var _ssSheetShow   = null;
 var _ssSheetRegion = undefined;
+// Per-clip Watch It titles/providers cache (keyed by content id), populated by
+// _ssFetchSheetTitles + ssPrewarmWatch so opening the sheet needs no network.
+var _ssSheetTitlesCache = {};
 
 async function ssOpenSheet(show) {
   if (!show) return;
@@ -3432,6 +3455,11 @@ const ClipEngine = {
     if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
     // Network-aware deeper look-ahead + resolution ceiling + bandwidth gate.
     _warmNext(idx, 'FULLSCREEN');
+    // Prewarm Watch It data for this clip (and the next) so the sheet is instant.
+    if (typeof ssPrewarmWatch === 'function') {
+      ssPrewarmWatch(_ssvClips[idx]);
+      if (_ssvClips[idx + 1]) ssPrewarmWatch(_ssvClips[idx + 1]);
+    }
 
     // Reach = genuine attention: record a view only after this clip has stayed
     // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
@@ -3880,6 +3908,11 @@ function _inlineSetActive(idx) {
   if (nextSurface && typeof nextSurface.preload === 'function') nextSurface.preload();
   // Network-aware deeper look-ahead + resolution ceiling + bandwidth gate.
   _warmNext(idx, 'INLINE');
+  // Prewarm Watch It data for this clip (and the next) so the sheet is instant.
+  if (typeof ssPrewarmWatch === 'function') {
+    ssPrewarmWatch(_inlineClips[idx]);
+    if (_inlineClips[idx + 1]) ssPrewarmWatch(_inlineClips[idx + 1]);
+  }
 
   _inlineSyncRail(idx);
   _inlineAnimateRailIn();
