@@ -1760,7 +1760,12 @@ function renderHistory() {
   const list = (isSignedInOwn() || isGuestOwn()) ? [] : MOCK_HISTORY;
   window._PROFILE_HISTORY = list;
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-ic">🕑</div><div class="empty-t">Nothing here yet</div><div class="empty-d">Clips you watch show up here for 7 days, so you can always find your way back.</div></div>`;
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-ic">🕑</div>
+      <div class="empty-t">Your watch history is on its way</div>
+      <div class="empty-d">Soon, every clip you watch will live here for 7 days — so you can always find your way back to the one you can't stop thinking about.</div>
+      <div style="margin-top:15px;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--red);background:rgba(234,59,50,0.10);border:1px solid var(--border2);border-radius:100px;padding:6px 13px;">✨ COMING SOON</div>
+    </div>`;
     return;
   }
   el.innerHTML = `
