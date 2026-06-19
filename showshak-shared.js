@@ -3613,14 +3613,27 @@ function _ssvPaintMuteBtn(muted) {
   btn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
 }
 function ssvToggleMute() {
-  // Toggle based on what the user currently HEARS (the resolved state), NOT the
-  // raw Mute_Preference. Before Audio_Unlock a feed clip is force-muted while the
-  // pref may still say "sound on" — toggling the raw pref then flips it the wrong
-  // way and the first tap appears to do nothing (the "click twice" bug). Flip the
-  // heard state instead so a single tap always does what the icon implies.
-  var heardMuted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
-  ssMarkAudioUnlocked();          // any toggle is a gesture → unlock the session
-  ssSetMutePref(!heardMuted);     // muted → sound on, sound on → muted (one tap)
+  ssMarkAudioUnlocked();   // any toggle is a gesture → unlock the session
+  // Flip the ACTUAL audible state of the active clip (read from the live surface),
+  // not the raw pref or the resolved value — so a single tap always does what the
+  // icon implies, even on the very first interaction.
+  var act = _ssGetActiveSurface();
+  var heardMuted = (act && typeof act.isMuted === 'function')
+    ? act.isMuted()
+    : ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+  ssSetMutePref(!heardMuted);     // persists + ssOnMuteChange re-applies + repaints
+}
+
+/* The surface whose audio the user is actually hearing: the fullscreen viewer's
+   active surface when it's open, else the feed's active surface. */
+function _ssGetActiveSurface() {
+  if (typeof _ssvSurfaces !== 'undefined' && _ssvActiveIdx >= 0 && _ssvSurfaces[_ssvActiveIdx]) {
+    return _ssvSurfaces[_ssvActiveIdx];
+  }
+  if (typeof _inlineSurfaces !== 'undefined' && _inlineActiveIdx >= 0 && _inlineSurfaces[_inlineActiveIdx]) {
+    return _inlineSurfaces[_inlineActiveIdx];
+  }
+  return null;
 }
 
 /* Paint every inline frame's mute button to the current EFFECTIVE muted state
@@ -3689,7 +3702,7 @@ function _inlineClipHTML(c, i) {
       <div class="clip-logo-float">
         <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
       </div>
-      <div class="clip-mute muted" id="clip-mute-${i}" onclick="event.stopPropagation(); ssvToggleMute()" role="button" aria-label="Toggle sound">
+      <div class="clip-mute muted" id="clip-mute-${i}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation(); ssvToggleMute()" role="button" aria-label="Toggle sound">
         <svg class="clip-mute-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
         <svg class="clip-mute-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
       </div>

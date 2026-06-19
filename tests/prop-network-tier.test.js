@@ -21,6 +21,16 @@ const ss = require('../showshak-shared.js');
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 
+// Safe stringifier: fast-check's fc.object() can produce objects whose toString
+// is a non-function (e.g. { toString: "" }), so a bare String(v) throws while
+// building a diagnostic. Never let a diagnostic crash the test.
+function show(v) {
+  try {
+    if (v !== null && typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  } catch (_) { return Object.prototype.toString.call(v); }
+}
+
 let failed = 0;
 
 console.log('Feature: clip-player-performance — network tier classification property test\n');
@@ -42,12 +52,13 @@ try {
   fc.assert(fc.property(anyInput, (input) => {
     const tier = ss.ssNetworkTier(input);
     // Total: always exactly one of the three tiers, never throws.
-    assert(TIERS.indexOf(tier) !== -1, `tier must be one of ${TIERS}: got ${String(tier)}`);
-    if (Object.prototype.hasOwnProperty.call(known, input)) {
-      assert(tier === known[input], `known mapping wrong for ${input}: got ${tier} expected ${known[input]}`);
+    assert(TIERS.indexOf(tier) !== -1, `tier must be one of ${TIERS}: got ${show(tier)}`);
+    // Only a known string maps non-default; everything else (incl. objects) → medium.
+    if (typeof input === 'string' && Object.prototype.hasOwnProperty.call(known, input)) {
+      assert(tier === known[input], `known mapping wrong for ${show(input)}: got ${tier} expected ${known[input]}`);
     } else {
       // Anything not an exact known string → safe default 'medium'.
-      assert(tier === 'medium', `unknown input must default to medium: got ${tier} for ${String(input)}`);
+      assert(tier === 'medium', `unknown input must default to medium: got ${tier} for ${show(input)}`);
     }
     return true;
   }), { numRuns: ITER });
