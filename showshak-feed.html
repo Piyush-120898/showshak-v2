@@ -168,6 +168,24 @@ html, body { overflow: hidden; }
   backdrop-filter: blur(8px); cursor: pointer; transition: opacity 0.3s;
 }
 
+/* ── Frame mute/unmute button (tap to hear a clip without opening it) ─── */
+.clip-mute {
+  position: absolute; top: 14px; right: 14px; z-index: 35;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s, transform 0.15s;
+}
+.clip-mute:hover  { background: rgba(0,0,0,0.7); transform: scale(1.06); }
+.clip-mute:active { transform: scale(0.92); }
+.clip-mute .clip-mute-off { display: none; }
+.clip-mute.muted .clip-mute-on  { display: none; }
+.clip-mute.muted .clip-mute-off { display: block; }
+/* On desktop the fixed action rail sits to the right of the clip column, so the
+   top-right mute button is clear; on mobile it stays inside the frame. */
+
 /* ════════════════════════════════════════════════
    CLIP BOTTOM CONTENT
 ════════════════════════════════════════════════ */

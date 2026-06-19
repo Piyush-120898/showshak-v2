@@ -3559,6 +3559,16 @@ function ssvToggleMute() {
   ssSetMutePref(next);   // persists + fires ssOnMuteChange (re-applies + repaints)
 }
 
+/* Paint every inline frame's mute button to the current EFFECTIVE muted state
+   (pre-unlock the active clip is force-muted; post-unlock it follows the
+   Mute_Preference). Called on activate, on the first-gesture unlock, and from
+   the global ssOnMuteChange subscription. */
+function _inlinePaintMuteBtns() {
+  var muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+  var btns = document.querySelectorAll('.clip-mute');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('muted', !!muted);
+}
+
 /* ════════════════════════════════════════════════
    INLINE MODE — helpers (the Feed's DOM id/rail scheme)
    ─────────────────────────────────────────────────
@@ -3608,6 +3618,10 @@ function _inlineClipHTML(c, i) {
       <div class="clip-grain"></div>
       <div class="clip-logo-float">
         <div class="clip-logo-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>
+      </div>
+      <div class="clip-mute muted" id="clip-mute-${i}" onclick="event.stopPropagation(); ssvToggleMute()" role="button" aria-label="Toggle sound">
+        <svg class="clip-mute-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        <svg class="clip-mute-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
       </div>
       <div class="clip-tap" id="tap-${i}">
         <div class="clip-pause-icon" id="pause-icon-${i}">
@@ -3786,6 +3800,7 @@ function _inlineSetActive(idx) {
 
   _inlineSyncRail(idx);
   _inlineAnimateRailIn();
+  _inlinePaintMuteBtns();   // keep the frame mute buttons in sync
 
   // Reach = genuine attention: record a view only after this clip has stayed
   // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
@@ -4082,6 +4097,7 @@ function _inlineBindFirstInteraction(container) {
     ssMarkAudioUnlocked();   // session unlock (shared across both hosts)
     const surface = _inlineSurfaces[_inlineActiveIdx];
     if (surface) surface.setMuted(ssResolveSurfaceMuted(true, ssGetMutePref()));
+    if (typeof _inlinePaintMuteBtns === 'function') _inlinePaintMuteBtns();
   }
   function detach() {
     container.removeEventListener('scroll', clear);
@@ -5513,6 +5529,7 @@ function VideoSurface(clip, opts) {
   var el = null, ended = false;
   var onTick = [], onEnd = [], onMute = [];
   var muted = true, errored = false;
+  var _lastVol = 1;                              // track volume to detect a raise
   var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function handleTimeupdate() {
@@ -5525,8 +5542,21 @@ function VideoSurface(clip, opts) {
   // change, so we relay the REAL muted state to listeners; the engine uses
   // this to keep the mute icon in sync with what the user actually hears.
   function handleVolumeChange() {
-    var m = el ? !!el.muted : muted;
-    onMute.forEach(function (cb) { cb(m); });
+    if (!el) { onMute.forEach(function (cb) { cb(muted); }); return; }
+    var vol = (typeof el.volume === 'number') ? el.volume : 1;
+    // Raising the volume while muted = intent to UNMUTE. Clear the mute and sync
+    // the session preference so every clip follows (and mark Audio_Unlock, since
+    // a volume interaction is a user gesture).
+    if (el.muted && vol > _lastVol && vol > 0) {
+      el.muted = false;
+      if (typeof ssMarkAudioUnlocked === 'function') ssMarkAudioUnlocked();
+      if (typeof ssSetMutePref === 'function') ssSetMutePref(false);
+    }
+    _lastVol = vol;
+    muted = !!el.muted;
+    // Relay the REAL muted state so the engine keeps the mute icon in sync with
+    // what the user actually hears.
+    onMute.forEach(function (cb) { cb(muted); });
   }
   function handleEnded() {
     if (ended) return;
@@ -5583,6 +5613,11 @@ function VideoSurface(clip, opts) {
       el.className = (opts && opts.bgClass) || 'clip-bg';
       el.style.width = '100%';
       el.style.height = '100%';
+      // No built-in player chrome: we drive play/pause via our own gestures and
+      // a custom mute control, so hide mux-player's controls — including the
+      // center play/pause button that otherwise flashes before autoplay starts
+      // (UX fix: clips just play; the pause indicator shows only on a tap).
+      try { el.style.setProperty('--controls', 'none'); } catch (e) {}
       el.addEventListener('timeupdate', handleTimeupdate);
       el.addEventListener('ended', handleEnded);
       el.addEventListener('error', handleError);
@@ -6124,4 +6159,6 @@ ssOnMuteChange(function (muted) {
     var act = (typeof _ssvSurfaces !== 'undefined') ? _ssvSurfaces[_ssvActiveIdx] : null;
     _ssvPaintMuteBtn(act && typeof act.isMuted === 'function' ? act.isMuted() : muted);
   }
+  // Keep the inline feed's per-frame mute buttons in sync too.
+  if (typeof _inlinePaintMuteBtns === 'function') _inlinePaintMuteBtns();
 });
