@@ -5606,6 +5606,7 @@ function VideoSurface(clip, opts) {
   var onTick = [], onEnd = [], onMute = [];
   var muted = true, errored = false;
   var _lastVol = 1;                              // track volume to detect a raise
+  var wantPlay = false;                          // intent: should this surface be playing?
   var loopClip = !opts || opts.loop !== false;   // active clip loops by default
 
   function handleTimeupdate() {
@@ -5644,6 +5645,18 @@ function VideoSurface(clip, opts) {
     // the engine advance by synthesizing an 'ended' after a short grace.
     errored = true;
     setTimeout(function () { handleEnded(); }, 600);
+  }
+  // When the source becomes ready (after a cold load or a pool re-point), if we
+  // still INTEND to play but the element is paused, kick playback now. Fixes the
+  // "scroll to a loading clip → frozen on the poster until you tap" race: the
+  // initial play() ran before the new source was ready, so its intent was lost.
+  function handleCanPlay() {
+    if (wantPlay && el && el.paused) {
+      var p = el.play();
+      if (p && p.catch) p.catch(function () {
+        try { el.muted = true; muted = true; el.play(); } catch (e) {}  // muted backstop
+      });
+    }
   }
 
   return {
@@ -5698,11 +5711,23 @@ function VideoSurface(clip, opts) {
       el.addEventListener('ended', handleEnded);
       el.addEventListener('error', handleError);
       el.addEventListener('volumechange', handleVolumeChange);
+      el.addEventListener('canplay', handleCanPlay);
+      el.addEventListener('loadeddata', handleCanPlay);
       container.appendChild(el);
       return el;
     },
-    play: function () { return el ? (el.play() || Promise.resolve()) : Promise.resolve(); },
-    pause: function () { if (el) { try { el.pause(); } catch (e) {} } },
+    play: function () {
+      wantPlay = true;
+      if (!el) return Promise.resolve();
+      // autoplay backstops the case where the source isn't ready yet: the player
+      // resumes the moment it can, even if this immediate play() doesn't stick.
+      try { el.autoplay = true; } catch (e) {}
+      return el.play() || Promise.resolve();
+    },
+    pause: function () {
+      wantPlay = false;
+      if (el) { try { el.autoplay = false; el.pause(); } catch (e) {} }
+    },
     // Eagerly buffer this (not-yet-active) clip so the NEXT clip is ready to
     // play instantly when the viewer scrolls to it (smooth viewing). Safe to
     // call repeatedly; never interrupts the currently-playing surface.
@@ -5730,7 +5755,7 @@ function VideoSurface(clip, opts) {
     // progress/mute listeners so the engine can rebind them to the new clip.
     repoint: function (newClip, container) {
       clip = newClip || clip;
-      ended = false; errored = false;
+      ended = false; errored = false; wantPlay = false;
       onTick = []; onMute = [];                 // engine rebinds for the new clip
       if (!el) { return this.mount(container); } // nothing to reuse → mount fresh
       // Poster-first paint for the NEW clip before the stream swaps.
@@ -5756,6 +5781,8 @@ function VideoSurface(clip, opts) {
         el.removeEventListener('ended', handleEnded);
         el.removeEventListener('error', handleError);
         el.removeEventListener('volumechange', handleVolumeChange);
+        el.removeEventListener('canplay', handleCanPlay);
+        el.removeEventListener('loadeddata', handleCanPlay);
         try { el.pause(); } catch (e) {}
         el.remove();
       }
