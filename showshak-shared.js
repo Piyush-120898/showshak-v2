@@ -3231,7 +3231,7 @@ function _ssvBuildList(clicked, list) {
 
     /* Right action rail */
     .ssv-rail {
-      position: absolute; right: 12px; bottom: 96px; z-index: 30;
+      position: absolute; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 30;
       display: flex; flex-direction: column; align-items: center; gap: 18px;
     }
     .ssv-act {
@@ -3267,7 +3267,7 @@ function _ssvBuildList(clicked, list) {
 
     /* Bottom content */
     .ssv-bottom {
-      position: absolute; left: 14px; right: 72px; bottom: 84px; z-index: 20;
+      position: absolute; left: 14px; right: 72px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 20;
     }
     .ssv-creator-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
     .ssv-avatar {
@@ -3294,7 +3294,7 @@ function _ssvBuildList(clicked, list) {
 
     /* Watch It button */
     .ssv-watch {
-      position: absolute; left: 14px; right: 72px; bottom: 16px; z-index: 30;
+      position: absolute; left: 14px; right: 72px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30;
       display: flex; align-items: center; justify-content: center;
       height: 52px; border-radius: 16px;
       font-family: var(--font-body); color: #fff; border: none; cursor: pointer;
