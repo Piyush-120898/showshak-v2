@@ -602,6 +602,29 @@ html, body { overflow: hidden; }
   @keyframes spPop{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
   @keyframes spSlide{0%{transform:translateX(-120%)}100%{transform:translateX(330%)}}
 </style>
+
+<!-- ════════════════════════════════════════════
+     FEED SKELETON — shown only on a COLD open (no cached feed) so the screen
+     is never an empty dark void while the first DB query runs. mountInline()
+     replaces #feed's innerHTML, so the skeleton is swapped out automatically
+     the moment real clips (or the mock fallback) are ready.
+════════════════════════════════════════════ -->
+<style>
+  .feed-skeleton{position:absolute;inset:0;background:#0B0B0F;overflow:hidden;}
+  .feed-skeleton .fsk-shimmer{position:absolute;inset:0;
+    background:linear-gradient(100deg,#101017 28%,#1C1C26 50%,#101017 72%);
+    background-size:200% 100%;animation:fskSweep 1.25s ease-in-out infinite;}
+  @keyframes fskSweep{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .feed-skeleton .fsk-bottom{position:absolute;left:18px;right:78px;
+    bottom:calc(var(--mobile-nav-h, 64px) + 70px);display:flex;flex-direction:column;gap:11px;}
+  .feed-skeleton .fsk-line{height:13px;border-radius:7px;background:rgba(255,255,255,.07);}
+  .feed-skeleton .fsk-line.creator{width:42%;height:18px;margin-bottom:4px;}
+  .feed-skeleton .fsk-line.cap1{width:88%;}
+  .feed-skeleton .fsk-line.cap2{width:58%;}
+  .feed-skeleton .fsk-rail{position:absolute;right:14px;
+    bottom:calc(var(--mobile-nav-h, 64px) + 92px);display:flex;flex-direction:column;gap:22px;align-items:center;}
+  .feed-skeleton .fsk-dot{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.07);}
+</style>
 <div id="ss-splash">
   <div class="sp-in">
     <div class="sp-logo"><img src="icon.svg" alt="ShowShak"></div>
@@ -718,7 +741,7 @@ html, body { overflow: hidden; }
      SHARED JS
 ════════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
+<script async src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
 <script src="showshak-supabase.js"></script>
 <script src="data/showshak-data.js"></script>
 <script src="showshak-shared.js"></script>
@@ -753,13 +776,42 @@ async function loadRealClips() {
 // Open path is stale-while-revalidate for a seamless, Instagram/TikTok-grade
 // open: render the per-user cached first window INSTANTLY (poster-first), then
 // revalidate against the DB once and only re-mount if it actually changed.
+
+/* Paint a single full-screen shimmer placeholder into #feed. Used ONLY on a
+   cold open (no cached feed) so the user sees a "clip is loading" frame instead
+   of an empty dark screen while the first DB query runs. */
+function renderFeedSkeleton(feedEl) {
+  if (!feedEl) return;
+  feedEl.innerHTML =
+    '<div class="feed-skeleton">' +
+      '<div class="fsk-shimmer"></div>' +
+      '<div class="fsk-bottom">' +
+        '<div class="fsk-line creator"></div>' +
+        '<div class="fsk-line cap1"></div>' +
+        '<div class="fsk-line cap2"></div>' +
+      '</div>' +
+      '<div class="fsk-rail">' +
+        '<div class="fsk-dot"></div><div class="fsk-dot"></div><div class="fsk-dot"></div>' +
+      '</div>' +
+    '</div>';
+}
+
 (async function initFeed() {
   const feedEl = document.getElementById('feed');
   let mountedFromCache = false;
   const cache = (typeof ssReadFeedCache === 'function') ? ssReadFeedCache() : null;
+  const haveCache = !!(cache && cache.clips && cache.clips.length);
+
+  // Cold open (no cached feed): paint the skeleton immediately so the feed is
+  // never an empty void during the first fetch. Lift the splash so the skeleton
+  // (real progress) is what shows. mountInline() replaces it once clips load.
+  if (!haveCache) {
+    renderFeedSkeleton(feedEl);
+    if (window.__ssHideSplash) window.__ssHideSplash();
+  }
 
   // 1) Instant shell from the per-user cache (no spinner, posters show at once).
-  if (cache && cache.clips && cache.clips.length) {
+  if (haveCache) {
     SHOWS = cache.clips;
     // First-clip priority (clip-player Phase 4, Req 7.1-7.3): kick off the very
     // first clip's manifest + poster fetch BEFORE we mount, so landing playback

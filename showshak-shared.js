@@ -5836,6 +5836,7 @@ function VideoSurface(clip, opts) {
       // (autoplay-safe); post-unlock it follows the persisted Mute_Preference.
       muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
       el.muted = muted;
+      try { if (muted) el.setAttribute('muted', ''); else el.removeAttribute('muted'); } catch (e) {}
       // Poster from the Mux image CDN when present, else paint the clip's
       // gradient as the loading background so the frame is never blank (Req 7).
       if (clip.poster) el.setAttribute('poster', clip.poster);
@@ -5863,12 +5864,21 @@ function VideoSurface(clip, opts) {
       if (!el) return Promise.resolve();
       // autoplay backstops the case where the source isn't ready yet: the player
       // resumes the moment it can, even if this immediate play() doesn't stick.
-      try { el.autoplay = true; } catch (e) {}
-      return el.play() || Promise.resolve();
+      // The `autoplay` ATTRIBUTE (not just the property) survives a custom-element
+      // upgrade, so when mux-player loads ASYNC and upgrades this element, it
+      // auto-plays — covering the window before the element is even defined.
+      try { el.autoplay = true; el.setAttribute('autoplay', ''); } catch (e) {}
+      // Guard the pre-upgrade window: el.play is undefined until <mux-player>
+      // is defined. Don't throw — the canplay/loadeddata listeners + autoplay
+      // start playback the moment it upgrades and the source is ready.
+      try {
+        if (typeof el.play !== 'function') return Promise.resolve();
+        return el.play() || Promise.resolve();
+      } catch (e) { return Promise.resolve(); }
     },
     pause: function () {
       wantPlay = false;
-      if (el) { try { el.autoplay = false; el.pause(); } catch (e) {} }
+      if (el) { try { el.autoplay = false; el.removeAttribute('autoplay'); if (typeof el.pause === 'function') el.pause(); } catch (e) {} }
     },
     // Eagerly buffer this (not-yet-active) clip so the NEXT clip is ready to
     // play instantly when the viewer scrolls to it (smooth viewing). Safe to
@@ -5881,7 +5891,13 @@ function VideoSurface(clip, opts) {
     setMaxResolution: function (res) {
       if (el && res) { try { el.setAttribute('max-resolution', String(res)); } catch (e) {} }
     },
-    setMuted: function (m) { muted = !!m; if (el) el.muted = muted; },
+    setMuted: function (m) {
+      muted = !!m;
+      // Set BOTH the property (live) and the `muted` attribute (survives a
+      // custom-element upgrade) so an async-loaded <mux-player> comes up with
+      // the right sound state instead of defaulting to unmuted/blocked.
+      if (el) { try { el.muted = muted; if (muted) el.setAttribute('muted', ''); else el.removeAttribute('muted'); } catch (e) {} }
+    },
     isMuted: function () { return el ? !!el.muted : muted; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
@@ -5922,6 +5938,7 @@ function VideoSurface(clip, opts) {
       // why it only showed there. Pre-unlock this resolves to muted (autoplay).
       muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
       el.muted = muted;                          // preserve unlocked/muted state (Req 2.5)
+      try { if (muted) el.setAttribute('muted', ''); else el.removeAttribute('muted'); } catch (e) {}
       return el;
     },
     destroy: function () {
