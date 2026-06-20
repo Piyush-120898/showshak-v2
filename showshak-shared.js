@@ -82,7 +82,8 @@ function ssPageFadeIn() {
   document.body.style.transition = 'none';
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      document.body.style.transition = 'opacity 0.55s ease';
+      // Quick reveal (was 0.55s — long enough to feel like a slow load).
+      document.body.style.transition = 'opacity 0.22s ease';
       document.body.style.opacity = '1';
     });
   });
@@ -489,9 +490,12 @@ function ssShareStack(stack) {
    SMOOTH PAGE NAVIGATION
 ════════════════════════════════════════════════ */
 function ssNavigate(url) {
-  document.body.style.transition = 'opacity 0.22s ease';
+  document.body.style.transition = 'opacity 0.1s ease';
   document.body.style.opacity = '0';
-  setTimeout(() => { window.location.href = url; }, 230);
+  // Navigate almost immediately — the old 230ms hold was pure dead time before
+  // the load even began. A short fade just acknowledges the tap; the SW serves
+  // the next page's HTML from cache so it paints fast.
+  setTimeout(() => { window.location.href = url; }, 90);
 }
 
 document.addEventListener('click', function(e) {
