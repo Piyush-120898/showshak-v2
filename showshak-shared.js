@@ -4150,6 +4150,39 @@ function ssWriteFeedCache(clips) {
   } catch (e) { /* best-effort cache */ }
 }
 
+/* ── Generic per-page, per-user clip cache ───────────────────────────────
+   The same cache-then-revalidate shell the feed uses, generalized for the
+   other clip-backed pages (Discover / Profile / Watchlist). Each page paints
+   its LAST real content INSTANTLY from this cache, then revalidates against
+   the DB and only re-renders if the list actually changed (ssFeedListChanged).
+   Stores already-PAGE-SHAPED clip arrays, keyed by page name + user (falls
+   back to the synchronously-persisted last user id so it hits on a cold load
+   before the async session resolves). Best-effort; storage failures are fine. */
+var SS_PAGE_CACHE_MAX = 60;                       // bigger than the feed window (grids show more)
+function _ssPageCacheKey(name) {
+  var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+  var id = (me && me.id) || _ssReadLastUid() || 'guest';
+  return 'ss_page_' + name + '_v' + SS_FEED_CACHE_VERSION + '_' + id;
+}
+function ssReadPageCache(name) {
+  try {
+    var raw = window.localStorage.getItem(_ssPageCacheKey(name));
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || obj.v !== SS_FEED_CACHE_VERSION || !Array.isArray(obj.clips) || !obj.clips.length) return null;
+    if (SS_FEED_CACHE_TTL_MS && (Date.now() - (obj.ts || 0)) > SS_FEED_CACHE_TTL_MS) return null;
+    return obj.clips;
+  } catch (e) { return null; }
+}
+function ssWritePageCache(name, clips) {
+  try {
+    if (!Array.isArray(clips) || !clips.length) return;
+    window.localStorage.setItem(_ssPageCacheKey(name), JSON.stringify({
+      v: SS_FEED_CACHE_VERSION, ts: Date.now(), clips: clips.slice(0, SS_PAGE_CACHE_MAX),
+    }));
+  } catch (e) { /* best-effort cache */ }
+}
+
 /* True if the fresh first window differs (by id/order) from what we rendered,
    so we ONLY re-mount when something actually changed — a correct cache never
    causes a flash or interrupts the playing clip. */

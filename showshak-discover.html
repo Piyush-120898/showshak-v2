@@ -1010,7 +1010,24 @@ input.addEventListener('blur', () => {
 input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e); input.blur(); } });
 
 // INIT
-(async function(){ const _real = await discoverLoadRealClips(); if (_real) CURATORS = rebuildCuratorsFromClips(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); })();
+(async function(){
+  function _discBuildAll(){ buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
+  // 1) Instant shell — paint last session's real clips from cache (or the mock
+  //    defaults) right away so the grids are never empty during the DB fetch.
+  const _cached = (typeof ssReadPageCache === 'function') ? ssReadPageCache('discover') : null;
+  if (_cached && _cached.length) { CLIPS = _cached; CURATORS = rebuildCuratorsFromClips(); }
+  _discBuildAll();
+  // 2) Revalidate against the DB; cache + re-render only if the list changed.
+  const _prev = CLIPS;
+  const _real = await discoverLoadRealClips();
+  if (_real) {
+    if (typeof ssWritePageCache === 'function') ssWritePageCache('discover', CLIPS);
+    if (typeof ssFeedListChanged !== 'function' || ssFeedListChanged(_prev, CLIPS)) {
+      CURATORS = rebuildCuratorsFromClips();
+      _discBuildAll();
+    }
+  }
+})();
 function _discover_old_init(){
 buildMoods();
 buildFeatured();
