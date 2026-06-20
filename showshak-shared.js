@@ -5850,6 +5850,13 @@ function VideoSurface(clip, opts) {
       // center play/pause button that otherwise flashes before autoplay starts
       // (UX fix: clips just play; the pause indicator shows only on a tap).
       try { el.style.setProperty('--controls', 'none'); } catch (e) {}
+      // Fill the frame edge-to-edge (cover), matching the poster's background-
+      // size:cover, so the clip runs full-bleed under the floating controls
+      // instead of letterboxing into a black band (mux-player defaults to
+      // 'contain'). `--media-object-fit` is mux-player's documented CSS var;
+      // objectFit on the host is a harmless fallback.
+      try { el.style.setProperty('--media-object-fit', 'cover'); } catch (e) {}
+      try { el.style.objectFit = 'cover'; } catch (e) {}
       el.addEventListener('timeupdate', handleTimeupdate);
       el.addEventListener('ended', handleEnded);
       el.addEventListener('error', handleError);
