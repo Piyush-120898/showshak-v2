@@ -1276,10 +1276,13 @@ function upToggleTitle(id) {
 async function upPickTmdb(tmdbId, mediaType) {
   const me = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
   if (!me) { ssToast('Sign in to add a title'); return; }
+  // Pass the candidate's name/year we already have so the server can link
+  // instantly without a TMDB round-trip (providers cache in the background).
+  const c = titlesSearchResults.find(x => String(x.tmdb_id) === String(tmdbId)) || {};
   ssToast('Linking…');
   try {
     const { data, error } = await window.ssDB.functions.invoke('tmdb-providers', {
-      body: { mode: 'link', tmdbId: tmdbId, mediaType: mediaType },
+      body: { mode: 'link', tmdbId: tmdbId, mediaType: mediaType, name: c.name || null, year: c.year || null },
     });
     if (error || !data || !data.ok || !data.title) { ssToast('Couldn’t link that title — try again'); return; }
     const t = data.title;
@@ -2415,12 +2418,32 @@ if (_ssEditId) {
   showStep(1);
 }
 
-// Title search wiring (debounced query against the real `titles` table)
+// Title search wiring (TMDB-backed, debounced — see searchTitles)
 const showInput = document.getElementById('up-show-input');
 const showBar = document.getElementById('up-show-search-bar');
 showInput.addEventListener('input', e => scheduleTitlesSearch(e.target.value));
 showInput.addEventListener('focus', () => showBar.classList.add('focused'));
 showInput.addEventListener('blur',  () => showBar.classList.remove('focused'));
+
+// Pre-warm the ~25 MB trim engine on page load for CURATORS only, so there's no
+// "preparing editor" wait when they add a clip. Gated to signed-in curators (the
+// only people who post) so guests/normal users never download it. The session
+// resolves async, so retry briefly until the user is known. Non-curators still
+// get the existing warm-on-clip-add fallback.
+(function upPrewarmTrimForCurators() {
+  let tries = 0;
+  (function attempt() {
+    tries++;
+    const me = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+    if (me && window.ssDB) {
+      window.ssDB.from('users').select('role').eq('id', me.id).single()
+        .then(({ data }) => { if (data && data.role === 'curator' && typeof ssWarmFfmpeg === 'function') ssWarmFfmpeg(); })
+        .catch(() => {});
+      return;
+    }
+    if (tries < 12) setTimeout(attempt, 600);   // wait for the async session read
+  })();
+})();
 
 // Pitch wiring
 const pitchTa = document.getElementById('up-pitch');

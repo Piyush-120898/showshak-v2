@@ -272,12 +272,14 @@ async function cacheKnownTitle(
   if (error) throw new Error("cache update failed: " + error.message);
 }
 
-// Upsert a title for a chosen TMDB id (dedup by tmdb_id), cache its providers +
-// genres for THAT exact id, and return the stored row. Called when a curator
-// PICKS a TMDB result → the clip links to the returned title id.
+// Upsert a title for a chosen TMDB id (dedup by tmdb_id) and return its row
+// IMMEDIATELY — provider/genre caching runs in the BACKGROUND so the curator's
+// pick feels instant. The row carries the tmdb_id, so even if the curator
+// publishes before caching finishes, the scheduled batch completes it. Uses the
+// candidate name/year the browser already has → no TMDB call on the hot path.
 async function linkByTmdbId(
   db: any, apiKey: string, tmdbId: number, mediaType: string,
-  catalogByName: Record<string, any>, genreMapByType: any,
+  name: string | null, year: number | null,
 ) {
   const existing = await db.from("titles")
     .select("id, name, year, tmdb_id, providers, meta").eq("tmdb_id", tmdbId).is("deleted_at", null).limit(1);
@@ -285,18 +287,28 @@ async function linkByTmdbId(
   if (existing.data && existing.data.length) {
     row = existing.data[0];
   } else {
-    const detail = await fetchTitleDetail(apiKey, mediaType, tmdbId);
-    const name = detail.title || detail.name || detail.original_title || detail.original_name || "Untitled";
-    const year = parseInt(String(detail.release_date || detail.first_air_date || "").slice(0, 4), 10) || null;
+    let n = (name || "").trim();
+    let y = year || null;
+    if (!n) {  // candidate name missing (shouldn't happen) → one detail fetch
+      const detail = await fetchTitleDetail(apiKey, mediaType, tmdbId);
+      n = detail.title || detail.name || detail.original_title || detail.original_name || "Untitled";
+      y = parseInt(String(detail.release_date || detail.first_air_date || "").slice(0, 4), 10) || null;
+    }
     const ins = await db.from("titles").insert({
-      name, year, tmdb_id: tmdbId, meta: { media_type: mediaType, source: "tmdb" },
+      name: n, year: y, tmdb_id: tmdbId, meta: { media_type: mediaType, source: "tmdb" },
     }).select("id, name, year, tmdb_id, meta").single();
     if (ins.error) throw new Error("insert title failed: " + ins.error.message);
     row = ins.data;
   }
-  await cacheKnownTitle(db, apiKey, row.id, tmdbId, mediaType, row.meta, catalogByName, genreMapByType);
-  const re = await db.from("titles").select("id, name, year, tmdb_id, providers, meta").eq("id", row.id).single();
-  return re.data || row;
+  // Background: load catalog + genre maps and cache providers for this exact id.
+  const bg = (async () => {
+    const catalogByName = await loadCatalog(db);
+    const genreMapByType = await loadGenreMaps(apiKey);
+    await cacheKnownTitle(db, apiKey, row.id, tmdbId, mediaType, row.meta, catalogByName, genreMapByType);
+  })().catch((e: any) => console.error("link bg-cache failed:", e && e.message));
+  const ER = (globalThis as any).EdgeRuntime;
+  if (ER && typeof ER.waitUntil === "function") ER.waitUntil(bg);
+  return row;
 }
 
 // Create a MANUAL title (not on TMDB) with the curator-declared platform(s), so
@@ -370,6 +382,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: true, mode, results });
     }
 
+    // LINK — curator picked a TMDB result. Returns the title id INSTANTLY;
+    // providers are cached in the background (see linkByTmdbId).
+    if (mode === "link") {
+      if (!body.tmdbId || !body.mediaType) return json({ error: "bad_request", detail: "tmdbId + mediaType required" }, 400);
+      const title = await linkByTmdbId(
+        db, TMDB_API_KEY, Number(body.tmdbId), String(body.mediaType),
+        body.name || null, body.year ? Number(body.year) : null,
+      );
+      return json({ ok: true, mode, title });
+    }
+
     const catalogByName = await loadCatalog(db);
 
     // MANUAL — curator-declared title + platform(s); no TMDB call.
@@ -382,13 +405,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const genreMapByType = await loadGenreMaps(TMDB_API_KEY);
-
-    // LINK — curator picked a TMDB result → ensure title + providers, return it.
-    if (mode === "link") {
-      if (!body.tmdbId || !body.mediaType) return json({ error: "bad_request", detail: "tmdbId + mediaType required" }, 400);
-      const title = await linkByTmdbId(db, TMDB_API_KEY, Number(body.tmdbId), String(body.mediaType), catalogByName, genreMapByType);
-      return json({ ok: true, mode, title });
-    }
 
     // BATCH / SINGLE — the ingest loop (schedule + admin + single-title refresh).
     let titles: any[] = [];

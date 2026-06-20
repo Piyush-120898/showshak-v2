@@ -295,15 +295,46 @@ function ssCloseSheet() {
   document.getElementById('watch-sheet-overlay')?.classList.remove('open');
 }
 
+/* Best-effort "open the platform" URL for a title. TMDB does NOT provide true
+   per-title app deep links (only a JustWatch aggregator page), so we open the
+   platform's SEARCH for the title: on mobile an https link opens the platform's
+   APP via universal links when installed, otherwise its website. Unknown
+   platforms fall back to a Google "watch on" search (always resolves). */
+function ssPlatformWatchUrl(platform, titleName) {
+  var q = encodeURIComponent(String(titleName || '').trim());
+  var key = String(platform || '').toLowerCase().trim();
+  var map = {
+    'netflix':             'https://www.netflix.com/search?q=' + q,
+    'prime video':         'https://www.primevideo.com/search?phrase=' + q,
+    'amazon prime video':  'https://www.primevideo.com/search?phrase=' + q,
+    'disney+':             'https://www.hotstar.com/in/search?q=' + q,
+    'jiohotstar':          'https://www.hotstar.com/in/search?q=' + q,
+    'hotstar':             'https://www.hotstar.com/in/search?q=' + q,
+    'jiocinema':           'https://www.jiocinema.com/search/' + q,
+    'apple tv+':           'https://tv.apple.com/search?term=' + q,
+    'sonyliv':             'https://www.sonyliv.com/search?searchTerm=' + q,
+    'hbo max':             'https://play.max.com/search?q=' + q,
+    'max':                 'https://play.max.com/search?q=' + q,
+    'zee5':                'https://www.zee5.com/search?q=' + q,
+    'hulu':                'https://www.hulu.com/search?q=' + q
+  };
+  return map[key] || ('https://www.google.com/search?q=' + encodeURIComponent((titleName || '') + ' watch on ' + (platform || '')));
+}
+
 function ssHandleWatchNow(platform, showTitle) {
-  // Record the Watch It tap fire-and-forget BEFORE/independent of the toast +
-  // close, so it never blocks the navigation (Req 2.1, 2.2). The wrapper skips
-  // mock/demo clips and de-dup isn't applied (every tap counts). We pass only
-  // the fields cheaply in scope (content_id + resolved region); ssBuildWatchEvent
-  // omits absent title_id/platform_id (Req 2.2).
+  // Record the Watch It tap fire-and-forget BEFORE/independent of opening, so it
+  // never blocks navigation (Req 2.1, 2.2). Mock/demo clips are skipped by the
+  // recorder; every real tap counts.
   ssRecordWatch(_ssSheetShow && _ssSheetShow.id, { region: _ssSheetRegion, platform_id: undefined, title_id: undefined });
+  var url = ssPlatformWatchUrl(platform, showTitle);
   ssCloseSheet();
-  setTimeout(() => ssToast(`▶ Opening ${showTitle} on ${platform}`), 200);
+  // Open the platform in a new context (keeps ShowShak open). On mobile this
+  // hands off to the platform's app via universal links if installed, else the
+  // website. Falls back to a same-tab navigation if the popup is blocked.
+  var opened = null;
+  try { opened = window.open(url, '_blank', 'noopener'); } catch (e) { opened = null; }
+  if (!opened) { try { window.location.href = url; } catch (e2) {} }
+  setTimeout(function () { ssToast('▶ Opening ' + platform); }, 150);
 }
 
 function openSheet(idx)       { if (typeof SHOWS !== 'undefined') ssOpenSheet(SHOWS[idx]); }
@@ -5832,7 +5863,7 @@ function VideoSurface(clip, opts) {
       if (loopClip) { el.loop = true; el.setAttribute('loop', ''); }
       // Seed sound from the SESSION preference (not this surface's local state):
       // a freshly-mounted clip must honor the user's one-time mute/unmute choice
-      // so it carries across every clip. Pre-unlock this resolves to muted
+      //the so it carries across every clip. Pre-unlock this resolves to muted
       // (autoplay-safe); post-unlock it follows the persisted Mute_Preference.
       muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
       el.muted = muted;
