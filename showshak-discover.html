@@ -750,10 +750,51 @@ function togglePlatform(i, el, plat) {
     activePlatform = i;
     document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
-    const filtered = CLIPS.filter(c => c.platLabel === plat.name);
-    if (filtered.length) showResultsView(filtered, plat.name);
-    else ssToast(`${plat.name} clips coming soon`);
+    // Match a clip's REAL availability, not just an exact platLabel string. A
+    // clip can be on a platform via: its assigned platform (platLabel /
+    // curatorPlat) OR its linked title's TMDB providers (multi-platform). Empty
+    // result → showResultsView renders the honest "no clips yet" state (instead
+    // of the old toast that left the static showcase row looking unfiltered).
+    const filtered = CLIPS.filter(c => _discMatchesPlatform(c, plat.name));
+    showResultsView(filtered, plat.name);
   }
+}
+
+/* Platform-name aliases so our chip names match TMDB provider names + common
+   brand variants (TMDB returns e.g. "Amazon Prime Video", "JioHotstar"). */
+function _discPlatformAliases(name) {
+  const n = String(name || '').toLowerCase().trim();
+  const map = {
+    'netflix':     ['netflix'],
+    'prime video': ['prime video', 'amazon prime', 'amazon'],
+    'disney+':     ['disney', 'hotstar'],
+    'jiohotstar':  ['jiohotstar', 'hotstar', 'jio'],
+    'apple tv+':   ['apple tv', 'apple'],
+    'sonyliv':     ['sonyliv', 'sony liv', 'sony'],
+    'hbo max':     ['hbo max', 'hbo', 'max'],
+    'zee5':        ['zee5', 'zee'],
+  };
+  return map[n] || [n];
+}
+/* Flatten every platform signal a clip carries into one lowercased string:
+   its platLabel, the curator's chosen platform, and every provider_name in the
+   (region-keyed) TMDB providers cache. */
+function _discClipPlatformText(clip) {
+  const parts = [];
+  if (clip.platLabel && clip.platLabel.toLowerCase() !== 'streaming') parts.push(clip.platLabel);
+  if (clip.curatorPlat && clip.curatorPlat.name) parts.push(clip.curatorPlat.name);
+  try {
+    JSON.stringify(clip.providers || {}, (k, v) => {
+      if (k === 'provider_name' && typeof v === 'string') parts.push(v);
+      return v;
+    });
+  } catch (e) {}
+  return parts.join(' | ').toLowerCase();
+}
+function _discMatchesPlatform(clip, platName) {
+  const text = _discClipPlatformText(clip);
+  if (!text) return false;
+  return _discPlatformAliases(platName).some(a => text.includes(a));
 }
 
 function buildForYou() {
