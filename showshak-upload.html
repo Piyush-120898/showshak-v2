@@ -1116,8 +1116,10 @@ function upEsc(v) {
 const SS_TITLE_CHECK_SVG = `<svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg>`;
 
 let titlesSearchSeq = 0;       // guards against out-of-order async responses
-let titlesSearchResults = [];  // last query's result rows
-const titlesIndex = {};        // id → title row (results + selected), for toggle lookups
+let titlesSearchResults = [];  // last query's TMDB candidates
+const titlesIndex = {};        // id → title row (selected), for toggle lookups
+let upManual = { open: false };     // manual-entry panel open state
+let upPlatformCatalog = null;       // cached platforms list for manual entry
 
 /* Split a trailing 4-digit year off a query, e.g. "Dune 2021" → {name:'Dune', year:2021}.
    Year is optional; "Dune" → {name:'Dune', year:null}. */
@@ -1140,23 +1142,17 @@ async function searchTitles(q) {
   const seq = ++titlesSearchSeq;
   const query = (q || '').trim();
   if (!query) { titlesSearchResults = []; renderTitlesList(''); return; }
+  // Search the FULL TMDB catalog via the server proxy (the browser can't call
+  // TMDB directly — DNS-blocked in India + the key is server-only). Returns
+  // candidates {tmdb_id, media_type, name, year, poster_path}.
   try {
-    const { data, error } = await window.ssDB
-      .from('titles')
-      .select('id, name, year, poster_url, tmdb_id, meta')
-      .ilike('name', `%${query}%`)
-      .is('deleted_at', null)
-      .order('name')
-      .limit(20);
+    const { data, error } = await window.ssDB.functions.invoke('tmdb-providers', {
+      body: { mode: 'search', query },
+    });
     if (seq !== titlesSearchSeq) return;            // a newer search superseded this one
-    if (error) { ssToast('Couldn’t search titles — try again'); titlesSearchResults = []; }
-    else {
-      titlesSearchResults = data || [];
-      titlesSearchResults.forEach(t => { titlesIndex[t.id] = t; });
-    }
+    titlesSearchResults = (!error && data && data.ok && Array.isArray(data.results)) ? data.results : [];
   } catch (e) {
     if (seq !== titlesSearchSeq) return;
-    ssToast('Couldn’t search titles — try again');
     titlesSearchResults = [];
   }
   renderTitlesList(query);
@@ -1171,33 +1167,75 @@ function renderTitlesList(query) {
   // with the primary (sort_no 0) badged.
   draft.selectedTitles.forEach((t, i) => rows.push(titleRowHtml(t, true, i === 0)));
 
-  // Then search results that aren't already selected.
+  // TMDB candidates not already selected (dedup by tmdb_id).
+  const selTmdb = new Set(draft.selectedTitles.map(s => String(s.tmdb_id)));
   titlesSearchResults
-    .filter(t => !draft.selectedTitles.some(s => s.id === t.id))
-    .forEach(t => rows.push(titleRowHtml(t, false, false)));
+    .filter(c => !selTmdb.has(String(c.tmdb_id)))
+    .forEach(c => rows.push(tmdbCandidateRowHtml(c)));
 
-  // Create-if-missing: offer it whenever there's a query with no exact
-  // (case-insensitive) name match among the results.
-  const hasExact = q && titlesSearchResults.some(t => (t.name || '').trim().toLowerCase() === q.toLowerCase());
-  if (q && !hasExact) {
-    const parsed = upParseTitleQuery(q);
-    const label = parsed.year ? `${parsed.name} (${parsed.year})` : parsed.name;
-    rows.push(`
-      <div class="up-show-row" id="up-create-title-row" onclick="upCreateTitle()">
-        <div class="up-show-poster" style="background:var(--bg3);color:var(--red)">+</div>
-        <div class="up-show-info">
-          <div class="up-show-name">Add “${upEsc(label)}”</div>
-          <div class="up-show-meta">Not in the catalog yet — create it</div>
-        </div>
-        <div class="up-show-check"></div>
-      </div>`);
-  }
+  // Manual fallback — NOT a dead end: the curator gives us the name + where it
+  // streams, so the clip is still platform-filterable even when TMDB has no match.
+  if (q) rows.push(manualRowHtml(q));
+  if (upManual.open) rows.push(manualPanelHtml(q));
 
   if (!rows.length) {
     list.innerHTML = `<div class="up-show-empty">${q ? 'Searching…' : 'Start typing to search titles.'}</div>`;
     return;
   }
   list.innerHTML = rows.join('');
+}
+
+/* A TMDB search result row. Posters are NOT shown (image.tmdb.org is blocked in
+   India) — a letter tile stands in. Clicking links it via the server. */
+function tmdbCandidateRowHtml(c) {
+  const meta = [(c.media_type === 'tv' ? 'TV' : 'Movie'), c.year || ''].filter(Boolean).join(' · ');
+  return `
+    <div class="up-show-row" onclick="upPickTmdb(${Number(c.tmdb_id)}, '${upEsc(c.media_type)}')">
+      <div class="up-show-poster" style="background:var(--bg3)">${upEsc((c.name || '?').charAt(0))}</div>
+      <div class="up-show-info">
+        <div class="up-show-name">${upEsc(c.name)}</div>
+        <div class="up-show-meta">${upEsc(meta) || 'Title'}</div>
+      </div>
+      <div class="up-show-check"></div>
+    </div>`;
+}
+
+function manualRowHtml(q) {
+  const parsed = upParseTitleQuery(q);
+  const label = parsed.year ? `${parsed.name} (${parsed.year})` : parsed.name;
+  return `
+    <div class="up-show-row" id="up-manual-row" onclick="upOpenManual()">
+      <div class="up-show-poster" style="background:var(--bg3);color:var(--red)">+</div>
+      <div class="up-show-info">
+        <div class="up-show-name">Can’t find “${upEsc(label)}”? Add it manually</div>
+        <div class="up-show-meta">Tell us the name + where it streams</div>
+      </div>
+      <div class="up-show-check"></div>
+    </div>`;
+}
+
+function manualPanelHtml(q) {
+  const parsed = upParseTitleQuery(q);
+  const cats = upPlatformCatalog || [];
+  const inputCss = 'width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg2);color:var(--white);font-family:var(--font-body);font-size:14px;margin-bottom:8px;';
+  const chips = cats.length
+    ? cats.map(c => `<span data-pid="${upEsc(c.id)}" data-on="0" onclick="upToggleManualPlat(this)" style="display:inline-block;padding:7px 13px;margin:4px 6px 0 0;border-radius:100px;border:1.5px solid var(--border);background:var(--bg2);color:var(--gray);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">${upEsc(c.name)}</span>`).join('')
+    : '<span style="color:var(--gray2);font-size:13px">Loading platforms…</span>';
+  return `
+    <div id="up-manual-panel" style="padding:14px;margin-top:8px;border:1.5px solid var(--border2);border-radius:14px;background:var(--bg);">
+      <input id="up-manual-name" type="text" placeholder="Show / movie name" value="${upEsc(parsed.name)}" style="${inputCss}">
+      <input id="up-manual-year" type="text" inputmode="numeric" placeholder="Year (optional)" value="${parsed.year || ''}" style="${inputCss}">
+      <div style="font-size:12px;color:var(--gray2);font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin:6px 0;">Where can people watch it?</div>
+      <div style="display:flex;flex-wrap:wrap;">${chips}</div>
+      <button onclick="upSubmitManual()" style="margin-top:12px;width:100%;padding:12px;border-radius:100px;border:none;background:var(--red);color:#fff;font-family:var(--font-body);font-size:15px;font-weight:700;cursor:pointer;">Add title</button>
+    </div>`;
+}
+function upToggleManualPlat(el) {
+  const on = el.getAttribute('data-on') === '1';
+  el.setAttribute('data-on', on ? '0' : '1');
+  el.style.background = on ? 'var(--bg2)' : 'var(--red)';
+  el.style.color = on ? 'var(--gray)' : '#fff';
+  el.style.borderColor = on ? 'var(--border)' : 'var(--red)';
 }
 
 function titleRowHtml(t, selected, isPrimary) {
@@ -1232,46 +1270,71 @@ function upToggleTitle(id) {
   syncFooter();
 }
 
-/* Create-if-missing: call find_or_create_title (0016) for the typed query.
-   Auth-gated — only authenticated curators can create titles (RPC grants
-   EXECUTE to `authenticated`); guests get a toast and no RPC call. */
-async function upCreateTitle() {
-  const raw = document.getElementById('up-show-input').value;
-  const { name, year } = upParseTitleQuery(raw);
-  if (!name) return;
-
+/* Curator picked a TMDB result → the server ensures a titles row exists for it
+   (dedup by tmdb_id) and caches its providers + genres, then we link the
+   returned title id to the clip. Auth-gated (functions.invoke sends the JWT). */
+async function upPickTmdb(tmdbId, mediaType) {
   const me = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
   if (!me) { ssToast('Sign in to add a title'); return; }
-
-  const createRow = document.getElementById('up-create-title-row');
-  if (createRow) createRow.style.pointerEvents = 'none';
-
+  ssToast('Linking…');
   try {
-    const { data: newId, error } = await window.ssDB.rpc('find_or_create_title', { p_name: name, p_year: year });
-    if (error || !newId) { ssToast('Couldn’t add that title — try again'); return; }
-
-    // Fetch the canonical row back (name/year/poster as stored); fall back to a
-    // minimal object if the read is blocked for any reason.
-    let titleObj = { id: newId, name: name, year: year, poster_url: null, tmdb_id: null, meta: { source: 'curator' } };
-    try {
-      const { data: row } = await window.ssDB
-        .from('titles')
-        .select('id, name, year, poster_url, tmdb_id, meta')
-        .eq('id', newId)
-        .single();
-      if (row) titleObj = row;
-    } catch (e) { /* keep the minimal object */ }
-
-    titlesIndex[titleObj.id] = titleObj;
-    if (!draft.selectedTitles.some(t => t.id === titleObj.id)) draft.selectedTitles.push(titleObj);
-    ssToast(`Linked “${titleObj.name}”`);
-    renderTitlesList(raw);
+    const { data, error } = await window.ssDB.functions.invoke('tmdb-providers', {
+      body: { mode: 'link', tmdbId: tmdbId, mediaType: mediaType },
+    });
+    if (error || !data || !data.ok || !data.title) { ssToast('Couldn’t link that title — try again'); return; }
+    const t = data.title;
+    titlesIndex[t.id] = t;
+    if (!draft.selectedTitles.some(s => s.id === t.id)) draft.selectedTitles.push(t);
+    ssToast(`Linked “${t.name}”`);
+    renderTitlesList(document.getElementById('up-show-input').value);
     syncFooter();
   } catch (e) {
-    ssToast('Couldn’t add that title — try again');
-  } finally {
-    const r = document.getElementById('up-create-title-row');
-    if (r) r.style.pointerEvents = '';
+    ssToast('Couldn’t link that title — try again');
+  }
+}
+
+/* Load the platforms catalog once for the manual-entry picker (public read). */
+async function upEnsurePlatformCatalog() {
+  if (upPlatformCatalog) return;
+  try {
+    const { data } = await window.ssDB.from('platforms')
+      .select('id,name,color,abbr').is('deleted_at', null).order('name');
+    upPlatformCatalog = data || [];
+  } catch (e) { upPlatformCatalog = []; }
+}
+async function upOpenManual() {
+  await upEnsurePlatformCatalog();
+  upManual.open = true;
+  renderTitlesList(document.getElementById('up-show-input').value);
+}
+
+/* Manual entry: the show isn't on TMDB, so the curator gives us the name +
+   the platform(s) it streams on. The server creates a title with those
+   platforms baked into providers (IN region), so the clip is STILL
+   platform-filterable. */
+async function upSubmitManual() {
+  const me = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
+  if (!me) { ssToast('Sign in to add a title'); return; }
+  const name = (document.getElementById('up-manual-name')?.value || '').trim();
+  if (!name) { ssToast('Enter the title name'); return; }
+  const year = parseInt(document.getElementById('up-manual-year')?.value, 10) || null;
+  const platformIds = Array.from(document.querySelectorAll('#up-manual-panel [data-on="1"]'))
+    .map(el => el.getAttribute('data-pid')).filter(Boolean);
+  if (!platformIds.length) { ssToast('Pick at least one platform'); return; }
+  try {
+    const { data, error } = await window.ssDB.functions.invoke('tmdb-providers', {
+      body: { mode: 'manual', name: name, year: year, platformIds: platformIds },
+    });
+    if (error || !data || !data.ok || !data.title) { ssToast('Couldn’t add — try again'); return; }
+    const t = data.title;
+    titlesIndex[t.id] = t;
+    if (!draft.selectedTitles.some(s => s.id === t.id)) draft.selectedTitles.push(t);
+    upManual.open = false;
+    ssToast(`Added “${t.name}”`);
+    renderTitlesList(document.getElementById('up-show-input').value);
+    syncFooter();
+  } catch (e) {
+    ssToast('Couldn’t add — try again');
   }
 }
 

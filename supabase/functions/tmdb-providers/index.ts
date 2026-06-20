@@ -229,6 +229,102 @@ async function processTitle(
   return "updated";
 }
 
+// ── Upload-flow helpers (search / link / manual) ─────────────────────────
+
+// Ranked TMDB candidates for the upload search box (no DB writes). Returns a
+// compact list the curator picks from — top matches across movie + tv.
+async function searchCandidates(apiKey: string, query: string, limit = 12) {
+  if (!query) return [];
+  const [movies, tv] = await Promise.all([
+    tmdbSearch(apiKey, "movie", query, null),
+    tmdbSearch(apiKey, "tv", query, null),
+  ]);
+  const all = movies.concat(tv);
+  all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  return all.slice(0, limit).map((c: any) => ({
+    tmdb_id: c.id,
+    media_type: c.media_type,
+    name: candidateName(c),
+    year: candidateYear(c),
+    poster_path: c.poster_path || null,
+  }));
+}
+
+// Cache providers + genres for a title whose EXACT tmdb_id is already known
+// (no re-search — that would risk linking a different show than the curator
+// picked). Writes providers/genres/cached_at onto the given title row.
+async function cacheKnownTitle(
+  db: any, apiKey: string, titleId: string, tmdbId: number, mediaType: string,
+  baseMeta: any, catalogByName: Record<string, any>, genreMapByType: any,
+) {
+  const raw = await fetchWatchProviders(apiKey, mediaType, tmdbId);
+  const providers: Record<string, any[]> = {};
+  for (const region of REGIONS) {
+    const flatrate = (raw.results && raw.results[region] && raw.results[region].flatrate) || [];
+    providers[region] = flatrate.map((p: any) => toCacheEntry(p, catalogByName));
+  }
+  const detail = await fetchTitleDetail(apiKey, mediaType, tmdbId);
+  const genres = genreNamesFromTmdb(detail, mediaType, genreMapByType);
+  const { error } = await db.from("titles").update({
+    tmdb_id: tmdbId, providers, cached_at: new Date().toISOString(),
+    meta: { ...(baseMeta || {}), media_type: mediaType, genres },
+  }).eq("id", titleId);
+  if (error) throw new Error("cache update failed: " + error.message);
+}
+
+// Upsert a title for a chosen TMDB id (dedup by tmdb_id), cache its providers +
+// genres for THAT exact id, and return the stored row. Called when a curator
+// PICKS a TMDB result → the clip links to the returned title id.
+async function linkByTmdbId(
+  db: any, apiKey: string, tmdbId: number, mediaType: string,
+  catalogByName: Record<string, any>, genreMapByType: any,
+) {
+  const existing = await db.from("titles")
+    .select("id, name, year, tmdb_id, providers, meta").eq("tmdb_id", tmdbId).is("deleted_at", null).limit(1);
+  let row: any;
+  if (existing.data && existing.data.length) {
+    row = existing.data[0];
+  } else {
+    const detail = await fetchTitleDetail(apiKey, mediaType, tmdbId);
+    const name = detail.title || detail.name || detail.original_title || detail.original_name || "Untitled";
+    const year = parseInt(String(detail.release_date || detail.first_air_date || "").slice(0, 4), 10) || null;
+    const ins = await db.from("titles").insert({
+      name, year, tmdb_id: tmdbId, meta: { media_type: mediaType, source: "tmdb" },
+    }).select("id, name, year, tmdb_id, meta").single();
+    if (ins.error) throw new Error("insert title failed: " + ins.error.message);
+    row = ins.data;
+  }
+  await cacheKnownTitle(db, apiKey, row.id, tmdbId, mediaType, row.meta, catalogByName, genreMapByType);
+  const re = await db.from("titles").select("id, name, year, tmdb_id, providers, meta").eq("id", row.id).single();
+  return re.data || row;
+}
+
+// Create a MANUAL title (not on TMDB) with the curator-declared platform(s), so
+// it's STILL platform-filterable. providers are built in the SAME shape as the
+// TMDB cache (IN region) from the chosen platforms-catalog rows.
+async function createManualTitle(
+  db: any, name: string, year: number | null, platformIds: string[],
+  catalogByName: Record<string, any>,
+) {
+  const catById: Record<string, any> = {};
+  Object.values(catalogByName).forEach((c: any) => { if (c && c.id != null) catById[String(c.id)] = c; });
+  const entries = (platformIds || []).map((pid) => {
+    const cat = catById[String(pid)];
+    if (!cat) return null;
+    return {
+      provider_name: cat.name, provider_id: null, logo_path: null, type: "flatrate",
+      platform_id: cat.id, catalog_name: cat.name, color: cat.color, abbr: cat.abbr,
+    };
+  }).filter(Boolean);
+  const providers = entries.length ? { IN: entries } : {};
+  const ins = await db.from("titles").insert({
+    name, year, tmdb_id: null, providers, cached_at: new Date().toISOString(),
+    meta: { source: "curator" },
+  }).select("id, name, year, tmdb_id, providers, meta").single();
+  if (ins.error) throw new Error("insert manual title failed: " + ins.error.message);
+  return ins.data;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -244,16 +340,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let body: any = {};
   try { body = await req.json(); } catch (_e) { body = {}; }
-  const mode = body.titleId ? "single" : (body.mode || "batch");
+  const mode = body.mode || (body.titleId ? "single" : "batch");
   const force = body.force === true;
 
   // ── AUTH ──────────────────────────────────────────────────────
+  // batch is admin-only (the shared INGEST_SECRET). The upload-flow modes
+  // (search / link / manual) and single-title ingest also accept a logged-in
+  // curator's Supabase JWT — all bounded, per-title actions.
   const providedSecret = req.headers.get("x-ingest-secret") || body.secret || "";
   const isAdmin = !!(INGEST_SECRET && providedSecret && providedSecret === INGEST_SECRET);
+  const userAllowed = new Set(["single", "search", "link", "manual"]);
   if (!isAdmin) {
-    // Single-title mode also allows a logged-in user (a curator linking a
-    // title). Batch mode is admin-only.
-    if (mode !== "single") return json({ error: "unauthorized" }, 401);
+    if (!userAllowed.has(mode)) return json({ error: "unauthorized" }, 401);
     const authHeader = req.headers.get("Authorization") ?? "";
     const anon = Deno.env.get("SUPABASE_ANON_KEY");
     if (!authHeader || !anon) return json({ error: "unauthorized" }, 401);
@@ -262,14 +360,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!user) return json({ error: "unauthorized" }, 401);
   }
 
-  // Service-role client for the privileged titles UPDATE (bypasses RLS).
+  // Service-role client for privileged titles reads/writes (bypasses RLS).
   const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   try {
+    // SEARCH — pure TMDB proxy, no DB needed.
+    if (mode === "search") {
+      const results = await searchCandidates(TMDB_API_KEY, String(body.query || "").trim());
+      return json({ ok: true, mode, results });
+    }
+
     const catalogByName = await loadCatalog(db);
+
+    // MANUAL — curator-declared title + platform(s); no TMDB call.
+    if (mode === "manual") {
+      const name = String(body.name || "").trim();
+      if (!name) return json({ error: "bad_request", detail: "name required" }, 400);
+      const year = body.year ? (parseInt(String(body.year), 10) || null) : null;
+      const title = await createManualTitle(db, name, year, body.platformIds || [], catalogByName);
+      return json({ ok: true, mode, title });
+    }
+
     const genreMapByType = await loadGenreMaps(TMDB_API_KEY);
 
-    // Select the target titles.
+    // LINK — curator picked a TMDB result → ensure title + providers, return it.
+    if (mode === "link") {
+      if (!body.tmdbId || !body.mediaType) return json({ error: "bad_request", detail: "tmdbId + mediaType required" }, 400);
+      const title = await linkByTmdbId(db, TMDB_API_KEY, Number(body.tmdbId), String(body.mediaType), catalogByName, genreMapByType);
+      return json({ ok: true, mode, title });
+    }
+
+    // BATCH / SINGLE — the ingest loop (schedule + admin + single-title refresh).
     let titles: any[] = [];
     if (mode === "single") {
       const { data, error } = await db.from("titles")
