@@ -4099,7 +4099,27 @@ var SS_START_BW_KBPS      = 700;                   // kbps seed for the first se
 
 function _ssFeedCacheKey() {
   var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
-  return 'ss_feed_cache_v' + SS_FEED_CACHE_VERSION + '_' + ((me && me.id) || 'guest');
+  // The async getSession() may not have resolved yet on a cold page load, so
+  // ssCurrentUser() is null at initFeed() time. Fall back to the SYNCHRONOUSLY
+  // persisted last user id so the key matches what was written last session —
+  // otherwise the key is 'guest', the per-user cache misses, and every return
+  // to the Feed does a cold DB fetch (the "feed takes 4-5s to come back" bug).
+  var id = (me && me.id) || _ssReadLastUid() || 'guest';
+  return 'ss_feed_cache_v' + SS_FEED_CACHE_VERSION + '_' + id;
+}
+
+/* Last signed-in user id, persisted SYNCHRONOUSLY (localStorage) so user-keyed
+   caches resolve to the right key on a cold load, before the async session
+   read resolves. Written on session resolve / auth change; cleared on logout. */
+var SS_LAST_UID_KEY = 'ss_last_uid';
+function _ssReadLastUid() {
+  try { return window.localStorage.getItem(SS_LAST_UID_KEY) || null; } catch (e) { return null; }
+}
+function _ssWriteLastUid(id) {
+  try {
+    if (id) window.localStorage.setItem(SS_LAST_UID_KEY, String(id));
+    else window.localStorage.removeItem(SS_LAST_UID_KEY);
+  } catch (e) { /* best-effort */ }
 }
 
 /* Read the cached first window for THIS user. Returns { clips, ageMs } or null
@@ -4769,6 +4789,7 @@ function _ssvSetupObserver(feed) {
     // Initial read (async) — paints buttons correctly once it resolves.
     window.ssDB.auth.getSession().then(({ data }) => {
       _ssSession = data && data.session ? data.session : null;
+      _ssWriteLastUid(_ssSession && _ssSession.user ? _ssSession.user.id : null);
       if (typeof ssSyncAuthChrome === 'function') ssSyncAuthChrome();
       if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
@@ -4778,6 +4799,7 @@ function _ssvSetupObserver(feed) {
     window.ssDB.auth.onAuthStateChange((_event, session) => {
       const wasLoggedOut = !_ssSession;
       _ssSession = session || null;
+      _ssWriteLastUid(_ssSession && _ssSession.user ? _ssSession.user.id : null);
       // Watch It region + subscription caches must re-resolve after any
       // sign-in / sign-out / token change.
       _ssRegion = null; _ssSubIds = null;
@@ -4860,6 +4882,7 @@ function _ssvSetupObserver(feed) {
           sessionStorage.removeItem('ss_stacks_v1');
           sessionStorage.removeItem('ss_following_v1');
           sessionStorage.removeItem('ss_view_curator_v1');
+          _ssWriteLastUid(null);   // forget the per-user cache key on sign-out
         } catch (e) {}
         if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
         if (typeof ssToast === 'function') ssToast('Signed out');
