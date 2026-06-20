@@ -5770,6 +5770,11 @@ function VideoSurface(clip, opts) {
       // viewer scrolls to another clip. Native loop never fires 'ended', so
       // the error→advance path (handleError) is unaffected.
       if (loopClip) { el.loop = true; el.setAttribute('loop', ''); }
+      // Seed sound from the SESSION preference (not this surface's local state):
+      // a freshly-mounted clip must honor the user's one-time mute/unmute choice
+      // so it carries across every clip. Pre-unlock this resolves to muted
+      // (autoplay-safe); post-unlock it follows the persisted Mute_Preference.
+      muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
       el.muted = muted;
       // Poster from the Mux image CDN when present, else paint the clip's
       // gradient as the loading background so the frame is never blank (Req 7).
@@ -5849,6 +5854,13 @@ function VideoSurface(clip, opts) {
       // Re-seed ABR low for the new clip's fresh hls instance (Phase 4, Req 3.1).
       try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
       el.setAttribute('playback-id', clip.muxPlaybackId);   // new clean hls + Mux Data view
+      // Re-seed sound from the SESSION preference, NOT this recycled element's
+      // stale muted state. A pooled <mux-player> that last showed a muted clip
+      // would otherwise stay muted even after the user chose sound-on — that's
+      // the "re-mute on every clip while scrolling the feed" bug. The feed
+      // recycles surfaces heavily (the fullscreen viewer barely does), which is
+      // why it only showed there. Pre-unlock this resolves to muted (autoplay).
+      muted = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
       el.muted = muted;                          // preserve unlocked/muted state (Req 2.5)
       return el;
     },
