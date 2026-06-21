@@ -3549,14 +3549,28 @@ function _ssvResolveMuted(mode) {
 function _activatePostUnlock(prevSurface, surface) {
   if (prevSurface) { try { prevSurface.pause(); } catch (e) {} }
   if (!surface) return;
-  // Apply the resolved sound state once (idempotent; no mute→unmute dance).
-  try { surface.setMuted(ssResolveSurfaceMuted(true, ssGetMutePref())); } catch (e) {}
+  var wantMuted = ssResolveSurfaceMuted(true, ssGetMutePref());
+  if (wantMuted) {
+    // Muted by preference: set + play, no unmute step.
+    try { surface.setMuted(true); } catch (e) {}
+    var pm = surface.play();
+    Promise.resolve(pm).catch(function () { try { surface.play(); } catch (e) {} });
+    return;
+  }
+  // Sound ON: start MUTED (muted autoplay is ALWAYS allowed), then unmute the
+  // now-playing element. Starting unmuted is rejected by strict autoplay policies
+  // (notably iOS) → the old "set unmuted then play" path fell back to a muted
+  // backstop and the clip stayed silent (the "next clips are muted on scroll"
+  // bug). Unmuting an already-playing element after the session's first
+  // gesture-unlock is permitted, so this carries sound across EVERY clip.
+  try { surface.setMuted(true); } catch (e) {}
   var p = surface.play();
-  Promise.resolve(p).catch(function () {
-    var p2 = surface.play();                 // retry once
-    Promise.resolve(p2).catch(function () {
-      try { surface.setMuted(true); surface.play(); } catch (e) {}  // keep video moving, muted
-    });
+  Promise.resolve(p).then(function () {
+    try { surface.setMuted(false); } catch (e) {}
+  }).catch(function () {
+    var p2 = surface.play();                       // retry (still muted)
+    Promise.resolve(p2).then(function () { try { surface.setMuted(false); } catch (e) {} })
+      .catch(function () { try { surface.setMuted(true); surface.play(); } catch (e) {} });
   });
 }
 
@@ -6402,6 +6416,20 @@ function VideoSurface(clip, opts) {
       if (p && p.catch) p.catch(function () {
         try { el.muted = true; muted = true; el.play(); } catch (e) {}  // muted backstop
       });
+    }
+    // Re-assert the session sound preference once the source is ready. A cold or
+    // late-loading active clip may have started under the muted backstop above;
+    // unmuting a now-ready, already-playing element is allowed without a fresh
+    // gesture, so audio reliably engages on scroll instead of staying silent.
+    if (el && wantPlay) {
+      try {
+        var want = ssResolveSurfaceMuted(_ssAudioUnlocked, ssGetMutePref());
+        if (!!el.muted !== want) {
+          el.muted = want; muted = want;
+          if (want) el.setAttribute('muted', ''); else el.removeAttribute('muted');
+          onMute.forEach(function (cb) { cb(muted); });
+        }
+      } catch (e) {}
     }
   }
 
