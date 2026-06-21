@@ -779,8 +779,6 @@ html, body { overflow: hidden; }
           <h1 class="id-name" id="id-name"></h1>
           <div class="id-sub">
             <span class="id-handle" id="id-handle"></span>
-            <span class="id-dot"></span>
-            <span class="id-since">Curating since 2023</span>
           </div>
         </div>
       </div>
@@ -801,7 +799,7 @@ html, body { overflow: hidden; }
     <div class="creds" id="creds"></div>
 
     <!-- HIGHLIGHTS / COLLECTIONS -->
-    <section class="shelf">
+    <section class="shelf" id="shelf-section">
       <div class="shelf-head">
         <div class="shelf-title">🔥 <em id="shelf-word">Highlights</em></div>
         <div class="shelf-sub" id="shelf-sub">Curated collections · tap to open, share to send</div>
@@ -1508,6 +1506,7 @@ function publicCollectionCount() {
 }
 function renderShelf() {
   const el = document.getElementById('shelf');
+  const section = document.getElementById('shelf-section');
   const pub = isPublic();
   // Viewing a curator → the REAL public stacks (already public-only).
   // Signed-in own profile → real Stacks; logged-out/public demo → mock.
@@ -1515,12 +1514,20 @@ function renderShelf() {
   const list = pub ? source.filter(c => c.vis === 'public') : source;
 
   if (!list.length) {
-    const msg = pub
-      ? `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No shared stacks yet</div><div class="empty-d">When this curator shares a collection, it shows up here.</div></div>`
-      : `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack and it becomes a shareable collection right here.</div></div>`;
-    el.innerHTML = msg;
+    if (pub) {
+      // PUBLIC view with nothing shared: hide the whole block. An empty "no
+      // shared stacks yet" panel just makes a weak first impression on visitors.
+      if (section) section.style.display = 'none';
+      el.innerHTML = '';
+      return;
+    }
+    // OWNER / own view: KEEP the block + a prompt, so the curator discovers they
+    // can turn their Stacks into shareable collections.
+    if (section) section.style.display = '';
+    el.innerHTML = `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack and it becomes a shareable collection right here.</div></div>`;
     return;
   }
+  if (section) section.style.display = '';   // has items → ensure visible
 
   const cards = list.map(c => {
     const t = c.thumbs && c.thumbs.length ? c.thumbs : DEFAULT_WALL_GRADS;
