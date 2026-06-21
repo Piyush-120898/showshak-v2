@@ -7,7 +7,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0B0F">
 <link rel="apple-touch-icon" href="icon.svg">
-<style>body{opacity:0}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
@@ -29,6 +28,23 @@ html, body { overflow: hidden; }
 /* ════════════════════════════════════════════════
    LAYOUT
 ════════════════════════════════════════════════ */
+/* STATIC SHELL — neutral, title-blind loading chrome painted on the first
+   frame (before any render-blocking script runs). Removed once renderAll()
+   has populated the profile. */
+#ss-shell {
+  position: fixed; inset: 0; left: var(--sidebar-collapsed); z-index: 40;
+  background: var(--bg, #0B0B0F); overflow: hidden; pointer-events: none;
+}
+@media (max-width: 700px) { #ss-shell { left: 0; } }
+#ss-shell .ss-shell-shimmer {
+  position: absolute; left: 0; right: 0; top: 64px; bottom: 64px; margin: 18px 28px;
+  border-radius: 16px;
+  background: linear-gradient(100deg,#101017 28%,#1C1C26 50%,#101017 72%);
+  background-size: 200% 100%; animation: ssShellSweep 1.25s ease-in-out infinite;
+}
+@media (max-width: 700px) { #ss-shell .ss-shell-shimmer { margin: 14px 16px; } }
+@keyframes ssShellSweep { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+
 .layout {
   position: fixed; inset: 0;
   left: var(--sidebar-collapsed);
@@ -751,6 +767,7 @@ html, body { overflow: hidden; }
 <div id="ss-nav"></div>
 
 <!-- MAIN -->
+<div id="ss-shell" aria-hidden="true"><div class="ss-shell-shimmer"></div></div>
 <div class="layout">
   <div class="profile-scroll" id="profile-scroll">
 
@@ -1023,10 +1040,10 @@ html, body { overflow: hidden; }
 
 <!-- MOBILE NAV — provided by shared chrome (#ss-nav) -->
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
-<script src="showshak-supabase.js"></script>
-<script src="showshak-shared.js"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="showshak-shared.js"></script>
 <script>
 /* ── DATA (same as live profile) ── */
 const PROFILE = {
@@ -2658,7 +2675,7 @@ async function hydrateMyClipsFromDB() {
   } catch (e) { /* keep the session-mirror fallback on any failure */ }
 }
 
-(async function boot() {
+async function boot() {
   if (_params.get('curator')) {
     await hydrateCuratorProfile();   // public/by-username path; forces face='public'
   } else {
@@ -2691,6 +2708,8 @@ async function hydrateMyClipsFromDB() {
   }
   renderWall();
   renderAll();
+  // Static shell has served its purpose — the profile is populated; remove it.
+  var _sh = document.getElementById('ss-shell'); if (_sh) _sh.remove();
   // Owner-scoped async calls NEVER run on the curator branch (Req 6.4). They
   // are also gated on isSignedInOwn() (false when ?curator= is present).
   if (!_params.get('curator')) {
@@ -2698,29 +2717,41 @@ async function hydrateMyClipsFromDB() {
     fetchOwnAnalytics();   // async → fills real totals + 7-day trend from the 0019 reader (fail-to-zero)
     hydrateMyClipsFromDB();  // async → replaces the session mirror with real DB clips
   }
-})();
-
-// Keep the Following list + public Follow button live if following changes
-// from anywhere (e.g. a clip viewer opened from this page).
-if (typeof ssOnFollowingChange === 'function') {
-  ssOnFollowingChange(() => {
-    renderFollowing();
-    renderCreds();   // keep the live Following/own counts in sync
-    renderTabs();    // keep the Following tab badge in sync
-    if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
-  });
 }
 
-// Keep Collections (shelf + tab + Stacks count) live when the user saves a
-// clip into a Stack from anywhere — so the profile fills up in real time.
-if (typeof ssOnStacksChange === 'function') {
-  ssOnStacksChange(() => {
-    renderShelf();
-    renderStacks();
-    renderCreds();   // own "Stacks" credential
-    renderTabs();    // Collections tab badge
-  });
+/* ── INIT ──
+   Page-init runs AFTER the deferred shared-JS chain (supabase-js →
+   showshak-supabase.js → showshak-shared.js) has executed. With those scripts
+   deferred, DOMContentLoaded fires only once they have all run, so window.ssDB
+   / ssOnFollowingChange / ssOnStacksChange / the ss* render helpers exist here.
+   The static shell already painted, so this is off the first-paint path. */
+function _profileInit() {
+  boot();
+
+  // Keep the Following list + public Follow button live if following changes
+  // from anywhere (e.g. a clip viewer opened from this page).
+  if (typeof ssOnFollowingChange === 'function') {
+    ssOnFollowingChange(() => {
+      renderFollowing();
+      renderCreds();   // keep the live Following/own counts in sync
+      renderTabs();    // keep the Following tab badge in sync
+      if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
+    });
+  }
+
+  // Keep Collections (shelf + tab + Stacks count) live when the user saves a
+  // clip into a Stack from anywhere — so the profile fills up in real time.
+  if (typeof ssOnStacksChange === 'function') {
+    ssOnStacksChange(() => {
+      renderShelf();
+      renderStacks();
+      renderCreds();   // own "Stacks" credential
+      renderTabs();    // Collections tab badge
+    });
+  }
 }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _profileInit);
+else _profileInit();
 
 // Become-a-curator: live handle validation + focus styling
 (function bcWire() {

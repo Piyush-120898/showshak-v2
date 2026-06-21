@@ -7,7 +7,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0B0F">
 <link rel="apple-touch-icon" href="icon.svg">
-<style>body{opacity:0}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
@@ -17,6 +16,16 @@
 <link rel="stylesheet" href="showshak-components.css">
 <style>
 html, body { overflow: hidden; }
+
+/* STATIC SHELL — neutral, title-blind loading chrome painted on the first
+   frame (before any render-blocking script runs). Lives inside #screens and
+   is replaced when render() rewrites #screens' innerHTML. */
+.ss-shell-fill {
+  min-height: 70vh; margin: 8px 0; border-radius: 16px;
+  background: linear-gradient(100deg,#101017 28%,#1C1C26 50%,#101017 72%);
+  background-size: 200% 100%; animation: ssShellSweep 1.25s ease-in-out infinite;
+}
+@keyframes ssShellSweep { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
 
 .layout {
   position: fixed; inset: 0; left: var(--sidebar-collapsed);
@@ -136,15 +145,15 @@ body.is-creator .creator-only { display: block; }
   </div>
 
   <div class="set-scroll">
-    <div class="wrap" id="screens"></div>
+    <div class="wrap" id="screens"><div class="ss-shell-fill"></div></div>
   </div>
 </div>
 
 <!-- MOBILE NAV — provided by shared chrome (#ss-nav) -->
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="showshak-supabase.js"></script>
-<script src="showshak-shared.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="showshak-shared.js"></script>
 <script>
 /* ════════════════════════════════════════════════
    SETTINGS — single page, drill-in sub-screens.
@@ -650,11 +659,21 @@ window.addEventListener('popstate', () => {
   else { if (typeof ssNavigate==='function') ssNavigate('showshak-profile.html'); else location.href='showshak-profile.html'; }
 });
 
-render();
-hydratePlatforms();
-hydrateRegion();
-hydrateRealRole();
-hydrateHandle();
+/* ── INIT ──
+   Page-init runs AFTER the deferred shared-JS chain (supabase-js →
+   showshak-supabase.js → showshak-shared.js) has executed. With those scripts
+   deferred, DOMContentLoaded fires only once they have all run, so ssCurrentUser
+   / window.ssDB / ssResolveMyRole exist here. The static shell already painted,
+   so this is off the first-paint path. */
+function _setInit() {
+  render();
+  hydratePlatforms();
+  hydrateRegion();
+  hydrateRealRole();
+  hydrateHandle();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _setInit);
+else _setInit();
 
 /* ── Load the user's REAL region (users.region) into the screen ── */
 async function hydrateRegion() {

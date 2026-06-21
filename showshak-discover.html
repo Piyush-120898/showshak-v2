@@ -7,7 +7,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0B0F">
 <link rel="apple-touch-icon" href="icon.svg">
-<style>body{opacity:0}</style>
 
 <!-- Google Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,6 +33,23 @@
    DISCOVER PAGE LAYOUT
 ════════════════════════════════════════════════ */
 html, body { overflow: hidden; }
+
+/* STATIC SHELL — neutral, title-blind loading chrome painted on the first
+   frame (before any render-blocking script runs). Removed by _discBuildAll()
+   once the grids are populated. */
+#ss-shell {
+  position: fixed; inset: 0; left: var(--sidebar-collapsed); z-index: 40;
+  background: var(--bg, #0B0B0F); overflow: hidden; pointer-events: none;
+}
+@media (max-width: 700px) { #ss-shell { left: 0; } }
+#ss-shell .ss-shell-shimmer {
+  position: absolute; left: 0; right: 0; top: 92px; bottom: 84px; margin: 18px 28px;
+  border-radius: 16px;
+  background: linear-gradient(100deg,#101017 28%,#1C1C26 50%,#101017 72%);
+  background-size: 200% 100%; animation: ssShellSweep 1.25s ease-in-out infinite;
+}
+@media (max-width: 700px) { #ss-shell .ss-shell-shimmer { margin: 14px 16px; } }
+@keyframes ssShellSweep { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
 
 .layout {
   position: fixed; inset: 0;
@@ -505,6 +521,9 @@ html, body { overflow: hidden; }
 ════════════════════════════════════════════ -->
 <div id="ss-nav"></div>
 
+<!-- STATIC SHELL — painted on the first frame, removed by _discBuildAll() -->
+<div id="ss-shell" aria-hidden="true"><div class="ss-shell-shimmer"></div></div>
+
 <!-- ════════════════════════════════════════════
      MAIN LAYOUT
 ════════════════════════════════════════════ -->
@@ -576,11 +595,11 @@ html, body { overflow: hidden; }
 <!-- ════════════════════════════════════════════
      SHARED JS
 ════════════════════════════════════════════ -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
-<script src="showshak-supabase.js"></script>
-<script src="data/showshak-data.js"></script>
-<script src="showshak-shared.js"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="data/showshak-data.js"></script>
+<script defer src="showshak-shared.js"></script>
 
 <!-- ════════════════════════════════════════════
      PAGE-SPECIFIC JS — Discover logic only
@@ -588,10 +607,12 @@ html, body { overflow: hidden; }
 <script>
 /* Clip/curator/mood/platform data now comes from the central source
    (data/showshak-data.js). Each call returns the exact shape this page
-   used to declare inline. */
-let CLIPS = SSData.discoverClips();
-const MOODS = SSData.moods;
-const PLATFORMS = SSData.discoverPlatforms();
+   used to declare inline. Assigned inside the deferred init (after the
+   deferred shared-JS chain runs) so this inline page-init never touches
+   SSData before it exists. */
+let CLIPS = [];
+let MOODS = [];
+let PLATFORMS = [];
 async function discoverLoadRealClips(){ var base=(typeof ssLoadClips==="function")?await ssLoadClips(50):[]; if(!base.length)return false; CLIPS=ssClipsForDiscover(base); return true; }
 
 let recentSearches = ['thriller clips','feel good','kdrama'];
@@ -605,7 +626,7 @@ let activeMood = null, activePlatform = null;
    clips load (discoverLoadRealClips), it's REBUILT from the real clip
    authors so actual curators — including the signed-in user — are
    searchable (rebuildCuratorsFromClips). */
-let CURATORS = SSData.discoverCurators();
+let CURATORS = [];
 
 /* Rebuild the curator directory from the real loaded CLIPS. Each real clip's
    `creator.name` is the author's @username (from ssMapContentRowsToClips), so
@@ -1051,8 +1072,13 @@ input.addEventListener('blur', () => {
 input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e); input.blur(); } });
 
 // INIT
-(async function(){
-  function _discBuildAll(){ buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
+async function _discInit(){
+  // Now that the deferred shared-JS chain has run, pull the central data.
+  CLIPS = SSData.discoverClips();
+  MOODS = SSData.moods;
+  PLATFORMS = SSData.discoverPlatforms();
+  CURATORS = SSData.discoverCurators();
+  function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
   // 1) Instant shell — paint last session's real clips from cache (or the mock
   //    defaults) right away so the grids are never empty during the DB fetch.
   const _cached = (typeof ssReadPageCache === 'function') ? ssReadPageCache('discover') : null;
@@ -1068,7 +1094,13 @@ input.addEventListener('keydown', e => { if (e.key === 'Escape') { clearSearch(e
       _discBuildAll();
     }
   }
-})();
+}
+/* Page-init runs AFTER the deferred shared-JS chain executes — with those
+   scripts deferred, DOMContentLoaded fires only once they have all run, so
+   SSData / ssReadPageCache / ssLoadClips / ss* helpers exist here. The static
+   shell already painted, so this is off the first-paint path. */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _discInit);
+else _discInit();
 function _discover_old_init(){
 buildMoods();
 buildFeatured();

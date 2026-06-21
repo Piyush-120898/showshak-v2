@@ -77,28 +77,35 @@ function showToast(msg) { ssToast(msg); }
 /* ════════════════════════════════════════════════
    PAGE FADE-IN
 ════════════════════════════════════════════════ */
-function ssPageFadeIn() {
-  document.body.style.opacity = '0';
+// Single reveal path used by every load event. With the static shell +
+// removed body{opacity:0} (Phase 1), the body already paints visible on the
+// first frame — this is a belt-and-braces reveal that clears any residual
+// hiding transition (e.g. the outgoing-page fade left by ssNavigate) and
+// correctly covers the internal MPA-nav case where the document is a fresh
+// load (pageshow.persisted === false).
+function _ssRevealBody() {
   document.body.style.transition = 'none';
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      // Quick reveal (was 0.55s — long enough to feel like a slow load).
-      document.body.style.transition = 'opacity 0.22s ease';
-      document.body.style.opacity = '1';
-    });
-  });
+  document.body.style.opacity = '1';
 }
 
-document.addEventListener('DOMContentLoaded', ssPageFadeIn);
+// ssPageFadeIn — kept as a thin wrapper so existing callers/exports never
+// break. It NO LONGER re-hides the body (no opacity:0): re-hiding would
+// reintroduce a flash / black-on-internal-nav now that body{opacity:0} is
+// gone. It simply reveals.
+function ssPageFadeIn() {
+  _ssRevealBody();
+}
 
-// bfcache guard: when a page is restored from the back-forward cache
-// (e.g. the user swipes/navigates BACK to it), DOMContentLoaded does NOT
-// fire again — which previously left the body stuck at opacity:0 (black
-// screen). Force it visible on restore.
+document.addEventListener('DOMContentLoaded', (e) => {
+  if (ssShouldRevealBody({ type: 'DOMContentLoaded' })) _ssRevealBody();
+});
+
+// Reveal on EVERY pageshow — both true bfcache restores (e.persisted === true,
+// preserving the original bfcache fix) AND fresh internal MPA navigations
+// (e.persisted === false), gated by the property-tested ssShouldRevealBody.
 window.addEventListener('pageshow', (e) => {
-  if (e.persisted) {
-    document.body.style.transition = 'none';
-    document.body.style.opacity = '1';
+  if (ssShouldRevealBody({ type: 'pageshow', persisted: e.persisted })) {
+    _ssRevealBody();
   }
 });
 
@@ -6877,10 +6884,73 @@ function ssPreloadAction(state) {
   return 'idle';
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   PWA Black Screen Load — Phase 1 pure helpers (no DOM, no network,
+   never throw, Node-testable). They reconcile the three first-frame
+   "stories" into exactly one coherent, non-black layer, and decide when
+   the body must be revealed. Dual-exported (window.* + module.exports)
+   below so the fast-check tests can require them.
+   See .kiro/specs/pwa-black-screen-load (design.md, Phase 1).
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * ssResolveFirstFrame — reconcile the splash / skeleton / shell first-frame
+ * stories into exactly ONE coherent layer, with the body always revealed
+ * (never a held-black document, no double-skeleton). Pure.
+ *
+ *   state = {
+ *     navType:                'cold-launch' | 'internal-nav' | 'bfcache-restore',
+ *     standalone:             boolean,   // installed-app display mode
+ *     splashShownThisSession: boolean,   // splash already shown once this session
+ *     haveFeedCache:          boolean,   // per-user feed cache present
+ *     page:                   'feed'|'discover'|'watchlist'|'profile'|'settings'|'stack'
+ *   }
+ *
+ * Decision rows (in order):
+ *   visibleLayer = 'splash'   iff standalone && !splashShownThisSession && navType==='cold-launch'
+ *   else         = 'skeleton' iff page==='feed' && !haveFeedCache
+ *   else         = 'shell'
+ *   revealBody   = true ALWAYS
+ *
+ * Defensive: missing/loose fields are coerced (booleans via !!, strings via String()).
+ */
+function ssResolveFirstFrame(state) {
+  var s = state || {};
+  var navType    = String(s.navType);
+  var standalone = !!s.standalone;
+  var splashShown = !!s.splashShownThisSession;
+  var haveFeedCache = !!s.haveFeedCache;
+  var page = String(s.page);
+
+  var visibleLayer;
+  if (standalone && !splashShown && navType === 'cold-launch') {
+    visibleLayer = 'splash';
+  } else if (page === 'feed' && !haveFeedCache) {
+    visibleLayer = 'skeleton';
+  } else {
+    visibleLayer = 'shell';
+  }
+
+  return { visibleLayer: visibleLayer, revealBody: true };
+}
+
+/**
+ * ssShouldRevealBody — return true for every real document-load reveal event,
+ * so the body is revealed on internal MPA navigations and not only on persisted
+ * bfcache restores. True for 'DOMContentLoaded' and for 'pageshow' regardless of
+ * evt.persisted (true/false/undefined). Pure.
+ */
+function ssShouldRevealBody(evt) {
+  var type = evt && evt.type;
+  return type === 'DOMContentLoaded' || type === 'pageshow';
+}
+
 /* Expose consistently with the other ss* helpers (window in the browser),
    plus a guarded CommonJS export so the Node property tests can require these
    pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
 if (typeof window !== 'undefined') {
+  window.ssResolveFirstFrame = ssResolveFirstFrame;
+  window.ssShouldRevealBody = ssShouldRevealBody;
   window.ssClipProgress = ssClipProgress;
   window.ssSeekToTime = ssSeekToTime;
   window.ssSetMediaMuted = ssSetMediaMuted;
@@ -6895,6 +6965,9 @@ if (typeof window !== 'undefined') {
   window.ssPreloadAction = ssPreloadAction;
 }
 if (typeof module !== 'undefined' && module.exports) {
+  // PWA Black Screen Load — Phase 1 pure helpers
+  module.exports.ssResolveFirstFrame = ssResolveFirstFrame;
+  module.exports.ssShouldRevealBody = ssShouldRevealBody;
   module.exports.ssClipProgress = ssClipProgress;
   module.exports.ssSeekToTime = ssSeekToTime;
   module.exports.ssSetMediaMuted = ssSetMediaMuted;

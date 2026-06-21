@@ -25,6 +25,16 @@
 <style>
 html, body { overflow: hidden; }
 
+/* STATIC SHELL — neutral, title-blind loading chrome painted on the first
+   frame (before any render-blocking script runs). Lives inside #rec-grid and
+   is replaced when buildRec() rewrites the grid's innerHTML. */
+.ss-shell-card {
+  width: 100%; aspect-ratio: 9/16; border-radius: 13px;
+  background: linear-gradient(100deg,#101017 28%,#1C1C26 50%,#101017 72%);
+  background-size: 200% 100%; animation: ssShellSweep 1.25s ease-in-out infinite;
+}
+@keyframes ssShellSweep { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+
 /* ── Layout shell ── */
 .layout {
   position: fixed; inset: 0;
@@ -707,7 +717,10 @@ html, body { overflow: hidden; }
 
     <!-- RECOMMENDED CLIPS GRID -->
     <div class="rec-section">
-      <div class="rec-grid" id="rec-grid"></div>
+      <div class="rec-grid" id="rec-grid">
+        <div class="ss-shell-card"></div><div class="ss-shell-card"></div><div class="ss-shell-card"></div>
+        <div class="ss-shell-card"></div><div class="ss-shell-card"></div><div class="ss-shell-card"></div>
+      </div>
     </div>
 
   </div>
@@ -780,11 +793,11 @@ html, body { overflow: hidden; }
 </div>
 
 <!-- SHARED JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@mux/mux-player@3"></script>
-<script src="showshak-supabase.js"></script>
-<script src="data/showshak-data.js"></script>
-<script src="showshak-shared.js"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="data/showshak-data.js"></script>
+<script defer src="showshak-shared.js"></script>
 
 <script>
 /* ════════════════════════════════════════════════
@@ -794,8 +807,10 @@ html, body { overflow: hidden; }
 /* Clip data now comes from the central source (data/showshak-data.js).
    SSData.watchlistClips() returns the exact ALL_CLIPS shape (flat
    creator + 3-stop gradient). id values still match Feed/Discover so
-   cross-page save keeps working. */
-const ALL_CLIPS = SSData.watchlistClips();
+   cross-page save keeps working. Assigned inside wlInit() (after the
+   deferred shared-JS chain runs) so this inline page-init never touches
+   SSData before it exists. */
+let ALL_CLIPS = [];
 
 let activeStackId = null;
 
@@ -1253,14 +1268,25 @@ document.addEventListener('visibilitychange', () => {
 /* ════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════ */
-buildRec();
-render();
-ssSyncAllSaveBtns();
+/* Page-init runs AFTER the deferred shared-JS chain (supabase-js →
+   showshak-supabase.js → data/showshak-data.js → showshak-shared.js) has
+   executed. With those scripts deferred, DOMContentLoaded fires only once they
+   have all run, so SSData / ssGetStacks / ssSyncAllSaveBtns / ssOnStacksChange
+   exist here. The static shell already painted, so this is off the first-paint
+   path. */
+function wlInit() {
+  ALL_CLIPS = SSData.watchlistClips();
+  buildRec();
+  render();
+  ssSyncAllSaveBtns();
 
-// Live update: when a stack is created/changed via the shared sheet
-// (e.g. "New Stack" or saving a clip), re-render immediately instead of
-// waiting for a refresh. ssOnStacksChange is provided by showshak-shared.js.
-if (typeof ssOnStacksChange === 'function') ssOnStacksChange(refresh);
+  // Live update: when a stack is created/changed via the shared sheet
+  // (e.g. "New Stack" or saving a clip), re-render immediately instead of
+  // waiting for a refresh. ssOnStacksChange is provided by showshak-shared.js.
+  if (typeof ssOnStacksChange === 'function') ssOnStacksChange(refresh);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wlInit);
+else wlInit();
 
 </script>
 </body>

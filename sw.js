@@ -1,8 +1,10 @@
 /* ShowShak service worker — PWA install + smart caching.
    ─────────────────────────────────────────────────────────────
    Update-safe by design (your push-to-main workflow stays instant):
-     • HTML pages → NETWORK-FIRST (always fresh code online; cached copy is
-       only an offline fallback). So a deploy reaches users immediately.
+     • HTML navigations → STALE-WHILE-REVALIDATE (instant from cache, then
+       refreshed in the background for next load). Network is used on the first/
+       uncached visit and as the offline fallback. (Bump CACHE_VERSION to push a
+       deploy to users right away.)
      • Same-origin static assets (CSS/JS/SVG/manifest) → STALE-WHILE-REVALIDATE
        (instant from cache, refreshed in the background for next load).
      • Mux video/images, Supabase, fonts, CDN libs → NOT intercepted. Video is
@@ -13,7 +15,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v10';
+var CACHE_VERSION = 'v11';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 // Best-effort precache of the app shell (failures are ignored so install never
