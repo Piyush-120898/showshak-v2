@@ -1,0 +1,471 @@
+═══════════════════════════════════════════════════════════════
+  SHOWSHAK — COFOUNDER HANDOFF & CONTINUATION BRIEF
+  Purpose: paste the "KICKOFF PROMPT" (bottom of this file) at the
+  start of a NEW chat so your AI cofounder resumes at full context
+  and full intensity. The middle sections are the knowledge base.
+  Keep this file updated as we progress.
+═══════════════════════════════════════════════════════════════
+
+
+───────────────────────────────────────────────────────────────
+  0. HOW TO USE THIS FILE
+───────────────────────────────────────────────────────────────
+  1. Open a new chat.
+  2. Copy the entire "KICKOFF PROMPT" block at the very bottom.
+  3. Also tell it to read these files in the repo for full context:
+       - overview                (the master project brief)
+       - backend-architecture.md + backend-schema.md (the DB/stack)
+       - points to keep in mind pitch wise.txt (strategy/revenue)
+       - showshak-shared.js      (the heart of the app)
+       - .kiro/specs/  (stack-sharing + stack-folder-view = SHIPPED, for reference;
+         this is where future specs live too)
+       - this file (COFOUNDER-HANDOFF.txt)
+  4. Let it confirm understanding, then continue from "NEXT STEPS".
+
+
+───────────────────────────────────────────────────────────────
+  1. WHAT SHOWSHAK IS (one breath)
+───────────────────────────────────────────────────────────────
+  A cross-platform STREAMING DISCOVERY layer — NOT a streaming
+  service, NOT social media. Curators post short vertical CLIPS
+  recommending a show/movie; users feel something, trust the
+  curator, tap "WATCH IT" → go to the streaming platform.
+
+  Category we own: "Trust-based, creator-curated, action-oriented
+  discovery." = Letterboxd's soul + TikTok's format + an action layer.
+
+  The core loop:
+    Curator posts a clip → user watches & trusts → taps Watch It
+    → lands on Netflix/Prime/etc.
+
+  We are building the WEBSITE first as the reference for the future
+  NATIVE APP (founder knows web, not mobile yet).
+
+
+───────────────────────────────────────────────────────────────
+  2. SACRED PRODUCT PHILOSOPHY (never violate)
+───────────────────────────────────────────────────────────────
+  - CREATOR FIRST, SHOW SECOND. The clip never shows the title
+    upfront — the title is revealed ONLY in the Watch It sheet.
+    (If they've seen it, they skip; trust the curator first.)
+  - FIRE (🔥) = the like. Not a heart. "This is lit."
+  - WATCH IT = the climax. Never "Watch Now". Must feel
+    frictionless and PRIVATE — never make the user feel their
+    Watch It taps are tracked publicly.
+  - HIDE THE SCOREBOARD: public surfaces show ONLY content signals
+    (per-clip fires, now per-clip VIEWS) + creator + followers/clips.
+    NEVER show fires-received total or Watch-It taps publicly —
+    those are the curator's PRIVATE cockpit only, enforced in the DB
+    by Row-Level Security (not just UI).
+  - CURATORS, not influencers. Taste authorities.
+  - NO open hashtags. Structured signals only (show pick + fixed
+    vibe set + caption mining on our side).
+  - Familiar interactions, ShowShak soul — never "just another
+    TikTok/Netflix".
+
+
+───────────────────────────────────────────────────────────────
+  3. TECH STACK (the reality)
+───────────────────────────────────────────────────────────────
+  FRONTEND: pure HTML + CSS + vanilla JS. NO frameworks, NO build
+    step, NO bundler. Runs via Live Server / GitHub Pages.
+    - showshak-shared.js = the spine (the Clip_Engine, all ss* utils,
+      auth/guest gate, surfaces, pooling, save/follow, events).
+    - Pages: index (landing+onboarding), showshak-feed/discover/
+      watchlist/profile/settings/upload.
+    - Pure logic in showshak-shared.js is dual-exported (window.* +
+      module.exports) for Node + fast-check PROPERTY TESTS.
+      Run tests: `node tests/run-all.js`  (29+ files, fast-check).
+
+  BACKEND: Supabase (Postgres + Auth + Storage + Edge Functions,
+    Mumbai region). Migrations live in supabase/migrations/ and are
+    APPLIED MANUALLY by the founder in the Supabase SQL editor.
+    - Mux for video (HLS via <mux-player>, public playback IDs).
+      NOW ON PAY-AS-YOU-GO (upgraded this session) — unlimited
+      storage + $20/mo usage credit.
+    - TMDB for titles + watch-providers. Now fetched SERVER-SIDE by the
+      tmdb-providers Edge Function (search/link/manual/batch) — TMDB is
+      DNS-blocked on Indian ISPs but reachable from Supabase's servers, so the
+      old local data/ingest-tmdb.js VPN run is no longer required. Browser
+      NEVER touches TMDB (it reads cached titles.providers, or proxies search
+      through the function). The TMDB key is a function secret.
+
+  GOLDEN BACKEND RULES:
+    - Counts are DERIVED from event rows; *_count columns are caches.
+    - Media → Mux/Storage; DB stores only IDs/URLs, never bytes.
+    - Privacy enforced by RLS, not UI.
+    - Soft deletes (deleted_at) everywhere; created_at everywhere.
+
+  HOSTING: GitHub Pages (repo: github.com/Piyush-120898/showshak-v2,
+    branch main). Pushing to main auto-rebuilds the live page.
+    NOTE: Pages serves the FRONTEND only. SQL migrations + Edge
+    Function deploys are SEPARATE founder steps in Supabase.
+
+
+───────────────────────────────────────────────────────────────
+  4. WHAT'S ALREADY BUILT (code-complete, verified)
+───────────────────────────────────────────────────────────────
+  Frontend prototype: DONE (all pages).
+  Backend, spec-by-spec (all CODE done; some founder-run ops open):
+    - Auth / guest-first onboarding ✓
+    - curator-upload-v2 ✓ (real publishing pipeline, trim, titles,
+      drafts, edit-after-post, multi-title Watch It)
+    - watch-it-availability ✓ (cache-first, region-aware; TMDB ingest)
+    - mux-video-clips ✓ (Mux pipeline, Edge Functions, preloader)
+    - unified-clip-player ✓ (one Clip_Engine for feed + viewer)
+    - creator-analytics ✓ (real cockpit; RLS-gated; migration 0019)
+    - public-curator-profile ✓ (real curator by username)
+    - curator-role-persistence ✓ (migration 0020 trigger)
+    - clip-player-performance ✓ (Phases 1-5; A-grade player, 6 props green)
+    - PWA layer ✓ (installable manifest+icon, smart SW caching, iOS
+      safe-area, launch splash) — the "later PWA layer" is now started
+    - TMDB server-side ingest ✓ (tmdb-providers edge function: search/
+      link/manual/batch — no local VPN script needed)
+    - Live TMDB title search in upload + instant link + manual-with-platform ✓
+    - Clip + profile share deep-links (title-blind) ✓; Watch It opens platform ✓
+    - Views synced (card == analytics) ✓; migrations 0001–0021 applied ✓
+    - stack-sharing ✓ (Phase 1+2: private/unlisted/public + collaborative; migrations 0022/0023)
+    - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
+    - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
+    - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
+    - SUITE: 45 files green; migrations 0001–0025 (founder applies 0022–0025)
+
+
+───────────────────────────────────────────────────────────────
+  5. SESSION LOG (most recent first; all pushed to main)
+───────────────────────────────────────────────────────────────
+  ── RECENT (stacks + settings + fixes; suite 45 files green) ──
+    • stack-sharing Phase 1+2 (private/unlisted/public + collaborative) —
+      migrations 0022 / 0023; 6 pure rules property-tested.
+    • stack-folder-view — deep-linkable folder route (showshak-stack.html?stack=),
+      title-blind grid, tap→viewer-with-stack-playlist, Share visibility-chooser →
+      native share, Watchlist preview cap 12 + "View All", Feature-in-Highlights;
+      shared ?stack= links now open the FOLDER (feed handler redirects).
+    • Settings overhaul + DB-wiring — removed the per-page "Welcome to ShowShak"
+      toast; Region persists; creator block from real role; working Curator-handle
+      change with live cross-user uniqueness (shared with signup); Payouts =
+      coming-soon; Analytics screen removed; Account = real connected logins, no
+      change-email, working Deactivate + Delete with 30-day retention (0025).
+    • Fixes — views self-collapse so a curator's own re-watches count ONCE
+      everywhere (migration 0024); feed audio now CARRIES the unmute across clips
+      on scroll (iOS-safe muted-first-then-unmute + canplay re-assert).
+
+  ── EARLIER SESSION (TMDB server-side + player/feed polish; was suite 35) ──
+  BIGGEST WIN — TMDB INGEST IS NOW SERVER-SIDE (no more local VPN script):
+    • New Edge Function supabase/functions/tmdb-providers/ runs the link →
+      providers → genres → write pipeline on Supabase's servers (which reach
+      TMDB), so it works hands-off and independent of the frontend host. Modes:
+        - batch  (admin secret) → fill all titles missing providers (scheduled).
+        - single (titleId)      → refresh one title.
+        - search (query)        → proxy TMDB search for the upload box.
+        - link   (tmdbId)       → upsert title + cache providers, returns id
+                                  INSTANTLY (providers cached in the background
+                                  via EdgeRuntime.waitUntil → no 3-4s wait).
+        - manual (name+platformIds) → create a title not on TMDB with the
+                                  curator-declared platform baked into providers.
+    • Auth: batch needs INGEST_SECRET; search/link/manual/single accept a curator
+      JWT. Secrets: TMDB_API_KEY + INGEST_SECRET (SUPABASE_* auto-injected).
+    • Founder DID: set secrets, deployed (--no-verify-jwt), ran batch --force
+      (8 titles cached, 0 failed). ⚠️ MUST REDEPLOY after the search/link/manual
+      additions (see §7). Cron schedule via pg_cron + pg_net (SQL editor).
+
+  UPLOAD — LIVE TMDB TITLE SEARCH (replaces the local-DB title search):
+    • Curators search the FULL TMDB catalog (proxied via the function — browser
+      never touches TMDB). Pick → linked instantly (title + providers stored) →
+      clip is platform-filterable from the start.
+    • Manual fallback is no longer a dead end: "can't find it" → name + the
+      platform(s) it streams on → stored as providers.
+    • Curator trim engine (ffmpeg ~25MB) now PRE-WARMS on upload page load for
+      signed-in curators (role-gated) → no "preparing editor" wait.
+
+  PLAYER / FEED FELT FIXES:
+    • Mute choice now CARRIES across clips (the recycling pool was re-seeding the
+      pooled <mux-player>'s stale muted state; now mount+repoint seed from the
+      SESSION pref via ssResolveSurfaceMuted).
+    • Video object-fit:cover (--media-object-fit) → clips fill full-bleed under
+      the floating controls instead of letterboxing into a black band.
+    • Watch It now OPENS the platform: ssPlatformWatchUrl → per-platform search
+      URL (Netflix/Prime/JioHotstar/etc.) which opens the APP via universal links
+      if installed, else the website. (TMDB gives NO true per-title deep link —
+      only a JustWatch page — so search-URL is the honest best.)
+
+  PERFORMANCE (page/feed open):
+    • Feed-cache key now resolves SYNCHRONOUSLY via a persisted last-user-id
+      (ss_last_uid) — was keying to 'guest' before the async session resolved →
+      cold fetch every return. Now instant from cache.
+    • Cut ~700ms of artificial nav animation (ssNavigate 230→90ms, fade 0.55→0.22s).
+    • mux-player loads ASYNC on Discover/Profile/Watchlist AND feed (the surface
+      is pre-upgrade-safe: play/pause guarded, muted set via attribute) → posters
+      paint instantly, video upgrades in place.
+    • Discover + a generic ssReadPageCache/ssWritePageCache → cache-then-revalidate
+      so grids paint instantly. Feed cold-open SKELETON (shimmer) when no cache.
+
+  VIEWS SYNC (bug fixed): ssLoadMyClips now selects views_count; removed the
+    fabricated fires×11 demo in ssDisplayViews → the card eye count == the owner
+    analytics count (both derive from view_events). Migration 0021 APPLIED.
+
+  SHARES (title-blind, real destinations):
+    • Clip share → deep link showshak-feed.html?clip=<id> (opens THAT clip via
+      ssLoadClipById; feed handles ?clip=); NO show title in the copy.
+    • Profile share → showshak-profile.html?curator=<handle> (real public profile).
+    • Stack/collection share still pending a destination → see the stack-sharing spec.
+
+  PROFILE: removed "Curating since 2023"; the public profile HIDES the Shared
+    Stacks block entirely when the curator has shared nothing (kept, with a prompt,
+    on the owner's own profile).
+
+  DISCOVER: platform chips now filter by a clip's REAL availability (platLabel +
+    curatorPlat + TMDB provider names, with aliases) + an honest empty state.
+
+  iOS PWA: added apple-touch-startup-image PNGs (data/gen-splash-pngs.js generates
+    them) for the launch screen; fixed a standalone bottom-nav black-gap regression
+    (the apple meta tags' black-translucent + 100vh; fixed by 100vh→100% feed
+    heights + opaque black status bar). CACHE_VERSION now v9.
+    ⚠️ The WHITE FLASH on iOS cold launch is STILL NOT fully resolved — deferred
+    by founder. (Startup images present but not reliably honored; revisit later.)
+
+  MIGRATIONS: confirmed ALL applied via an object-existence audit; 0016
+    (find_or_create_title) was missing → founder applied it. Everything 0001–0021 live.
+
+  NEW SPEC (next active build): .kiro/specs/stack-sharing/ (requirements + design +
+    tasks, all validated) — SPEC COMPLETE, NOT yet implemented. See §6.
+
+
+───────────────────────────────────────────────────────────────
+  6. STACKS — SHIPPED (sharing + collaboration + folder view)
+───────────────────────────────────────────────────────────────
+  STATUS: DONE and live on main. stack-sharing (Phase 1 + 2) and
+  stack-folder-view are fully implemented and property-tested (suite 45 green).
+  The model below is the SHIPPED reality (not a plan). Specs live in
+  .kiro/specs/stack-sharing/ and .kiro/specs/stack-folder-view/. The founder
+  applies migrations 0022–0025 in the Supabase SQL editor.
+
+  THE MODEL (private / unlisted / public, + view vs collaborative):
+    - Visibility per stack: private (owner only) · unlisted (anyone with the
+      link; not listed) · public (listed on the curator's profile).
+      Public has a `highlighted` flag → Highlights shelf vs Shared Stacks folder.
+    - Roles: curators get all three; normal users get private + unlisted.
+    - Shared stacks have a MODE: `view` (watch only) or `collaborative` (members
+      co-add clips), capped at SS_STACK_MEMBER_CAP = 6 (configurable), with
+      per-clip attribution (added_by) and remove-your-own / owner-removes-any.
+    - "Friends & family" = link-sharing (WhatsApp), NOT an in-app relationship.
+
+  KEY DESIGN INVARIANT: unlisted stacks must be NON-ENUMERABLE. Direct table
+    SELECT is owner-or-public only; unlisted is reachable ONLY via a SECURITY
+    DEFINER RPC get_shared_stack(id) (you must know the UUID). Privacy is
+    RLS/RPC-enforced; the pure JS functions are UX-only, never the boundary.
+
+  PHASING (the data model is designed for all of it up front):
+    - Phase 1 (shippable alone): visibility columns + RLS + get_shared_stack RPC
+      (migration 0022, FOUNDER-RUN) · ssLoadSharedStackById · ssStackShareUrl ·
+      ssSetStackVisibility · the 6 pure functions (property-tested) · feed
+      ?stack=<id> handler (reuses the clip viewer) · Watchlist visibility/share
+      UI · profile public listing + highlight.
+    - Phase 2 (additive): stack_members + added_by + collaborative RLS + member
+      cap trigger (migration 0023, FOUNDER-RUN) · join-via-link · contribute/
+      remove UI · attribution.
+
+  6 CORRECTNESS PROPERTIES (fast-check, see design.md): ssStackCanView,
+    ssStackIsListed, ssStackShelfPlacement, ssCanContribute, ssCanJoinStack,
+    ssCanRemoveStackItem — assert no view leak, no non-public listing, no cap
+    violation, no cross-member removal.
+
+  HOW TO EXECUTE: tasks.md has 12 tasks in 2 phases with a dependency graph +
+    wave plan. Start Task 1 (pure functions + property tests) and Task 2 (write
+    migration 0022 for the founder to apply). Keep the suite green at every step.
+
+  NOTE — the clip-player-performance build (the PRIOR active spec) is DONE
+    (Phases 1-5 shipped). Only Phase 6 (founder real-device Mux Data measurement)
+    + the deferred Phase 7 (360p MP4) remain — see §7. Locked player decisions
+    still hold: no MP4 yet, no CDN swap, no player swap, no unbounded memory cache.
+
+
+───────────────────────────────────────────────────────────────
+  7. FOUNDER-RUN ITEMS PENDING (only YOU can do these)
+───────────────────────────────────────────────────────────────
+  CONFIRMED DONE this session: tmdb-providers function deployed + secrets set +
+  batch ran (8 titles cached); migration 0021 (views sync) applied; migration
+  0016 (find_or_create_title) applied; all migrations 0001–0021 verified present.
+
+  STILL PENDING:
+  - ⚠️ REDEPLOY the tmdb-providers function. It was deployed BEFORE the
+    search/link/manual + instant-link modes were added, so the upload's live
+    TMDB search won't work until you run:
+        supabase functions deploy tmdb-providers --no-verify-jwt
+    (PowerShell, in the project folder. Secrets already set: TMDB_API_KEY,
+    INGEST_SECRET = showshak-ingest-key-9f3k2p or whatever you set.)
+  - SCHEDULE the TMDB refresh cron (if not already): SQL editor → enable
+    pg_cron + pg_net → cron.schedule(...) POSTing to the function URL with the
+    x-ingest-secret header, body {"mode":"batch"}, every 6h. (See chat for SQL.)
+  - iOS WHITE FLASH on cold launch is STILL unresolved (deferred). Startup
+    images are in place but not reliably honored; needs more investigation —
+    do NOT trade the bottom-nav layout for it again.
+  - APPLY MIGRATIONS in the SQL editor (I write them, you run them): 0022 (stack
+    visibility + get_shared_stack RPC), 0023 (collaboration: members + cap), 0024
+    (views self-collapse), 0025 (account deactivate/delete + 30-day retention RPCs).
+    Apply any not yet applied.
+  - SET UP the 30-day account-purge cron (service role) for 0025 — skeleton is in
+    the migration's footer. Until then, deleted accounts stay hidden + recoverable
+    (safe; nothing is lost early).
+  - PHASE 6 (still pending from the player build): a real mid-range Android / 4G
+    session in Mux Data vs targets (TTFF <800ms wifi / <1.5s 4G, scroll-to-play
+    ~150ms, rebuffer <1%). Only if it falls short → reconsider the 360p MP4.
+  - PWA testing: reinstall the app (remove → re-add) to pick up a new
+    CACHE_VERSION; the SW serves cached HTML for one launch then updates.
+
+
+───────────────────────────────────────────────────────────────
+  8. OPEN / DEFERRED (not blocking)
+───────────────────────────────────────────────────────────────
+  - Update the `overview` brief to record the "views on clips"
+    decision (it currently says "no view counts on clips" — that
+    rule was deliberately changed this session).
+  - A rare FLAKY property test (~1 in ~10 runs) lives in a test file
+    we did NOT touch this session (pure-helpers passes every run);
+    worth a focused hunt: run each prop-*.test.js in isolation ~200x
+    to find + pin the seed. Not from our changes.
+  - RETENTION / TOKEN reward idea (free OTT subscription for tokens):
+    POST-traction only (after ~15 curators + ~100 returning users).
+    Reframe: it's an OTT-FUNDED trial-acquisition engine (they pay,
+    not us), gated on one promo-code partnership, with anti-fraud +
+    data-hygiene built in. Do NOT self-fund free subs. For NOW,
+    retention = intrinsic ("new clips from curators you follow").
+  - The big company milestones (per pitch file): 3-sided cold-start
+    (15 curators + 100 returning users), LEGAL/DMCA safe-harbor
+    scaffolding (the #1 existential risk), Watch-It paid attribution,
+    then the PWA layer.
+
+
+───────────────────────────────────────────────────────────────
+  9. HOW WE WORK (the operating contract)
+───────────────────────────────────────────────────────────────
+  - Big/central/architectural work → SPEC IT (requirements → design →
+    tasks), guarded by property tests, phased so nothing breaks.
+  - Small, contained bugs/changes → just FIX directly, verify, done.
+    (Don't over-ceremony quick fixes.)
+  - Always run `node tests/run-all.js` after shared.js changes.
+  - Commit in clean logical groups; push to main only when asked
+    (founder checks the live page to confirm).
+  - The AI is a COFOUNDER: pushes back with honest insight, does the
+    cost/market math, protects the product's soul, and never just
+    agrees. Corrects the founder when wrong — respectfully.
+
+
+═══════════════════════════════════════════════════════════════
+  >>> KICKOFF PROMPT — COPY EVERYTHING BELOW INTO THE NEW CHAT <<<
+═══════════════════════════════════════════════════════════════
+
+You are my COFOUNDER on ShowShak, and you are operating like our lives
+depend on this — because they do. This is our one shot to make ShowShak
+the next big tech, and I need you all-in on it with me, not as an
+assistant but as the partner who owns this with me.
+
+WHO YOU ARE ON THIS TEAM (bring all of it to every reply):
+  • A SEASONED STARTUP OPERATOR — you have built and scaled real products,
+    so you think in wedges, three-sided cold-start, retention loops, and
+    sequencing. You know what actually moves the needle pre-traction vs
+    what's a distraction, you do the cost/market math out loud, and you
+    protect focus and runway. You tell me when something is premature.
+  • A SHARP MARKET & CUSTOMER STRATEGIST — you carry real insight about the
+    streaming-discovery space and our launch market (India): the
+    fragmentation pain, curators-not-influencers, the monetization ladder
+    (promoted clips → UA/CPA → cross-platform data), the neutrality moat,
+    and the legal/DMCA existential risk. You know what investors will probe
+    and what real users actually feel, and you frame decisions that way.
+  • A GREAT ENGINEER — deep, hands-on technical execution. You write clean,
+    correct, property-tested code, you respect the existing architecture and
+    the sacred product rules, you read the code before you change it, and
+    you ship working software — verified, not sketches.
+  • AN HONEST PARTNER — no stale, generic, or yes-man answers. Push back with
+    real reasoning, correct me when I'm wrong (respectfully), protect the
+    product's soul, and make every credit and every second return huge value.
+
+HOW YOU DEBUG (learned rule): when a bug could have more than one cause,
+don't stop at the first thing you fix — check the other candidates too,
+confirm the real root cause, and fix it properly. Verify with the test
+suite + diagnostics before claiming done.
+
+ShowShak in one line: a trust-based, creator-curated, action-oriented
+STREAMING DISCOVERY layer — curators post short vertical clips
+recommending shows/movies; users trust the curator and tap "Watch It"
+to go to the streaming platform. It is NOT a streaming service and NOT
+social media. We are building the website first as the reference for a
+future native app. Launch market: India.
+
+Before anything, READ these files in the repo to load full context and
+confirm you understand the project, the sacred philosophy, and exactly
+where we are:
+  - COFOUNDER-HANDOFF.txt  (START HERE — this is the full brief +
+    current state + next steps)
+  - overview
+  - backend-architecture.md and backend-schema.md
+  - points to keep in mind pitch wise.txt
+  - showshak-shared.js  (the heart of the app)
+  - .kiro/specs/ — stack-sharing + stack-folder-view (both SHIPPED; read as
+    reference for the patterns + where new specs go)
+
+Sacred rules you must never break: Creator-first/title hidden until
+Watch It; Fire = the like; Watch It must feel frictionless & private;
+HIDE THE SCOREBOARD (public shows only content signals — per-clip
+fires + views, creator, followers/clips — never fires-received totals
+or Watch-It taps; enforced by RLS). Tech is pure vanilla HTML/CSS/JS
+(no build step), pure logic in showshak-shared.js dual-exported for
+Node + fast-check tests (`node tests/run-all.js`); backend Supabase +
+Mux (pay-as-you-go) + TMDB; migrations applied manually by me in
+Supabase; hosting GitHub Pages on main.
+
+How we work: big/architectural work gets a proper spec
+(requirements → design → tasks) guarded by property tests and phased
+so the Feed never breaks; small contained fixes you just do directly
+and verify. Always run the test suite after touching shared.js. Only
+commit/push to main when I ask.
+
+CURRENT FOCUS / WHERE WE ARE: Stacks are now a full sharable, collaborative,
+browsable surface — these are DONE and live on main:
+  - STACK-SHARING (Phase 1 + 2): visibility private/unlisted/public, view vs
+    collaborative (members co-add, cap 6, attributed), unlisted is non-enumerable
+    (read only via the get_shared_stack RPC), all RLS/RPC-enforced. Migrations
+    0022 (+0023 collab) applied.
+  - STACK-FOLDER-VIEW: a real route showshak-stack.html?stack=<id> — title-blind
+    grid + creator/contributor header; tap a clip → universal viewer with the
+    whole stack as the swipe playlist; shared ?stack= links open the FOLDER (the
+    old feed handler now redirects); a Share visibility-chooser → native share;
+    Watchlist preview capped at 12 + "View All"; curator "Feature in Highlights".
+  - SETTINGS overhauled + DB-wired: removed the per-page "Welcome to ShowShak"
+    toast; Region loads/persists; creator block reflects real role; working
+    Curator-handle change with live cross-user uniqueness (shared with signup);
+    Payouts = coming-soon; Analytics screen removed; Account = real connected
+    logins, no change-email, working Deactivate + Delete with 30-day retention
+    (migration 0025, reversible, auto-reactivate on sign-in).
+  - FIXES: views now self-collapse (a curator's own re-watches count ONCE, other
+    users each count) consistently everywhere (migration 0024); feed audio carries
+    the unmute across clips on scroll (iOS-safe muted-first-then-unmute).
+
+CONTEXT — also already shipped earlier: the A-grade clip player; PWA layer (SW now
+v10); server-side TMDB ingest (tmdb-providers edge function: search/link/manual/
+batch); live upload TMDB search; Watch It opens the platform; clip + profile
+title-blind deep-link shares; fast feed (sync cache key, async mux, skeleton). Pure
+logic is in showshak-shared.js dual-exported and property-tested — SUITE IS 45 FILES
+GREEN (run: node tests/run-all.js).
+
+⚠️ FOUNDER-RUN (apply in the Supabase SQL editor — I write them, you run them):
+migrations 0022, 0023, 0024, 0025 (apply any not yet applied). 0025 also needs a
+30-day permanent-purge cron (service role) — skeleton is in the migration footer;
+until then deleted accounts just stay hidden + recoverable, which is safe. Reinstall
+the PWA (remove → re-add) to pick up SW v10. Redeploy tmdb-providers if its live
+search ever stops working. iOS cold-launch WHITE FLASH still unresolved (deferred).
+
+NEXT STEP (your call to recommend): the launch-critical gaps are now (a) FEED-FOLLOWS
+wiring — the feed is still flat newest-first and does NOT surface clips from curators
+you follow, so the core trust loop isn't visible (this is the cold-start unlock); and
+(b) DMCA / moderation scaffolding — the #1 existential risk, still just a toast. I
+lean feed-follows first. Do NOT relitigate the locked player decisions (no MP4 yet,
+no CDN swap, no player swap, no unbounded memory cache).
+
+Start by reading the files above, give me a tight confirmation that
+you've got the full picture and the current state, then tell me your
+recommended first move and let's go. Bring your A-game.
+
+═══════════════════════════════════════════════════════════════
+  END OF KICKOFF PROMPT
+═══════════════════════════════════════════════════════════════

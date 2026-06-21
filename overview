@@ -105,11 +105,44 @@ Closest references for mental model:
     https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap
   No npm, no React, no Tailwind, no bundler
   Runs directly in browser via VS Code Live Server extension
-  Target: PWA-first product (NOT a throwaway prototype). Frontend is
-  built now; PWA layer (manifest/service worker/install) comes LATER —
-  only once the site + backend are complete and stable.
+  Target: PWA-first product (NOT a throwaway prototype).
 
-  PLANNED BACKEND (agreed direction, not built yet):
+  ── STATUS UPDATE (current) ─────────────────────────────────────
+  The frontend AND backend are now BUILT and LIVE, and the PWA layer
+  has STARTED (it's installable). This block's "planned/not built yet"
+  wording below is historical — see COFOUNDER-HANDOFF.txt for the live state.
+    • BACKEND LIVE: Supabase (Postgres + Auth + Storage + Edge Functions,
+      Mumbai) + Mux (pay-as-you-go, real upload→play pipeline) + TMDB
+      (cache-first Watch It providers). Guest-first auth live. Real
+      persistence (fires/follows/saves/clips/events) is on the DB, not mock.
+    • PLAYER: A-grade clip player shipped (clip-player-performance Phases
+      1-5) — audio-unlock, recycling pool, instant-start, network-aware.
+    • PWA: installable (manifest + icon + service worker) with smart caching
+      (HTML SWR, jsdelivr cache-first, Mux/Supabase never cached), iOS
+      safe-area handling, and a branded launch splash. Bump CACHE_VERSION
+      in sw.js to push a fresh deploy to installed apps.
+    • VIEWS ON CLIPS: now SHOWN (per-clip eye-icon views) — this reverses
+      the old "no view counts on clips" rule below; that change is deliberate.
+      Synced to view_events (card count == owner analytics; migration 0021).
+    • TMDB IS SERVER-SIDE: the `tmdb-providers` edge function (search / link /
+      manual / batch) fetches TMDB from Supabase (Indian ISPs block TMDB, the
+      server doesn't) — the old local VPN ingest script is no longer needed.
+      Upload has LIVE TMDB title search; manual fallback captures name+platform.
+    • SHARES: clip share deep-links to ?clip=<id> and profile share to
+      ?curator=<handle> (both title-blind); Watch It opens the platform app/site.
+    • STACKS SHIPPED: stack-sharing (private/unlisted/public + view vs collaborative,
+      cap 6, RLS/RPC-enforced) and stack-folder-view (deep-linkable folder route,
+      title-blind grid, share visibility-chooser, Watchlist preview + View All,
+      curator Feature-in-Highlights). Views self-collapse (curator's own re-watches
+      count once); feed audio carries the unmute across clips on scroll. Settings
+      overhauled + DB-wired (handle uniqueness, account deactivate/delete + 30-day
+      retention). Suite 45 files green; migrations through 0025 (founder-applied).
+    • STILL-OPEN launch-critical gaps (next): FEED-FOLLOWS wiring (the feed is flat
+      newest-first — the follow-driven trust loop isn't visible yet) and DMCA /
+      moderation scaffolding (the #1 existential risk).
+  ────────────────────────────────────────────────────────────────
+
+  PLANNED BACKEND (historical — now BUILT, see status update above):
     - Supabase (managed Postgres + Auth + Storage + Realtime + Edge fns)
       — relational fits our Creator/Clip/Title + follows/fires graph;
         no lock-in (it's just Postgres).
@@ -120,8 +153,8 @@ Closest references for mental model:
       now, Typesense/Meilisearch later.
     Guest-first auth: anonymous session on first visit, upgrade to a
     real account at the emotional peak (after first Watch It).
-    All current state is sessionStorage MOCK; real persistence lands
-    WITH the backend.
+    (Historical: state was once sessionStorage MOCK; it is now real
+    DB-backed persistence with an instant-UI cache layer.)
 
 
 ── DESIGN TOKENS (key values) ──────────────────────────────────
