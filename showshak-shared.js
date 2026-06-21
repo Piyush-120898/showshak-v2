@@ -506,6 +506,27 @@ function shareClip(idx) {
   if (typeof SHOWS !== 'undefined') ssShare(SHOWS[idx]);
 }
 
+/* Share a CURATOR PROFILE — links to the public profile (?curator=<username>),
+   which already renders the real curator (identity, clips, public stacks). Only
+   curator profiles are shareable (user profiles are private); the caller passes
+   the handle. Showing the @username is fine — the title-hidden rule is about
+   clip titles, not curator identity. */
+function ssShareProfile(username) {
+  var u = String(username || '').replace(/^@/, '').trim();
+  if (!u) { ssToast('Profile not available to share'); return; }
+  var dir = location.pathname.replace(/[^/]*$/, '');
+  var url = location.origin + dir + 'showshak-profile.html?curator=' + encodeURIComponent(u);
+  if (navigator.share) {
+    navigator.share({ title: '@' + u + ' on ShowShak', text: 'Check out @' + u + '’s picks on ShowShak 🔥', url: url }).catch(function () {});
+  } else {
+    navigator.clipboard
+      .writeText(url)
+      .then(function () { ssToast('🔗 Profile link copied'); })
+      .catch(function () { ssToast('🔗 ' + url); });
+  }
+}
+window.ssShareProfile = ssShareProfile;
+
 /* Share a whole Stack / collection. Native share sheet on mobile,
    clipboard fallback on desktop. Used by Watchlist (and later the
    profile Highlights shelf). Pass the stack object from ssGetStacks(). */
