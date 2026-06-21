@@ -848,6 +848,29 @@ function renderFeedSkeleton(feedEl) {
   }
   if (window.__ssHideSplash) window.__ssHideSplash();   // fresh load mounted → lift the splash
 })();
+
+/* ── Shared-clip deep link: ?clip=<id> ──────────────────────────────
+   A shared link lands on the feed and opens THAT clip in the viewer (instead
+   of just the feed). Works even if the clip isn't in the loaded window — it's
+   fetched directly by id. We wait briefly so SHOWS can populate the "more
+   clips" pool the viewer scrolls into after the shared one. */
+(function ssFeedDeepLink(){
+  var clipId;
+  try { clipId = new URLSearchParams(location.search).get('clip'); } catch (e) { return; }
+  if (!clipId || typeof ssOpenClip !== 'function') return;
+  function open(clip){
+    if (!clip) { if (typeof ssToast === 'function') ssToast('That clip isn’t available'); return; }
+    var pool = (typeof SHOWS !== 'undefined' && Array.isArray(SHOWS)) ? SHOWS : [];
+    var rest = pool.filter(function(s){ return String(s.id) !== String(clip.id); });
+    ssOpenClip(clip, [clip].concat(rest));
+  }
+  setTimeout(function(){
+    var pool = (typeof SHOWS !== 'undefined' && Array.isArray(SHOWS)) ? SHOWS : [];
+    var inWin = pool.find(function(s){ return String(s.id) === String(clipId); });
+    if (inWin) return open(inWin);
+    if (typeof ssLoadClipById === 'function') ssLoadClipById(clipId).then(open);
+  }, 500);
+})();
 </script>
 </body>
 </html>

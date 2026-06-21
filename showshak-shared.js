@@ -471,21 +471,34 @@ function scrollFeedToTop() { ssScrollToTop('feed'); }
 /* ════════════════════════════════════════════════
    SHARE UTILITY
 ════════════════════════════════════════════════ */
+/* Build a deep link to a SINGLE clip — opens in the feed's clip viewer via the
+   ?clip= param. Only real (uuid) clips deep-link; mock/demo clips fall back to
+   the current URL. NEVER includes the show title — the title is revealed only
+   at Watch It (sacred rule). */
+function _ssClipShareUrl(id) {
+  try {
+    if (!_ssIsUuid(id)) return window.location.href;
+    var dir = location.pathname.replace(/[^/]*$/, '');     // strip filename → directory
+    return location.origin + dir + 'showshak-feed.html?clip=' + encodeURIComponent(id);
+  } catch (e) { return window.location.href; }
+}
+
 function ssShare(show) {
   if (!show) return;
   // Record the share fire-and-forget alongside the native share / clipboard
   // path (Req 3.1). The wrapper skips mock clips and never blocks the action.
   ssRecordShare(show && show.id);
+  var url = _ssClipShareUrl(show.id);
+  // Title-blind copy: we never reveal the show name in a share — discovery is
+  // the curator's clip, not the title (revealed only at Watch It).
+  var text = 'Found this on ShowShak — swipe, discover, Watch It. 🔥';
   if (navigator.share) {
-    navigator.share({
-      title: `Watch ${show.title} on ${show.platLabel}`,
-      text: `Found this on ShowShak — ${show.title}\nSwipe. Discover. Watch It.`,
-      url: window.location.href
-    });
+    navigator.share({ title: 'A pick on ShowShak', text: text, url: url }).catch(function () {});
   } else {
     navigator.clipboard
-      .writeText(`Check out ${show.title} on ShowShak — ${window.location.href}`)
-      .then(() => ssToast('🔗 Link copied'));
+      .writeText(url)
+      .then(function () { ssToast('🔗 Link copied'); })
+      .catch(function () { ssToast('🔗 ' + url); });
   }
 }
 
@@ -1100,6 +1113,23 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
+
+/* Load ONE live clip by id (for shared ?clip= deep links), independent of the
+   feed window. Returns a feed-shaped clip or null. */
+async function ssLoadClipById(id){
+  if(!window.ssDB || !id) return null;
+  try{
+    var res = await window.ssDB.from("content")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .eq("id", id).eq("status","live").is("deleted_at",null).limit(1);
+    if(res.error || !res.data || !res.data.length) return null;
+    var mapped = ssMapContentRowsToClips(res.data);
+    if(!mapped.length) return null;
+    var feed = (typeof ssClipsForFeed === 'function') ? ssClipsForFeed(mapped) : mapped;
+    return feed[0] || null;
+  }catch(e){ return null; }
+}
+window.ssLoadClipById = ssLoadClipById;
 
 /* ── Views display helper ────────────────────────────
    The clip "views" trust signal (eye-count), companion to the fire count.
