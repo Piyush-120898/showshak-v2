@@ -424,3 +424,58 @@
 }
 .clip .clip-expand:hover  { background: rgba(0, 0, 0, 0.7); transform: scale(1.06); }
 .clip .clip-expand:active { transform: scale(0.92); }
+
+/* ════════════════════════════════════════════════
+   STACK SHARE — visibility chooser sheet (stack-folder-view)
+   Injected by showshak-shared.js (ssOpenShareChooser); used on Watchlist +
+   the Stack Folder page. Mirrors the Watch It sheet styling.
+════════════════════════════════════════════════ */
+#ss-share-overlay {
+  position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0.6);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+#ss-share-overlay.open { opacity: 1; pointer-events: auto; }
+
+#ss-share-sheet {
+  position: fixed; left: 50%; bottom: 0; z-index: 1201;
+  transform: translateX(-50%) translateY(102%);
+  width: min(480px, 100vw);
+  background: var(--bg2, #13131A);
+  border: 1px solid var(--border, rgba(255,255,255,0.07));
+  border-bottom: none; border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 40px rgba(0,0,0,0.5);
+  transition: transform 0.28s cubic-bezier(.34,1.56,.64,1);
+}
+#ss-share-sheet.open { transform: translateX(-50%) translateY(0); }
+
+.ss-share-handle {
+  width: 38px; height: 4px; border-radius: 4px; margin: 4px auto 14px;
+  background: rgba(255,255,255,0.18);
+}
+.ss-share-title {
+  font-family: var(--font-display, 'Bebas Neue', sans-serif);
+  font-size: 22px; letter-spacing: 1px; color: var(--white, #fff);
+}
+.ss-share-sub { font-size: 12.5px; color: var(--gray, #A0A0B8); margin: 2px 0 14px; }
+
+.ss-share-opt {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 13px 14px; margin-bottom: 9px; cursor: pointer;
+  background: var(--bg, #0B0B0F); border: 1.5px solid var(--border, rgba(255,255,255,0.07));
+  border-radius: 14px; transition: border-color 0.15s, background 0.15s, transform 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ss-share-opt:hover { border-color: var(--border2, rgba(234,59,50,0.28)); background: var(--bg3, #1A1A24); }
+.ss-share-opt:active { transform: scale(0.99); }
+.ss-share-opt-current { border-color: var(--red, #EA3B32); }
+.ss-share-opt-main { font-size: 14.5px; font-weight: 600; color: var(--white, #fff); }
+.ss-share-opt-desc { font-size: 11.5px; color: var(--gray, #A0A0B8); }
+
+.ss-share-cancel {
+  text-align: center; padding: 13px; margin-top: 2px; cursor: pointer;
+  font-size: 14px; font-weight: 600; color: var(--gray, #A0A0B8);
+  -webkit-tap-highlight-color: transparent;
+}
+.ss-share-cancel:hover { color: var(--white, #fff); }

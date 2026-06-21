@@ -531,34 +531,119 @@ window.ssShareProfile = ssShareProfile;
    clipboard fallback on desktop. Used by Watchlist (and later the
    profile Highlights shelf). Pass the stack object from ssGetStacks().
 
-   Visibility-aware (stack-sharing Phase 1): a PRIVATE stack is not shareable —
-   we prompt the owner to make it Unlisted/Public first (Req 5.3) and never
-   generate a link. Non-private stacks get the real ?stack= deep link via
-   ssStackShareUrl. Title-blind: the stack NAME is the curator's own collection
-   label (not a show/movie title), so it's allowed; we never include a show
-   title (sacred rule). */
+   Visibility-aware: tapping Share opens the visibility CHOOSER (mounted by the
+   page) so the owner sets privacy first, then we hand off to the native share
+   sheet. Title-blind: the stack NAME is the curator's own collection label (not
+   a show/movie title), so it's allowed; we never include a show title. */
 function ssShareStack(stack) {
   if (!stack) return;
-  if (_ssStackVisibility(stack) === 'private') {
-    ssToast('Make this stack Unlisted or Public to share it');
+  // Prefer the visibility chooser sheet when a page has mounted it.
+  if (typeof window !== 'undefined' && typeof window.ssOpenShareChooser === 'function') {
+    window.ssOpenShareChooser(stack);
     return;
   }
-  const url = ssStackShareUrl(stack);
+  // Fallback (no chooser on this surface): share directly if already shareable,
+  // else point the owner at the ⋮ menu. (No silent visibility change.)
+  if (_ssStackVisibility(stack) !== 'private') { ssShareStackWithVisibility(stack, _ssStackVisibility(stack)); return; }
+  ssToast('Open the stack’s ⋮ menu to set visibility, then share');
+}
+
+/* Persist the chosen visibility, then share. For a non-private choice this
+   builds the ?stack= link and invokes the native share sheet (clipboard
+   fallback); for 'private' it just persists and shows no link. Called by the
+   visibility chooser after the owner picks. Title-blind throughout. */
+function ssShareStackWithVisibility(stack, visibility) {
+  if (!stack) return;
+  const v = (visibility === 'unlisted' || visibility === 'public') ? visibility : 'private';
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(stack.id, v, stack.highlighted);
+  if (v === 'private') { ssToast('Saved as Private — only you can see it'); return; }
+  const shareable = Object.assign({}, stack, { visibility: v });
+  const url = ssStackShareUrl(shareable);
   if (!url) { ssToast('This stack can’t be shared yet'); return; }
-  const n = stack.clips ? stack.clips.length : 0;
+  const n = shareable.clips ? shareable.clips.length : 0;
   const countTxt = n ? `${n} hand-picked clip${n !== 1 ? 's' : ''}` : 'a collection';
-  const title = `${stack.name || 'A ShowShak Stack'} — a ShowShak Stack`;
-  const text  = `Check out "${stack.name || 'this stack'}" on ShowShak — ${countTxt} of what to watch next. 🔥`;
+  const title = `${shareable.name || 'A ShowShak Stack'} — a ShowShak Stack`;
+  const text  = `Check out "${shareable.name || 'this stack'}" on ShowShak — ${countTxt} of what to watch next. 🔥`;
 
   if (navigator.share) {
     navigator.share({ title, text, url }).catch(() => {});
   } else if (navigator.clipboard) {
     navigator.clipboard.writeText(`${text}\n${url}`)
-      .then(() => ssToast(`🔗 “${stack.name || 'Stack'}” link copied`))
+      .then(() => ssToast(`🔗 “${shareable.name || 'Stack'}” link copied`))
       .catch(() => ssToast('Could not copy link'));
   } else {
     ssToast('Sharing not supported on this browser');
   }
+}
+if (typeof window !== 'undefined') window.ssShareStackWithVisibility = ssShareStackWithVisibility;
+
+/* ── Shared visibility chooser sheet (stack-folder-view) ──
+   Injected lazily on first use; opened via window.ssOpenShareChooser(stack).
+   Renders the role-gated options from the pure ssShareVisibilityOptions and
+   routes the pick to ssShareStackWithVisibility (persist → native share). The
+   sheet is intentionally dumb: gating is in the pure fn, persistence/share in
+   the impure helper. Used by both the Watchlist and the Stack Folder page. */
+var SS_SHARE_SHEET_HTML =
+  '<div id="ss-share-overlay" onclick="ssCloseShareChooser()"></div>' +
+  '<div id="ss-share-sheet" role="dialog" aria-modal="true">' +
+    '<div class="ss-share-handle"></div>' +
+    '<div class="ss-share-title">Share this stack</div>' +
+    '<div class="ss-share-sub">Choose who can see it, then pick where to send it.</div>' +
+    '<div id="ss-share-options"></div>' +
+    '<div class="ss-share-cancel" onclick="ssCloseShareChooser()">Cancel</div>' +
+  '</div>';
+
+function _ssEnsureShareSheet() {
+  if (typeof document === 'undefined' || !document.body) return;
+  if (document.getElementById('ss-share-sheet')) return;
+  try { document.body.insertAdjacentHTML('beforeend', SS_SHARE_SHEET_HTML); } catch (e) {}
+}
+function ssCloseShareChooser() {
+  var o = document.getElementById('ss-share-overlay'), s = document.getElementById('ss-share-sheet');
+  if (o) o.classList.remove('open');
+  if (s) s.classList.remove('open');
+}
+function ssOpenShareChooser(stack) {
+  if (!stack) return;
+  _ssEnsureShareSheet();
+  var render = function () {
+    var role    = (typeof ssIsCuratorAccountSync === 'function' && ssIsCuratorAccountSync()) ? 'curator' : 'user';
+    var current = (stack.visibility === 'unlisted' || stack.visibility === 'public') ? stack.visibility : 'private';
+    var opts    = ssShareVisibilityOptions(role, current);
+    var meta = {
+      private:  { label: 'Private',    desc: 'Only you can see it' },
+      unlisted: { label: 'Get a link', desc: 'Anyone with the link can view' },
+      public:   { label: 'Public',     desc: 'Listed on your profile' }
+    };
+    var box = document.getElementById('ss-share-options');
+    if (box) {
+      box.innerHTML = opts.map(function (v) {
+        var m = meta[v] || { label: v, desc: '' };
+        var on = (v === current) ? ' ss-share-opt-current' : '';
+        return '<div class="ss-share-opt' + on + '" data-vis="' + v + '">' +
+                 '<div class="ss-share-opt-main">' + m.label + (v === current ? ' · current' : '') + '</div>' +
+                 '<div class="ss-share-opt-desc">' + m.desc + '</div>' +
+               '</div>';
+      }).join('');
+      box.querySelectorAll('.ss-share-opt').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var vis = el.getAttribute('data-vis');
+          ssCloseShareChooser();
+          if (typeof ssShareStackWithVisibility === 'function') ssShareStackWithVisibility(stack, vis);
+        });
+      });
+    }
+    var o = document.getElementById('ss-share-overlay'), s = document.getElementById('ss-share-sheet');
+    if (o) o.classList.add('open');
+    if (s) s.classList.add('open');
+  };
+  // Resolve the account role first so curators are offered Public, then render.
+  if (typeof ssResolveMyRole === 'function') { ssResolveMyRole().then(render).catch(render); }
+  else render();
+}
+if (typeof window !== 'undefined') {
+  window.ssOpenShareChooser  = ssOpenShareChooser;
+  window.ssCloseShareChooser = ssCloseShareChooser;
 }
 
 
@@ -640,14 +725,74 @@ function ssCanRemoveStackItem(viewerId, item, stack) {
   return item.added_by === viewerId;
 }
 
+/* ── Stack Folder View pure helpers (stack-folder-view feature) ──
+   DOM-free, never throw, dual-exported. UX-only; the security boundary stays
+   RLS + get_shared_stack. See .kiro/specs/stack-folder-view. */
+
+/* Fixed Watchlist preview cap — single source of truth. */
+var SS_STACK_PREVIEW_CAP = 12;
+
+/* Watchlist preview truncation → { shown, viewAll }. `shown` is the
+   order-preserving prefix of up to `cap` clips (SAME references, no clone);
+   `viewAll` is true iff there are strictly MORE clips than the cap. Tolerant:
+   non-array clips → []; non-positive/non-number cap → SS_STACK_PREVIEW_CAP. */
+function ssStackPreviewClips(clips, cap) {
+  var list = Array.isArray(clips) ? clips : [];
+  var c = (typeof cap === 'number' && cap > 0) ? Math.floor(cap) : SS_STACK_PREVIEW_CAP;
+  return { shown: list.slice(0, Math.min(c, list.length)), viewAll: list.length > c };
+}
+
+/* Ordered, de-duplicated attribution list for the folder header: the owner
+   FIRST, then the other members in their given order, each identity at most
+   once (owner never duplicated even if present in members). Identity key =
+   user_id || id || username. View-only (no other members) → [owner]. Accepts
+   owner/member as an object ({user_id|id, username, role}) or a bare id/handle. */
+function ssStackContributors(owner, members) {
+  function norm(x) {
+    if (x == null) return null;
+    if (typeof x === 'string') { var s = x.replace(/^@/, '').trim(); return s ? { id: s, username: s } : null; }
+    if (typeof x === 'object') {
+      var key = x.user_id || x.id || x.username;
+      if (!key) return null;
+      return { id: String(key), username: (x.username != null ? x.username : String(key)), role: x.role };
+    }
+    return null;
+  }
+  var out = [], seen = {};
+  var o = norm(owner);
+  if (o) { out.push(o); seen[o.id] = true; }
+  if (Array.isArray(members)) {
+    for (var i = 0; i < members.length; i++) {
+      var m = norm(members[i]);
+      if (!m || seen[m.id]) continue;
+      seen[m.id] = true;
+      out.push(m);
+    }
+  }
+  return out;
+}
+
+/* Allowed share-visibility options by role. Curator → all three; anyone else →
+   private + unlisted (never public). `currentVisibility` only marks the current
+   choice in the UI; it never widens the returned set. Reuses the same curator
+   rule as the rest of stack-sharing (role 'curator' string or a truthy flag). */
+function ssShareVisibilityOptions(role, currentVisibility) {
+  var isCurator = (role === 'curator') || (role === true);
+  return isCurator ? ['private', 'unlisted', 'public'] : ['private', 'unlisted'];
+}
+
 if (typeof window !== 'undefined') {
-  window.SS_STACK_MEMBER_CAP   = SS_STACK_MEMBER_CAP;
-  window.ssStackCanView        = ssStackCanView;
-  window.ssStackIsListed       = ssStackIsListed;
-  window.ssStackShelfPlacement = ssStackShelfPlacement;
-  window.ssCanContribute       = ssCanContribute;
-  window.ssCanJoinStack        = ssCanJoinStack;
-  window.ssCanRemoveStackItem  = ssCanRemoveStackItem;
+  window.SS_STACK_MEMBER_CAP    = SS_STACK_MEMBER_CAP;
+  window.ssStackCanView         = ssStackCanView;
+  window.ssStackIsListed        = ssStackIsListed;
+  window.ssStackShelfPlacement  = ssStackShelfPlacement;
+  window.ssCanContribute        = ssCanContribute;
+  window.ssCanJoinStack         = ssCanJoinStack;
+  window.ssCanRemoveStackItem   = ssCanRemoveStackItem;
+  window.SS_STACK_PREVIEW_CAP   = SS_STACK_PREVIEW_CAP;
+  window.ssStackPreviewClips    = ssStackPreviewClips;
+  window.ssStackContributors    = ssStackContributors;
+  window.ssShareVisibilityOptions = ssShareVisibilityOptions;
 }
 
 /* ── Impure stack-sharing helpers (DB / share-link / shared-load) ──
@@ -694,7 +839,7 @@ function ssStackShareUrl(stack) {
     if (!stack || !_ssIsUuid(stack.id)) return null;
     if (_ssStackVisibility(stack) === 'private') return null;
     const dir = location.pathname.replace(/[^/]*$/, '');   // → directory
-    return location.origin + dir + 'showshak-feed.html?stack=' + encodeURIComponent(stack.id);
+    return location.origin + dir + 'showshak-stack.html?stack=' + encodeURIComponent(stack.id);
   } catch (e) { return null; }
 }
 
@@ -6738,6 +6883,12 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssCanContribute       = ssCanContribute;
   module.exports.ssCanJoinStack        = ssCanJoinStack;
   module.exports.ssCanRemoveStackItem  = ssCanRemoveStackItem;
+
+  // Stack Folder View — pure preview / attribution / share-option rules
+  module.exports.SS_STACK_PREVIEW_CAP    = SS_STACK_PREVIEW_CAP;
+  module.exports.ssStackPreviewClips     = ssStackPreviewClips;
+  module.exports.ssStackContributors     = ssStackContributors;
+  module.exports.ssShareVisibilityOptions = ssShareVisibilityOptions;
 
   // Creator Analytics — Analytics_Reader counting-model helpers (exec spec of 0019)
   module.exports.ssCountWithSelfCollapse = ssCountWithSelfCollapse;

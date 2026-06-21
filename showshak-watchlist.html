@@ -631,6 +631,20 @@ html, body { overflow: hidden; }
 }
 .wl-clip-by { font-size: 10px; font-weight: 600; color: #6FA8E0; margin-top: 2px; }
 
+/* ── "View All" tile (stack-folder-view) — matches a .wl-clip card ── */
+.wl-viewall { flex-shrink: 0; width: 108px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.wl-viewall-inner {
+  width: 100%; aspect-ratio: 9/16; border-radius: 13px;
+  border: 1.5px dashed var(--border2, rgba(234,59,50,0.28)); background: var(--bg2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: var(--gray); transition: border-color 0.15s, color 0.15s, transform 0.12s;
+}
+.wl-viewall:hover .wl-viewall-inner { border-color: var(--red); color: var(--white); }
+.wl-viewall:active .wl-viewall-inner { transform: scale(0.94); }
+.wl-viewall-plus { font-size: 22px; line-height: 1; color: var(--red2); }
+.wl-viewall-label { font-size: 11px; font-weight: 600; text-align: center; padding: 0 8px; }
+.stack-name { cursor: pointer; }
+
 /* ── Stack header responsive ── */
 @media (max-width:700px) {
   .stack-header-content { padding: 0 20px; }
@@ -787,6 +801,14 @@ function wlOpenStackClip(stackId, clipId) {
   if (clip) ssOpenClip(clip, stack.clips);
 }
 
+/* Open the full Stack Folder View (grid of all clips) for a stack. */
+function goToFolder(stackId) {
+  if (!stackId) return;
+  const url = 'showshak-stack.html?stack=' + encodeURIComponent(stackId);
+  if (typeof ssNavigate === 'function') ssNavigate(url);
+  else location.href = url;
+}
+
 /* ════════════════════════════════════════════════
    RENDER — reads ONLY from ssGetStacks() (shared.js)
    This is now the single source of truth.
@@ -829,7 +851,11 @@ function render() {
       ? stack.clips[0].bg
       : 'linear-gradient(160deg,#0B0B0F,#13131A)';
 
-    const clipsHtml = stack.clips.map(c => {
+    const preview = (typeof ssStackPreviewClips === 'function')
+      ? ssStackPreviewClips(stack.clips, (window.SS_STACK_PREVIEW_CAP || 12))
+      : { shown: stack.clips, viewAll: false };
+
+    const clipsHtml = preview.shown.map(c => {
       const cr = wlCreator(c);
       const tag = [(c.genre && c.genre[0]) ? c.genre[0] : null, c.lang || null].filter(Boolean).join(' · ');
       // Attribution: show who added a clip when it wasn't the stack owner (i.e. a
@@ -851,7 +877,10 @@ function render() {
         </div>
       </div>
     `;
-    }).join('');
+    }).join('')
+    + (preview.viewAll
+      ? `<div class="wl-viewall" onclick="goToFolder('${stack.id}')"><div class="wl-viewall-inner"><div class="wl-viewall-plus">→</div><div class="wl-viewall-label">View all ${stack.clips.length}</div></div></div>`
+      : '');
 
     const badge = stack.joined
       ? '<span class="stack-badge">👥 Joined</span>'
@@ -862,7 +891,7 @@ function render() {
         <div class="stack-header">
           <div class="stack-header-blur" style="background:${coverBg}"></div>
           <div class="stack-header-content">
-            <div class="stack-header-left">
+            <div class="stack-header-left" style="cursor:pointer" onclick="goToFolder('${stack.id}')">
               <div class="stack-accent"></div>
               <div>
                 <div class="stack-name">${stack.name.toUpperCase()}${badge}</div>

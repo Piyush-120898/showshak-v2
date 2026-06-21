@@ -13,7 +13,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v9';
+var CACHE_VERSION = 'v10';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 // Best-effort precache of the app shell (failures are ignored so install never
@@ -25,11 +25,13 @@ var PRECACHE = [
   'showshak-watchlist.html',
   'showshak-profile.html',
   'showshak-settings.html',
+  'showshak-stack.html',
   'showshak-tokens.css',
   'showshak-sidebar.css',
   'showshak-mobile-nav.css',
   'showshak-components.css',
   'showshak-shared.js',
+  'showshak-stack-page.js',
   'manifest.webmanifest',
   'icon.svg'
 ];
