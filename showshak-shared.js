@@ -529,25 +529,323 @@ window.ssShareProfile = ssShareProfile;
 
 /* Share a whole Stack / collection. Native share sheet on mobile,
    clipboard fallback on desktop. Used by Watchlist (and later the
-   profile Highlights shelf). Pass the stack object from ssGetStacks(). */
+   profile Highlights shelf). Pass the stack object from ssGetStacks().
+
+   Visibility-aware (stack-sharing Phase 1): a PRIVATE stack is not shareable —
+   we prompt the owner to make it Unlisted/Public first (Req 5.3) and never
+   generate a link. Non-private stacks get the real ?stack= deep link via
+   ssStackShareUrl. Title-blind: the stack NAME is the curator's own collection
+   label (not a show/movie title), so it's allowed; we never include a show
+   title (sacred rule). */
 function ssShareStack(stack) {
   if (!stack) return;
+  if (_ssStackVisibility(stack) === 'private') {
+    ssToast('Make this stack Unlisted or Public to share it');
+    return;
+  }
+  const url = ssStackShareUrl(stack);
+  if (!url) { ssToast('This stack can’t be shared yet'); return; }
   const n = stack.clips ? stack.clips.length : 0;
   const countTxt = n ? `${n} hand-picked clip${n !== 1 ? 's' : ''}` : 'a collection';
-  const title = `${stack.name} — a ShowShak Stack`;
-  const text  = `Check out "${stack.name}" on ShowShak — ${countTxt} of what to watch next. 🔥`;
-  // Stack-specific deep link (route not built yet; harmless + future-proof).
-  const url = `${location.origin}${location.pathname}#stack=${encodeURIComponent(stack.id)}`;
+  const title = `${stack.name || 'A ShowShak Stack'} — a ShowShak Stack`;
+  const text  = `Check out "${stack.name || 'this stack'}" on ShowShak — ${countTxt} of what to watch next. 🔥`;
 
   if (navigator.share) {
     navigator.share({ title, text, url }).catch(() => {});
   } else if (navigator.clipboard) {
     navigator.clipboard.writeText(`${text}\n${url}`)
-      .then(() => ssToast(`🔗 “${stack.name}” link copied`))
+      .then(() => ssToast(`🔗 “${stack.name || 'Stack'}” link copied`))
       .catch(() => ssToast('Could not copy link'));
   } else {
     ssToast('Sharing not supported on this browser');
   }
+}
+
+
+/* ════════════════════════════════════════════════
+   STACK SHARING — pure visibility / placement / collaboration rules
+   DOM-free, never throw, dual-exported for Node + fast-check. These drive
+   UX ONLY; the real security boundary is RLS + the get_shared_stack RPC
+   (migrations 0022 / 0023). Stack shape: { id, name, clips,
+   visibility:'private'|'unlisted'|'public', highlighted:bool,
+   mode:'view'|'collaborative', owner_id|user_id }. Unknown/missing
+   visibility is treated as 'private' (the safe default — never leak).
+   See .kiro/specs/stack-sharing.
+════════════════════════════════════════════════ */
+/* Max members per stack, INCLUDING the owner. Single source of truth for the
+   cap (mirrored by the migration 0023 trigger). */
+var SS_STACK_MEMBER_CAP = 6;
+
+/* Normalize a stack's visibility to one of the three valid values; anything
+   unknown/missing collapses to 'private' so a malformed row never leaks. */
+function _ssStackVisibility(stack) {
+  var v = stack && stack.visibility;
+  return (v === 'unlisted' || v === 'public') ? v : 'private';
+}
+/* The stack's owner id, tolerant of both the DB shape (user_id) and the
+   normalized/shared shape (owner_id). */
+function _ssStackOwner(stack) {
+  return (stack && (stack.owner_id || stack.user_id)) || null;
+}
+
+/* View access: the owner can always view; anyone else can view iff the stack
+   is not private. (Validates Req 2.1, 2.2, 4.2 — Property 1.) */
+function ssStackCanView(viewerId, stack) {
+  if (!stack) return false;
+  var owner = _ssStackOwner(stack);
+  if (viewerId && owner && viewerId === owner) return true;
+  return _ssStackVisibility(stack) !== 'private';
+}
+
+/* Listed on a public profile iff visibility is public. (Req 2.3, 3.4 — Property 2.) */
+function ssStackIsListed(stack) {
+  return !!stack && _ssStackVisibility(stack) === 'public';
+}
+
+/* Where a stack renders on the public profile: 'highlights' (public+highlighted),
+   'folder' (public, not highlighted), or 'none' (never, for non-public).
+   (Req 3.2, 3.3 — Property 3.) */
+function ssStackShelfPlacement(stack) {
+  if (!ssStackIsListed(stack)) return 'none';
+  return stack.highlighted ? 'highlights' : 'folder';
+}
+
+/* Contribution authority: only on a collaborative stack, and only for a member
+   (the owner is always a member). (Req 7.1 — Property 6.) */
+function ssCanContribute(viewerId, stack, memberIds) {
+  if (!viewerId || !stack) return false;
+  if (stack.mode !== 'collaborative') return false;
+  var owner = _ssStackOwner(stack);
+  if (owner && viewerId === owner) return true;
+  return Array.isArray(memberIds) && memberIds.indexOf(viewerId) !== -1;
+}
+
+/* Join authority: collaborative AND below the cap AND not already a member.
+   cap falls back to SS_STACK_MEMBER_CAP; never permits the count to reach/exceed
+   the cap. (Req 6.2, 6.3, 6.4 — Property 4.) */
+function ssCanJoinStack(stack, memberCount, cap, alreadyMember) {
+  if (!stack || stack.mode !== 'collaborative') return false;
+  if (alreadyMember) return false;
+  var c = (typeof cap === 'number' && cap > 0) ? cap : SS_STACK_MEMBER_CAP;
+  var n = (typeof memberCount === 'number' && memberCount >= 0) ? memberCount : 0;
+  return n < c;
+}
+
+/* Removal authority: the owner may remove any item; a non-owner may remove only
+   an item they themselves added (added_by). (Req 8.1, 8.2 — Property 5.) */
+function ssCanRemoveStackItem(viewerId, item, stack) {
+  if (!viewerId || !item || !stack) return false;
+  var owner = _ssStackOwner(stack);
+  if (owner && viewerId === owner) return true;
+  return item.added_by === viewerId;
+}
+
+if (typeof window !== 'undefined') {
+  window.SS_STACK_MEMBER_CAP   = SS_STACK_MEMBER_CAP;
+  window.ssStackCanView        = ssStackCanView;
+  window.ssStackIsListed       = ssStackIsListed;
+  window.ssStackShelfPlacement = ssStackShelfPlacement;
+  window.ssCanContribute       = ssCanContribute;
+  window.ssCanJoinStack        = ssCanJoinStack;
+  window.ssCanRemoveStackItem  = ssCanRemoveStackItem;
+}
+
+/* ── Impure stack-sharing helpers (DB / share-link / shared-load) ──
+   These talk to Supabase (window.ssDB) + the get_shared_stack RPC (migration
+   0022). All FAIL SOFT: they no-op for guests/offline/mock ids and never throw,
+   so the app keeps working before the migration is applied. Window-only (they
+   touch location/network) — the property-tested boundary is the pure block above. */
+
+/* Owner UPDATE of a stack's visibility (+ optional highlight). Updates the
+   local cache first for an instant UI, then mirrors to the DB fire-and-forget
+   (mirrors the _ssDb* pattern). `highlighted` is only meaningful for public
+   stacks; persisted to the existing `is_highlight` column. (Req 1.5, 3.1.) */
+function ssSetStackVisibility(stackId, visibility, highlighted) {
+  const v = (visibility === 'unlisted' || visibility === 'public') ? visibility : 'private';
+  // Local cache first (instant UI).
+  try {
+    const stacks = ssGetStacks();
+    const st = stacks.find(function (s) { return s.id === stackId; });
+    if (st) {
+      st.visibility = v;
+      if (typeof highlighted === 'boolean') st.highlighted = highlighted;
+      _ss_writeStacks(stacks);
+    }
+  } catch (e) { /* keep going — DB is the source of truth */ }
+  // DB mirror (fire-and-forget, owner-scoped via RLS too).
+  _ssTrackWrite((async function () {
+    try {
+      if (!window.ssDB || !window.ssCurrentUser) return;
+      const me = window.ssCurrentUser();
+      if (!me || !_ssIsUuid(stackId)) return;
+      const patch = { visibility: v };
+      if (typeof highlighted === 'boolean') patch.is_highlight = highlighted;
+      const res = await window.ssDB.from('stacks').update(patch).eq('id', stackId).eq('user_id', me.id);
+      if (res.error) console.warn('SS set visibility:', res.error.message);
+    } catch (e) { /* keep UI working even if the write fails */ }
+  })());
+}
+
+/* Build the shareable deep link for a stack — ONLY for non-private stacks
+   (Req 5.1). Returns null for private/mock so callers can prompt instead.
+   Never includes a show title. */
+function ssStackShareUrl(stack) {
+  try {
+    if (!stack || !_ssIsUuid(stack.id)) return null;
+    if (_ssStackVisibility(stack) === 'private') return null;
+    const dir = location.pathname.replace(/[^/]*$/, '');   // → directory
+    return location.origin + dir + 'showshak-feed.html?stack=' + encodeURIComponent(stack.id);
+  } catch (e) { return null; }
+}
+
+/* Load a shared stack by id via the SECURITY DEFINER RPC (the ONLY read path
+   for unlisted). Returns { stack, clips } with clips in the feed shape (mapped
+   through the existing mappers), or null when unavailable/private/not-found/
+   error — the caller shows an "unavailable" state (Req 4.1, 4.2). */
+async function ssLoadSharedStackById(id) {
+  if (!window.ssDB || !_ssIsUuid(id)) return null;
+  try {
+    const res = await window.ssDB.rpc('get_shared_stack', { p_stack_id: id });
+    if (res.error || !res.data || !res.data.stack) return null;
+    const rows  = res.data.clips || [];
+    const base  = (typeof ssMapContentRowsToClips === 'function') ? ssMapContentRowsToClips(rows) : rows;
+    const clips = (typeof ssClipsForFeed === 'function') ? ssClipsForFeed(base) : base;
+    return {
+      stack: res.data.stack,
+      clips: clips,
+      members: res.data.members || [],
+      memberCount: res.data.member_count || 0,
+      viewerIsMember: !!res.data.viewer_is_member
+    };
+  } catch (e) { return null; }
+}
+
+if (typeof window !== 'undefined') {
+  window.ssSetStackVisibility  = ssSetStackVisibility;
+  window.ssStackShareUrl       = ssStackShareUrl;
+  window.ssLoadSharedStackById = ssLoadSharedStackById;
+}
+
+/* Resolve the signed-in user's account role ('user' | 'curator') from the
+   `users` table, cached for the session. Used to gate curator-only UI such as
+   the Public stack visibility option (Req 1.3, 1.4). Defaults to 'user' for
+   guests / unknown / error / before-resolve, so the curator-only option is
+   hidden until we positively know the account is a curator (fail safe). Migration
+   0020 promotes role='curator' on first post, so this is reliable for posters. */
+var _ssRoleCache = null;
+async function ssResolveMyRole() {
+  if (_ssRoleCache !== null) return _ssRoleCache;
+  try {
+    if (!window.ssDB || !window.ssCurrentUser) { _ssRoleCache = 'user'; return _ssRoleCache; }
+    const me = window.ssCurrentUser();
+    if (!me || !me.id) { _ssRoleCache = 'user'; return _ssRoleCache; }
+    const { data } = await window.ssDB.from('users').select('role').eq('id', me.id).single();
+    _ssRoleCache = (data && data.role === 'curator') ? 'curator' : 'user';
+  } catch (e) { _ssRoleCache = 'user'; }
+  return _ssRoleCache;
+}
+/* Synchronous best-effort read of the cached role (null until ssResolveMyRole
+   resolves). Callers treat anything !== 'curator' as a normal user. */
+function ssIsCuratorAccountSync() { return _ssRoleCache === 'curator'; }
+if (typeof window !== 'undefined') {
+  window.ssResolveMyRole = ssResolveMyRole;
+  window.ssIsCuratorAccountSync = ssIsCuratorAccountSync;
+}
+
+/* ── Phase 2: collaborative-stack helpers (DB; fail soft, never throw) ──
+   Authority is RLS + the cap-gated join_stack RPC (migration 0023); these are
+   thin wrappers. They no-op for guests/offline/mock ids. */
+
+/* Set a stack's mode ('view' | 'collaborative'). Local cache first, then DB
+   mirror (owner-scoped). Only meaningful for shared (unlisted/public) stacks. */
+function ssSetStackMode(stackId, mode) {
+  const m = (mode === 'collaborative') ? 'collaborative' : 'view';
+  try {
+    const stacks = ssGetStacks();
+    const st = stacks.find(s => s.id === stackId);
+    if (st) { st.mode = m; _ss_writeStacks(stacks); }
+  } catch (e) {}
+  _ssTrackWrite((async function () {
+    try {
+      if (!window.ssDB || !window.ssCurrentUser) return;
+      const me = window.ssCurrentUser();
+      if (!me || !_ssIsUuid(stackId)) return;
+      const res = await window.ssDB.from('stacks').update({ mode: m }).eq('id', stackId).eq('user_id', me.id);
+      if (res.error) console.warn('SS set mode:', res.error.message);
+    } catch (e) {}
+  })());
+}
+
+/* Join a collaborative stack via the cap-gated RPC (the only join path).
+   Returns the RPC result { ok, reason?, joined?, already? } or null on
+   error/guest — the caller maps reasons ('signin'|'full'|'notcollab'|...). */
+async function ssJoinStack(stackId) {
+  if (!window.ssDB || !_ssIsUuid(stackId)) return null;
+  try {
+    const res = await window.ssDB.rpc('join_stack', { p_stack_id: stackId });
+    if (res.error) { console.warn('SS join_stack:', res.error.message); return null; }
+    return res.data || null;
+  } catch (e) { return null; }
+}
+
+/* Add a clip to a collaborative shared stack WITH attribution (added_by = me).
+   RLS allows this only for the owner or a member. De-dupes on the
+   (stack_id, content_id) PK. Returns true on success/already-present. */
+async function ssAddClipToSharedStack(stackId, clipId) {
+  if (!window.ssDB || !window.ssCurrentUser || !_ssIsUuid(stackId) || !_ssIsUuid(clipId)) return false;
+  try {
+    const me = window.ssCurrentUser(); if (!me) return false;
+    const { error } = await window.ssDB.from('stack_items')
+      .insert({ stack_id: stackId, content_id: clipId, added_by: me.id });
+    if (error && error.code !== '23505') { console.warn('SS add shared clip:', error.message); return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+/* Remove a single clip from a shared stack. RLS allows the owner (any item) or
+   the contributor who added it (ssCanRemoveStackItem mirrors this client-side). */
+async function ssRemoveSharedStackItem(stackId, clipId) {
+  if (!window.ssDB || !_ssIsUuid(stackId) || !_ssIsUuid(clipId)) return false;
+  try {
+    const { error } = await window.ssDB.from('stack_items')
+      .delete().eq('stack_id', stackId).eq('content_id', clipId);
+    if (error) { console.warn('SS remove shared item:', error.message); return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+/* Leave a collaborative stack (delete your own non-owner membership). The owner
+   row is RLS-protected from deletion, so the owner can never accidentally leave. */
+async function ssLeaveStack(stackId) {
+  if (!window.ssDB || !window.ssCurrentUser || !_ssIsUuid(stackId)) return false;
+  try {
+    const me = window.ssCurrentUser(); if (!me) return false;
+    const { error } = await window.ssDB.from('stack_members')
+      .delete().eq('stack_id', stackId).eq('user_id', me.id);
+    if (error) { console.warn('SS leave stack:', error.message); return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+/* Owner removes a member (RLS: only the owner, never the owner row). The member's
+   already-added clips remain unless the owner removes them too (Req 8.4). */
+async function ssRemoveStackMember(stackId, userId) {
+  if (!window.ssDB || !_ssIsUuid(stackId) || !_ssIsUuid(userId)) return false;
+  try {
+    const { error } = await window.ssDB.from('stack_members')
+      .delete().eq('stack_id', stackId).eq('user_id', userId);
+    if (error) { console.warn('SS remove member:', error.message); return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+if (typeof window !== 'undefined') {
+  window.ssSetStackMode          = ssSetStackMode;
+  window.ssJoinStack             = ssJoinStack;
+  window.ssAddClipToSharedStack  = ssAddClipToSharedStack;
+  window.ssRemoveSharedStackItem = ssRemoveSharedStackItem;
+  window.ssLeaveStack            = ssLeaveStack;
+  window.ssRemoveStackMember     = ssRemoveStackMember;
 }
 
 
@@ -860,7 +1158,7 @@ ssOnFollowingChange(_ssRepaintAllFollowButtons);
 function ssCreateStack(name) {
   const stacks = ssGetStacks();
   const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('stack_' + Date.now());
-  const stack  = { id: id, name: name.trim(), createdAt: Date.now(), clips: [] };
+  const stack  = { id: id, name: name.trim(), createdAt: Date.now(), visibility: 'private', highlighted: false, mode: 'view', clips: [] };
   stacks.push(stack);
   _ss_writeStacks(stacks);
   _ssDbCreateStack(stack);   // mirror to DB so it persists past the tab session
@@ -919,7 +1217,7 @@ function _ssTrackWrite(p) {
 async function _ssDbCreateStack(stack) { const p=(async()=>{ try { if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stack.id))return; const {error}=await window.ssDB.from('stacks').insert({id:stack.id,user_id:me.id,name:stack.name}); if(error&&error.code!=='23505')console.warn('SS stack create:',error.message);}catch(e){} })(); _ssStackCreates[stack.id]=p; return p; }
 async function _ssDbRenameStack(stackId,name){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stacks').update({name:name}).eq('id',stackId).eq('user_id',me.id);}catch(e){} }
 async function _ssDbDeleteStack(stackId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId); await window.ssDB.from('stacks').delete().eq('id',stackId).eq('user_id',me.id);}catch(e){} }
-async function _ssDbAddClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; if(_ssStackCreates[stackId])await _ssStackCreates[stackId]; const {error}=await window.ssDB.from('stack_items').insert({stack_id:stackId,content_id:clipId}); if(error&&error.code!=='23505')console.warn('SS stack add:',error.message);}catch(e){} }
+async function _ssDbAddClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; if(_ssStackCreates[stackId])await _ssStackCreates[stackId]; const {error}=await window.ssDB.from('stack_items').insert({stack_id:stackId,content_id:clipId,added_by:me.id}); if(error&&error.code!=='23505')console.warn('SS stack add:',error.message);}catch(e){} }
 async function _ssDbRemoveClip(stackId,clipId){ try{ if(!window.ssDB||!window.ssCurrentUser)return; const me=window.ssCurrentUser(); if(!me||!_ssIsUuid(stackId)||!_ssIsUuid(clipId))return; await window.ssDB.from('stack_items').delete().eq('stack_id',stackId).eq('content_id',clipId);}catch(e){} }
 
 /* Hydrate the local Stacks store from the DB (so saved clips persist
@@ -941,11 +1239,13 @@ async function ssHydrateStacks() {
     if (_ssPendingWrites.length) { try { await Promise.all(_ssPendingWrites); } catch (e) {} }
     const { data: stacks, error } = await window.ssDB
       .from('stacks')
-      .select('id, name, created_at, stack_items(content_id, content:content_id(id, description, fires_count, meta, mux_playback_id, thumbnail_url, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
+      .select('id, name, created_at, visibility, is_highlight, mode, stack_items(content_id, added_by, adder:added_by(username), content:content_id(id, description, fires_count, meta, mux_playback_id, thumbnail_url, creator:creator_id(username), platform:platform_id(name,color,abbr)))')
       .eq('user_id', me.id).is('deleted_at', null);
     if (error || !stacks) return;
     const mapped = stacks.map(st => ({
       id: st.id, name: st.name, createdAt: st.created_at ? Date.parse(st.created_at) : Date.now(),
+      visibility: st.visibility || 'private', highlighted: !!st.is_highlight, mode: st.mode || 'view',
+      ownerId: me.id, joined: false,
       clips: (st.stack_items || []).filter(it => it.content).map(it => {
         const c = it.content, meta = c.meta || {}, p = c.platform || {}, cr = c.creator || {};
         return { id: c.id, title: '', bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
@@ -955,10 +1255,50 @@ async function ssHydrateStacks() {
           poster: c.thumbnail_url || (c.mux_playback_id ? ssCoverThumbUrl(c.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
           platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
           caption: c.description || '', genre: [], lang: meta.lang || '', fires: c.fires_count || 0,
+          addedBy: it.added_by || null, addedByName: (it.adder && it.adder.username) || null,
           creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
       })
     }));
-    try { sessionStorage.setItem(SS_STACKS_KEY, JSON.stringify(mapped)); } catch (e) {}
+
+    // JOINED collaborative stacks: stacks where I'm a member but NOT the owner.
+    // Read my membership rows (RLS lets me see my own), then load each via the
+    // get_shared_stack RPC (the only read path for unlisted). Fully isolated +
+    // fail-soft so the owned-stacks store is never affected by a failure here.
+    const joinedMapped = [];
+    try {
+      const { data: memRows } = await window.ssDB
+        .from('stack_members').select('stack_id, role').eq('user_id', me.id);
+      const ownedIds = new Set(mapped.map(s => s.id));
+      const joinIds = (memRows || [])
+        .filter(m => m.role !== 'owner')
+        .map(m => m.stack_id)
+        .filter(id => _ssIsUuid(id) && !ownedIds.has(id));
+      for (const sid of joinIds) {
+        try {
+          const res = await window.ssDB.rpc('get_shared_stack', { p_stack_id: sid });
+          const d = res && res.data;
+          if (!d || !d.stack) continue;
+          joinedMapped.push({
+            id: d.stack.id, name: d.stack.name || 'Shared stack', createdAt: Date.now(),
+            visibility: d.stack.visibility || 'unlisted', highlighted: !!d.stack.highlighted,
+            mode: d.stack.mode || 'view', joined: true, ownerId: d.stack.user_id,
+            clips: (d.clips || []).map(rc => {
+              const meta = rc.meta || {}, p = rc.platform || {}, cr = rc.creator || {};
+              return { id: rc.id, title: '', bg: meta.bg || 'linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)',
+                muxPlaybackId: rc.mux_playback_id || null,
+                poster: rc.thumbnail_url || (rc.mux_playback_id ? ssCoverThumbUrl(rc.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
+                platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
+                caption: rc.description || '', genre: [], lang: meta.lang || '', fires: rc.fires_count || 0,
+                addedBy: rc.added_by || null, addedByName: rc.added_by_username || null,
+                creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
+            })
+          });
+        } catch (e) { /* skip this one joined stack; keep the rest */ }
+      }
+    } catch (e) { /* no joined stacks / table not present yet → owned-only */ }
+
+    const all = mapped.concat(joinedMapped);
+    try { sessionStorage.setItem(SS_STACKS_KEY, JSON.stringify(all)); } catch (e) {}
     if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
     if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
   } catch (e) { /* keep local store on failure */ }
@@ -6390,6 +6730,15 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssBuildViewEvent = ssBuildViewEvent;
   module.exports.ssBuildShareEvent = ssBuildShareEvent;
   module.exports.ssBuildWatchEvent = ssBuildWatchEvent;
+  // Stack Sharing — pure visibility / placement / collaboration rules
+  module.exports.SS_STACK_MEMBER_CAP   = SS_STACK_MEMBER_CAP;
+  module.exports.ssStackCanView        = ssStackCanView;
+  module.exports.ssStackIsListed       = ssStackIsListed;
+  module.exports.ssStackShelfPlacement = ssStackShelfPlacement;
+  module.exports.ssCanContribute       = ssCanContribute;
+  module.exports.ssCanJoinStack        = ssCanJoinStack;
+  module.exports.ssCanRemoveStackItem  = ssCanRemoveStackItem;
+
   // Creator Analytics — Analytics_Reader counting-model helpers (exec spec of 0019)
   module.exports.ssCountWithSelfCollapse = ssCountWithSelfCollapse;
   module.exports.ssCountWatch = ssCountWatch;

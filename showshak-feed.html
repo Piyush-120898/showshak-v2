@@ -871,6 +871,63 @@ function renderFeedSkeleton(feedEl) {
     if (typeof ssLoadClipById === 'function') ssLoadClipById(clipId).then(open);
   }, 500);
 })();
+
+/* ── Shared-stack deep link: ?stack=<id> ────────────────────────────
+   A shared stack link lands on the feed and opens THAT stack's clips in the
+   universal viewer as a mini-feed (sibling to the ?clip= handler above). The
+   read goes through ssLoadSharedStackById → the get_shared_stack RPC, which is
+   the ONLY path that can reach an unlisted stack (privacy is RLS/RPC-enforced).
+   Fails soft: an unavailable/private stack shows an "unavailable" toast over the
+   feed (no clips, no leak — Req 4.2); an empty stack shows an empty-state toast
+   (Req 4.4). No show title is ever revealed (titles stay hidden until Watch It). */
+(function ssFeedStackDeepLink(){
+  var stackId;
+  try { stackId = new URLSearchParams(location.search).get('stack'); } catch (e) { return; }
+  if (!stackId || typeof ssOpenClip !== 'function') return;
+  if (typeof ssLoadSharedStackById !== 'function') return;
+  setTimeout(function(){
+    ssLoadSharedStackById(stackId).then(function(res){
+      if (!res) {
+        if (typeof ssToast === 'function') ssToast('This stack isn’t available');
+        return;
+      }
+      var clips = (res.clips || []);
+      if (!clips.length) {
+        if (typeof ssToast === 'function') ssToast('This stack has no clips yet');
+        return;
+      }
+      ssOpenClip(clips[0], clips);
+
+      // Collaborative join-via-link (Phase 2, Req 6.2/6.4/6.5): a signed-in
+      // visitor who isn't already a member and there's room is added as a member
+      // (gated client-side by ssCanJoinStack; the RPC re-checks the cap). Viewing
+      // always works regardless — joining only adds contribute rights.
+      var st = res.stack || {};
+      if (st.mode !== 'collaborative') return;
+      var signedIn = (typeof ssIsSignedUp === 'function') ? ssIsSignedUp() : false;
+      if (!signedIn) {
+        setTimeout(function(){ ssToast('Sign in to join this collaborative stack'); }, 1300);
+        return;
+      }
+      if (res.viewerIsMember) return;   // already a member → nothing to do
+      var cap = (typeof SS_STACK_MEMBER_CAP === 'number') ? SS_STACK_MEMBER_CAP : 6;
+      var canJoin = (typeof ssCanJoinStack === 'function')
+        ? ssCanJoinStack({ mode: 'collaborative' }, res.memberCount, cap, false)
+        : (res.memberCount < cap);
+      if (!canJoin) {
+        setTimeout(function(){ ssToast('This collaborative stack is full'); }, 1300);
+        return;
+      }
+      if (typeof ssJoinStack !== 'function') return;
+      ssJoinStack(stackId).then(function(r){
+        if (!r) return;
+        if (r.ok && r.joined)      setTimeout(function(){ ssToast('✓ You joined this stack — add your picks'); }, 1300);
+        else if (r.reason === 'full')   setTimeout(function(){ ssToast('This collaborative stack is full'); }, 1300);
+        else if (r.reason === 'signin') setTimeout(function(){ ssToast('Sign in to join this stack'); }, 1300);
+      });
+    });
+  }, 500);
+})();
 </script>
 </body>
 </html>

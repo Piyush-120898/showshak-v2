@@ -288,8 +288,19 @@ html, body { overflow: hidden; }
   display: flex; align-items: center; justify-content: center; color: #fff;
 }
 .coll-vis.public  { color: #6FD08C; border-color: rgba(111,208,140,0.4); }
+.coll-vis.unlisted { color: #6FA8E0; border-color: rgba(111,168,224,0.4); }
 .coll-vis.friends { color: #F0B450; border-color: rgba(240,180,80,0.4); }
 .coll-vis.private { color: var(--gray); }
+.coll-star {
+  position: absolute; top: 9px; left: 9px; z-index: 4;
+  width: 24px; height: 24px; border-radius: 7px; cursor: pointer;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.14);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gray2); font-size: 13px; line-height: 1; padding: 0;
+  -webkit-tap-highlight-color: transparent; transition: color 0.15s, border-color 0.15s;
+}
+.coll-star.on { color: #F5C04A; border-color: rgba(245,192,74,0.5); }
+.coll-star:hover { color: #F5C04A; }
 .coll-share {
   position: absolute; bottom: 9px; right: 9px; z-index: 4;
   width: 28px; height: 28px; border-radius: 50%;
@@ -1067,10 +1078,11 @@ const FIRE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#EA3B32"
 const EYE_SVG = `<svg width="12" height="12" viewBox="0 0 24 24"><path fill="#EA3B32" d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7C21.3 8.1 17 5 12 5z"/><circle cx="12" cy="12" r="3.4" fill="#0B0B0F"/><circle cx="12" cy="12" r="1.5" fill="#EA3B32"/></svg>`;
 const VIS_ICON = {
   public:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>`,
+  unlisted:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
   friends:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87M9 21v-2a4 4 0 0 1 3-3.87"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="8" r="2.5"/></svg>`,
   private:`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`,
 };
-const VIS_LABEL = { public:'Public', friends:'Friends & Family', private:'Only me' };
+const VIS_LABEL = { public:'Public', unlisted:'Unlisted', friends:'Friends & Family', private:'Only me' };
 
 let isCreator = false;  // a normal visitor lands as a user; toggle reveals creator view
 let activeTab = 'primary';
@@ -1144,7 +1156,8 @@ function ownCollections() {
     id: s.id,
     name: s.name || 'Untitled',
     count: (s.clips || []).length,
-    vis: 'private',
+    vis: (s.visibility === 'unlisted' || s.visibility === 'public') ? s.visibility : 'private',
+    highlighted: !!s.highlighted,
     thumbs: (s.clips || []).slice(0, 3).map(c => c.bg).filter(Boolean),
   }));
 }
@@ -1451,11 +1464,11 @@ function renderHeader() {
   if (isPublic()) paintPublicFollow(document.getElementById('pub-follow'));
   renderCockpit();
   renderCreds();
-  document.getElementById('shelf-word').textContent = isPublic() ? 'Shared Stacks' : (isOwner() ? 'Highlights' : 'My Collections');
+  document.getElementById('shelf-word').textContent = isPublic() ? 'Highlights' : (isOwner() ? 'Highlights' : 'My Collections');
   document.getElementById('shelf-sub').textContent =
-    isPublic() ? 'Collections this curator shares publicly · tap to open'
-    : isOwner() ? 'Shared collections shown on your profile · tap to open, share to send'
-    : 'Your Stacks as shareable collections · public, friends, or private';
+    isPublic() ? 'This curator’s best · tap to open · more in Shared Stacks'
+    : isOwner() ? 'Shared collections shown on your profile · ★ a public stack to feature it'
+    : 'Your Stacks as shareable collections · private, unlisted, or public';
 }
 
 /* ── CREDENTIALS / STATS BAR ──────────────────────────
@@ -1497,26 +1510,69 @@ function renderCreds() {
     </div>`).join('');
 }
 
+/* Placement of a collection card via the property-tested rule (single source of
+   truth): 'highlights' (public+highlighted) | 'folder' (public, not) | 'none'. */
+function _placementOf(c) {
+  if (typeof ssStackShelfPlacement === 'function') {
+    return ssStackShelfPlacement({ visibility: c.vis, highlighted: c.highlighted });
+  }
+  return c.vis === 'public' ? (c.highlighted ? 'highlights' : 'folder') : 'none';
+}
+
+/* Open a collection as a shared-stack mini-feed (real ?stack= deep link). The
+   feed's ?stack= handler loads it via the get_shared_stack RPC. */
+function openCollection(id) {
+  if (!id) return;
+  const dir = location.pathname.replace(/[^/]*$/, '');
+  const url = dir + 'showshak-feed.html?stack=' + encodeURIComponent(id);
+  if (typeof ssNavigate === 'function') ssNavigate(url); else location.href = url;
+}
+
+/* Share a collection from the shelf — looks up the REAL stack (with clips +
+   visibility) and routes through the shared, visibility-aware ssShareStack. */
+function shareCollection(e, id) {
+  e.stopPropagation();
+  const real = (typeof ssGetStacks === 'function') ? ssGetStacks().find(s => s.id === id) : null;
+  if (real && typeof ssShareStack === 'function') ssShareStack(real);
+  else ssToast('Sharing unavailable');
+}
+
+/* Owner toggle: move a PUBLIC stack between the Highlights shelf and the Shared
+   Stacks folder by flipping `highlighted` (persisted via ssSetStackVisibility). */
+function toggleStackHighlight(e, id) {
+  e.stopPropagation();
+  const c = currentCollections().find(x => x.id === id);
+  if (!c) return;
+  if (c.vis !== 'public') { ssToast('Make it Public first to highlight it'); return; }
+  const next = !c.highlighted;
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(id, 'public', next);
+  renderShelf(); renderStacks();
+  ssToast(next ? '⭐ Added to Highlights' : 'Moved to Shared Stacks');
+}
+
 /* ── HIGHLIGHTS / COLLECTIONS shelf ──────────────────
-   Public face: ONLY public collections, no share/new buttons.
-   Owner/User : everything, with visibility chips + share + "new". */
+   Public face: the Highlights shelf shows ONLY highlighted public stacks (the
+   rest live in the Shared Stacks folder/tab). Owner/own: everything, with
+   visibility chips + a highlight star + share + "new". */
 function publicCollectionCount() {
   const src = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
-  return src.filter(c => c.vis === 'public').length;
+  return src.filter(c => _placementOf(c) === 'folder').length;
 }
 function renderShelf() {
   const el = document.getElementById('shelf');
   const section = document.getElementById('shelf-section');
   const pub = isPublic();
-  // Viewing a curator → the REAL public stacks (already public-only).
-  // Signed-in own profile → real Stacks; logged-out/public demo → mock.
+  // Viewing a curator → the REAL public stacks. Signed-in own profile → real
+  // Stacks; logged-out/public demo → mock.
   const source = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
-  const list = pub ? source.filter(c => c.vis === 'public') : source;
+  // Public face: Highlights shelf = highlighted public only (Req 3.2). Owner/own:
+  // manage everything.
+  const list = pub ? source.filter(c => _placementOf(c) === 'highlights') : source;
 
   if (!list.length) {
     if (pub) {
-      // PUBLIC view with nothing shared: hide the whole block. An empty "no
-      // shared stacks yet" panel just makes a weak first impression on visitors.
+      // PUBLIC view with nothing highlighted: hide the shelf block (the folder
+      // tab still holds the rest). A weak empty shelf hurts first impressions.
       if (section) section.style.display = 'none';
       el.innerHTML = '';
       return;
@@ -1531,8 +1587,11 @@ function renderShelf() {
 
   const cards = list.map(c => {
     const t = c.thumbs && c.thumbs.length ? c.thumbs : DEFAULT_WALL_GRADS;
+    const star = (!pub && c.vis === 'public')
+      ? `<button class="coll-star ${c.highlighted ? 'on' : ''}" title="${c.highlighted ? 'In Highlights — tap to move to folder' : 'Add to Highlights'}" onclick="event.stopPropagation(); toggleStackHighlight(event,'${c.id}')">★</button>`
+      : '';
     return `
-    <div class="coll" onclick="ssToast('▶ Opening “${c.name}” collection')">
+    <div class="coll" onclick="openCollection('${c.id}')">
       <div class="coll-stack">
         <div class="coll-card l3" style="background:${t[2]||t[0]}"></div>
         <div class="coll-card l2" style="background:${t[1]||t[0]}"></div>
@@ -1540,17 +1599,18 @@ function renderShelf() {
           <div class="coll-vig"></div>
         </div>
         <div class="coll-count">${FIRE_SVG.replace('11','10').replace('11','10')}${c.count}</div>
+        ${star}
         ${pub ? '' : `<div class="coll-vis ${c.vis}" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>`}
-        <button class="coll-share" title="Share collection" onclick="event.stopPropagation(); ssToast('🔗 Share “${c.name}” — link copied')">
+        ${pub ? '' : `<button class="coll-share" title="Share collection" onclick="shareCollection(event,'${c.id}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-        </button>
+        </button>`}
       </div>
       <div class="coll-name">${c.name}</div>
       <div class="coll-meta">${pub ? `${c.count} clips` : `${VIS_ICON[c.vis]} ${VIS_LABEL[c.vis]}`}</div>
     </div>`;
   }).join('');
   const addCard = pub ? '' : `
-    <div class="coll coll-new" onclick="ssToast('➕ New collection — coming soon')">
+    <div class="coll coll-new" onclick="ssToast('➕ New collection — save a clip into a new Stack')">
       <div class="coll-stack"><div class="coll-plus">+</div><div class="coll-new-label">New collection</div></div>
       <div class="coll-name" style="opacity:0">.</div>
     </div>`;
@@ -1800,20 +1860,26 @@ function clearHistory() {
 /* ── STACKS / COLLECTIONS tab (full list with manage) ── */
 function renderStacks() {
   const el = document.getElementById('stacks');
-  // Signed-in own profile → real Stacks; logged-out/public demo → mock.
-  const list = currentCollections();
+  const pub = isPublic();
+  // Viewing a curator → REAL public stacks; signed-in own → real Stacks;
+  // logged-out/public demo → mock.
+  const source = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
+  // Public face: the Shared Stacks folder = NON-highlighted public stacks (the
+  // highlighted ones live in the Highlights shelf above). Owner/own: everything.
+  const list = pub ? source.filter(c => _placementOf(c) === 'folder') : source;
+  const heading = pub ? 'Shared <em>Stacks</em>' : 'Your <em>Collections</em>';
   if (!list.length) {
-    el.innerHTML = `<div class="sec-t">Your <em>Collections</em></div><div class="empty-state"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack from any clip and they'll gather here as shareable collections.</div></div>`;
+    el.innerHTML = `<div class="sec-t">${heading}</div><div class="empty-state"><div class="empty-ic">📁</div><div class="empty-t">No ${pub ? 'shared stacks' : 'collections'} yet</div><div class="empty-d">${pub ? 'This curator hasn’t added any stacks to their Shared Stacks folder.' : 'Save clips into a Stack from any clip and they\'ll gather here as shareable collections.'}</div></div>`;
     return;
   }
   el.innerHTML = `
-    <div class="sec-t">Your <em>Collections</em></div>
+    <div class="sec-t">${heading}</div>
     <div class="grid">${list.map(c=>`
-      <div class="g-card" onclick="ssToast('▶ Opening “${c.name}”')">
+      <div class="g-card" onclick="openCollection('${c.id}')">
         <div class="g-thumb">
           <div class="g-bg" style="background:${(c.thumbs && c.thumbs[0]) || DEFAULT_WALL_GRADS[0]}"></div>
           <div class="g-vig"></div>
-          <div class="coll-vis ${c.vis}" style="position:absolute;top:8px;right:8px" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>
+          ${pub ? '' : `<div class="coll-vis ${c.vis}" style="position:absolute;top:8px;right:8px" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>`}
           <div class="g-fires">${c.count} clips</div>
         </div>
         <div class="g-cap" style="color:var(--white);font-weight:600;font-family:var(--font-display);font-size:14px;letter-spacing:0.5px;-webkit-line-clamp:1">${c.name}</div>
@@ -2359,13 +2425,19 @@ async function fetchCuratorPublicStacks(curatorId) {
   try {
     const { data, error } = await window.ssDB
       .from('stacks')
-      .select('id, name, user_id, visibility, sort_no, created_at')
+      .select('id, name, user_id, visibility, is_highlight, sort_no, created_at, stack_items(content_id)')
       .eq('user_id', curatorId).eq('visibility', 'public').is('deleted_at', null)
       .order('sort_no', { ascending: true }).order('created_at', { ascending: false })
       .range(0, 49);
     if (error || !data) return [];
-    // map to the shelf/collection card shape (mirror ownCollections): name + vis 'public'
-    return data.map(s => ({ id: s.id, name: s.name || 'Untitled', count: 0, vis: 'public', thumbs: [] }));
+    // map to the shelf/collection card shape (mirror ownCollections): public,
+    // carrying the highlighted flag (→ Highlights shelf vs Shared Stacks folder)
+    // and a real clip count from the joined items.
+    return data.map(s => ({
+      id: s.id, name: s.name || 'Untitled',
+      count: (s.stack_items || []).length,
+      vis: 'public', highlighted: !!s.is_highlight, thumbs: [],
+    }));
   } catch (e) { return []; }
 }
 

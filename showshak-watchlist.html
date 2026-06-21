@@ -594,7 +594,7 @@ html, body { overflow: hidden; }
 #opts-menu {
   position: fixed; z-index: 400; display: none;
   background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 14px; min-width: 172px;
+  border-radius: 14px; min-width: 208px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.7);
   overflow: hidden;
   animation: menuPop 0.18s var(--ease-spring) both;
@@ -613,6 +613,23 @@ html, body { overflow: hidden; }
 .opts-item:hover { background: var(--bg3); }
 .opts-item.del { color: #FF5A5A; }
 .opts-divider { height: 1px; background: rgba(255,255,255,0.07); margin: 4px 0; }
+
+/* ── Stack visibility + collaboration controls (stack-sharing) ── */
+.opts-vis-label {
+  font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase;
+  font-weight: 700; color: var(--gray2); padding: 11px 16px 5px;
+}
+.opts-item.vis { padding: 10px 16px; }
+.opts-item.vis .vis-check { margin-left: auto; color: var(--red); opacity: 0; font-weight: 700; }
+.opts-item.vis.active .vis-check { opacity: 1; }
+.opts-item.vis.active { color: var(--white); }
+.opts-vis-hint { font-size: 11px; line-height: 1.4; color: var(--gray); padding: 0 16px 10px; }
+.stack-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 100px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em; vertical-align: middle;
+  color: #6FA8E0; background: rgba(111,168,224,0.12); border: 1px solid rgba(111,168,224,0.32);
+}
+.wl-clip-by { font-size: 10px; font-weight: 600; color: #6FA8E0; margin-top: 2px; }
 
 /* ── Stack header responsive ── */
 @media (max-width:700px) {
@@ -686,16 +703,44 @@ html, body { overflow: hidden; }
 
 <!-- STACK OPTIONS MENU -->
 <div id="opts-menu">
+  <div class="opts-vis-label owner-only" id="opts-vis-label">Visibility</div>
+  <div class="opts-item vis owner-only" data-vis="private" onclick="setActiveStackVisibility('private')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    Private
+    <span class="vis-check">✓</span>
+  </div>
+  <div class="opts-item vis owner-only" data-vis="unlisted" onclick="setActiveStackVisibility('unlisted')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    Unlisted
+    <span class="vis-check">✓</span>
+  </div>
+  <div class="opts-item vis owner-only" id="opts-vis-public" data-vis="public" onclick="setActiveStackVisibility('public')" style="display:none">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Public
+    <span class="vis-check">✓</span>
+  </div>
+  <div class="opts-vis-hint owner-only" id="opts-vis-hint"></div>
+  <div class="opts-vis-label owner-only" id="opts-mode-label" style="display:none">Collaboration</div>
+  <div class="opts-item vis owner-only" id="opts-mode-collab" style="display:none" onclick="toggleActiveStackMode()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Collaborative <span class="vis-check">✓</span>
+  </div>
+  <div class="opts-vis-hint owner-only" id="opts-mode-hint" style="display:none"></div>
+  <div class="opts-divider owner-only"></div>
   <div class="opts-item" onclick="shareActiveStack()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
     Share Stack
   </div>
-  <div class="opts-item" onclick="renameActiveStack()">
+  <div class="opts-item joined-only" id="opts-leave" style="display:none" onclick="leaveActiveStack()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    Leave Stack
+  </div>
+  <div class="opts-item owner-only" onclick="renameActiveStack()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     Rename
   </div>
-  <div class="opts-divider"></div>
-  <div class="opts-item del" onclick="deleteActiveStack()">
+  <div class="opts-divider owner-only"></div>
+  <div class="opts-item del owner-only" onclick="deleteActiveStack()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
     Delete Stack
   </div>
@@ -787,6 +832,10 @@ function render() {
     const clipsHtml = stack.clips.map(c => {
       const cr = wlCreator(c);
       const tag = [(c.genre && c.genre[0]) ? c.genre[0] : null, c.lang || null].filter(Boolean).join(' · ');
+      // Attribution: show who added a clip when it wasn't the stack owner (i.e. a
+      // collaborator's contribution). Only meaningful on collaborative stacks.
+      const attribution = (c.addedByName && c.addedBy && c.addedBy !== stack.ownerId)
+        ? `<div class="wl-clip-by">+ @${c.addedByName}</div>` : '';
       return `
       <div class="wl-clip" onclick="wlOpenStackClip('${stack.id}','${c.id}')">
         <div class="wl-clip-thumb">
@@ -797,11 +846,16 @@ function render() {
           <div class="wl-clip-meta">
             <div class="wl-clip-creator" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</div>
             ${tag ? `<div class="wl-clip-tag">${tag}</div>` : ''}
+            ${attribution}
           </div>
         </div>
       </div>
     `;
     }).join('');
+
+    const badge = stack.joined
+      ? '<span class="stack-badge">👥 Joined</span>'
+      : (stack.mode === 'collaborative' ? '<span class="stack-badge">👥 Collaborative</span>' : '');
 
     return `
       <div class="stack-block" id="sb-${stack.id}" style="animation-delay:${si * 0.055}s">
@@ -811,7 +865,7 @@ function render() {
             <div class="stack-header-left">
               <div class="stack-accent"></div>
               <div>
-                <div class="stack-name">${stack.name.toUpperCase()}</div>
+                <div class="stack-name">${stack.name.toUpperCase()}${badge}</div>
                 <div class="stack-count">${stack.clips.length} clip${stack.clips.length !== 1 ? 's' : ''}</div>
               </div>
             </div>
@@ -900,6 +954,83 @@ function buildRec() {
 /* ════════════════════════════════════════════════
    STACK OPTIONS MENU
 ════════════════════════════════════════════════ */
+/* Curator gate for the Public option (Req 1.3/1.4). Resolved once from the
+   users.role via shared.js; defaults false until known (fail safe). */
+let wlCanPublic = false;
+(function _wlResolveRole() {
+  if (typeof ssResolveMyRole !== 'function') return;
+  ssResolveMyRole().then(function (r) {
+    wlCanPublic = (r === 'curator');
+    if (activeStackId) paintVisibility(activeStackId);   // refresh if menu open
+  });
+})();
+
+/* Paint the visibility section for the active stack: mark the current choice,
+   show Public only to curators, and explain the current setting. */
+function paintVisibility(stackId) {
+  const stack = ssGetStacks().find(s => s.id === stackId);
+  const vis = (stack && (stack.visibility === 'unlisted' || stack.visibility === 'public')) ? stack.visibility : 'private';
+  document.querySelectorAll('#opts-menu .opts-item.vis[data-vis]').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-vis') === vis);
+  });
+  const pub = document.getElementById('opts-vis-public');
+  if (pub) pub.style.display = wlCanPublic ? '' : 'none';
+  const hint = document.getElementById('opts-vis-hint');
+  if (hint) {
+    const msg = {
+      private:  'Only you can see this stack.',
+      unlisted: 'Anyone with the link can view it. Not listed anywhere.',
+      public:   'Listed on your public profile for anyone to find.'
+    }[vis] || '';
+    hint.textContent = msg;
+    hint.style.display = msg ? 'block' : 'none';
+  }
+  // Collaboration toggle — only meaningful once the stack is shared (Req 6.1).
+  const shared = (vis !== 'private');
+  const mode = (stack && stack.mode === 'collaborative') ? 'collaborative' : 'view';
+  const mLabel = document.getElementById('opts-mode-label');
+  const mItem  = document.getElementById('opts-mode-collab');
+  const mHint  = document.getElementById('opts-mode-hint');
+  if (mLabel) mLabel.style.display = shared ? '' : 'none';
+  if (mItem)  { mItem.style.display = shared ? '' : 'none'; mItem.classList.toggle('active', mode === 'collaborative'); }
+  if (mHint)  {
+    mHint.style.display = (shared && mode === 'collaborative') ? 'block' : 'none';
+    mHint.textContent   = 'Members you share the link with can add clips (up to ' + (window.SS_STACK_MEMBER_CAP || 6) + ', incl. you).';
+  }
+}
+
+/* Toggle the active stack between view-only and collaborative (owner control,
+   shared stacks only). Persists via ssSetStackMode. */
+function toggleActiveStackMode() {
+  if (!activeStackId) return;
+  const stack = ssGetStacks().find(s => s.id === activeStackId);
+  const vis = (stack && (stack.visibility === 'unlisted' || stack.visibility === 'public')) ? stack.visibility : 'private';
+  if (vis === 'private') { ssToast('Make it Unlisted or Public to collaborate'); return; }
+  const next = (stack && stack.mode === 'collaborative') ? 'view' : 'collaborative';
+  if (typeof ssSetStackMode === 'function') ssSetStackMode(activeStackId, next);
+  paintVisibility(activeStackId);
+  ssToast(next === 'collaborative' ? '👥 Collaboration on — share the link to invite' : 'Collaboration off');
+}
+
+/* Change the active stack's visibility (persists via shared.js, fire-and-forget).
+   Public is curator-only; keeps the menu open and repaints so the change is
+   visible immediately. */
+function setActiveStackVisibility(v) {
+  if (!activeStackId) return;
+  if (v === 'public' && !wlCanPublic) { ssToast('Public stacks are a curator feature'); return; }
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(activeStackId, v);
+  // A private stack can't be collaborative (no one can reach it) — drop to view.
+  if (v === 'private') {
+    const stack = ssGetStacks().find(s => s.id === activeStackId);
+    if (stack && stack.mode === 'collaborative' && typeof ssSetStackMode === 'function') {
+      ssSetStackMode(activeStackId, 'view');
+    }
+  }
+  paintVisibility(activeStackId);
+  const label = { private: 'Private', unlisted: 'Unlisted', public: 'Public' }[v] || v;
+  ssToast('Stack set to ' + label);
+}
+
 function openOpts(e, stackId) {
   e.stopPropagation();
   activeStackId = stackId;
@@ -909,6 +1040,28 @@ function openOpts(e, stackId) {
   menu.style.top   = (rect.bottom + 6) + 'px';
   menu.style.right = (window.innerWidth - rect.right) + 'px';
   menu.style.left  = 'auto';
+  // A JOINED stack (you're a member, not the owner) gets only Share + Leave —
+  // the owner-only controls (visibility, collaboration, rename, delete) are hidden.
+  const stack = ssGetStacks().find(s => s.id === stackId);
+  const joined = !!(stack && stack.joined);
+  menu.querySelectorAll('.owner-only').forEach(el => { el.style.display = joined ? 'none' : ''; });
+  menu.querySelectorAll('.joined-only').forEach(el => { el.style.display = joined ? '' : 'none'; });
+  if (!joined) paintVisibility(stackId);
+}
+
+/* Leave a collaborative stack you joined (members only — the owner can't leave). */
+function leaveActiveStack() {
+  document.getElementById('opts-menu').classList.remove('show');
+  const id = activeStackId; activeStackId = null;
+  if (!id) return;
+  const stacks = ssGetStacks();
+  const stack = stacks.find(s => s.id === id);
+  if (!stack || !stack.joined) return;
+  if (typeof ssLeaveStack === 'function') ssLeaveStack(id);
+  const rest = stacks.filter(s => s.id !== id);
+  try { sessionStorage.setItem('ss_stacks_v1', JSON.stringify(rest)); } catch (e) {}
+  render();
+  ssToast('You left the stack');
 }
 
 document.addEventListener('click', e => {
@@ -988,6 +1141,25 @@ function deleteActiveStack() {
 ════════════════════════════════════════════════ */
 function removeClip(e, stackId, clipId) {
   e.stopPropagation();
+  const stacks = ssGetStacks();
+  const stack = stacks.find(s => s.id === stackId);
+  // JOINED collaborative stack → enforce removal authority (owner OR the
+  // contributor who added it). Owned/local stacks keep the original behaviour
+  // (no gating — guests have no user id and must still manage their own stacks).
+  if (stack && stack.joined) {
+    const me = (window.ssCurrentUser && window.ssCurrentUser());
+    const myId = me && me.id;
+    const clip = (stack.clips || []).find(c => String(c.id) === String(clipId));
+    const can = (typeof ssCanRemoveStackItem === 'function')
+      && ssCanRemoveStackItem(myId, { added_by: clip && clip.addedBy }, { owner_id: stack.ownerId });
+    if (!can) { ssToast('Only the person who added this can remove it'); return; }
+    if (typeof ssRemoveSharedStackItem === 'function') ssRemoveSharedStackItem(stackId, clipId);
+    stack.clips = (stack.clips || []).filter(c => String(c.id) !== String(clipId));
+    try { sessionStorage.setItem('ss_stacks_v1', JSON.stringify(stacks)); } catch (err) {}
+    render();
+    ssToast('Removed from stack');
+    return;
+  }
   ssRemoveClipFromStack(stackId, clipId);
   render();
   ssToast('Removed from stack');
