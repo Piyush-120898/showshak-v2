@@ -1103,17 +1103,14 @@ window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssC
 
 /* ── Views display helper ────────────────────────────
    The clip "views" trust signal (eye-count), companion to the fire count.
-   Uses the REAL views_count once it's populated (the 0021 trigger keeps
-   content.views_count in sync from view_events). For demo/seed clips that
-   carry no real views yet, fall back to a plausible fires-derived number so
-   the badge looks alive while we evaluate the feature. Returns 0 when there's
-   nothing to show. (A "hide below ~1000" floor can be layered on later.) */
+   Shows the REAL views_count only (the 0021 trigger keeps content.views_count
+   in sync from view_events, and backfills existing ones). No fabricated
+   fallback — a clip with no recorded views shows 0, so the public card always
+   matches the owner's analytics count (both derive from view_events). */
 function ssDisplayViews(clip){
   if(!clip) return 0;
   var v = Number(clip.views);
-  if(isFinite(v) && v > 0) return v;                 // real once populated
-  var f = Number(clip.fires != null ? clip.fires : clip.litCount) || 0;
-  return f > 0 ? Math.round(f * 11) : 0;             // demo fallback (~fire→view ratio)
+  return (isFinite(v) && v > 0) ? v : 0;
 }
 window.ssDisplayViews = ssDisplayViews;
 
@@ -2505,7 +2502,7 @@ async function ssLoadMyClips(){
   if(!me || !me.id) return [];
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, created_at, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, created_at, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("creator_id", me.id)
       .in("status", ["processing","live"])
       .is("deleted_at", null)
@@ -2518,7 +2515,7 @@ async function ssLoadMyClips(){
       return {
         id: row.id, status: row.status, mine: true,
         title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
-        caption: row.description||"", fires: row.fires_count||0,
+        caption: row.description||"", fires: row.fires_count||0, views: row.views_count||0,
         genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
         bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
         muxPlaybackId: row.mux_playback_id || null,
