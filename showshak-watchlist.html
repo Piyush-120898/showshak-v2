@@ -740,6 +740,12 @@ html, body { overflow: hidden; }
     Collaborative <span class="vis-check">✓</span>
   </div>
   <div class="opts-vis-hint owner-only" id="opts-mode-hint" style="display:none"></div>
+  <div class="opts-vis-label owner-only" id="opts-hl-label" style="display:none">Profile</div>
+  <div class="opts-item vis owner-only" id="opts-highlight" style="display:none" onclick="featureInHighlights()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    Feature in Highlights <span class="vis-check">✓</span>
+  </div>
+  <div class="opts-vis-hint owner-only" id="opts-hl-hint" style="display:none"></div>
   <div class="opts-divider owner-only"></div>
   <div class="opts-item" onclick="shareActiveStack()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -1026,6 +1032,37 @@ function paintVisibility(stackId) {
     mHint.style.display = (shared && mode === 'collaborative') ? 'block' : 'none';
     mHint.textContent   = 'Members you share the link with can add clips (up to ' + (window.SS_STACK_MEMBER_CAP || 6) + ', incl. you).';
   }
+  // Feature in Highlights — curators only (Highlights is a public-profile surface).
+  const hlLabel = document.getElementById('opts-hl-label');
+  const hlItem  = document.getElementById('opts-highlight');
+  const hlHint  = document.getElementById('opts-hl-hint');
+  const featured = !!stack.highlighted;
+  if (hlLabel) hlLabel.style.display = wlCanPublic ? '' : 'none';
+  if (hlItem)  { hlItem.style.display = wlCanPublic ? '' : 'none'; hlItem.classList.toggle('active', featured); }
+  if (hlHint)  {
+    hlHint.style.display = wlCanPublic ? 'block' : 'none';
+    hlHint.textContent = featured
+      ? 'Shown in the Highlights shelf on your profile.'
+      : 'Featuring makes it public and pins it to your profile’s Highlights.';
+  }
+}
+
+/* Feature / unfeature the active stack in the curator's profile Highlights.
+   Featuring requires public (Highlights is a public surface), so it promotes the
+   stack to public + highlighted in one step; unfeaturing keeps it public but
+   moves it to the Shared Stacks folder. Persists via ssSetStackVisibility. */
+function featureInHighlights() {
+  if (!activeStackId) return;
+  if (!wlCanPublic) { ssToast('Highlights are a curator feature'); return; }
+  const stack = ssGetStacks().find(s => s.id === activeStackId);
+  if (!stack) return;
+  const nowFeatured = !stack.highlighted;
+  const wasPublic = stack.visibility === 'public';
+  const vis = nowFeatured ? 'public' : (wasPublic ? 'public' : (stack.visibility || 'private'));
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(activeStackId, vis, nowFeatured);
+  paintVisibility(activeStackId);
+  if (nowFeatured) ssToast('★ Featured in Highlights' + (wasPublic ? '' : ' · now public'));
+  else ssToast('Removed from Highlights');
 }
 
 /* Toggle the active stack between view-only and collaborative (owner control,
@@ -1047,7 +1084,8 @@ function toggleActiveStackMode() {
 function setActiveStackVisibility(v) {
   if (!activeStackId) return;
   if (v === 'public' && !wlCanPublic) { ssToast('Public stacks are a curator feature'); return; }
-  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(activeStackId, v);
+  // Clear the Highlights flag when leaving public (Highlights is public-only).
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(activeStackId, v, v === 'public' ? undefined : false);
   // A private stack can't be collaborative (no one can reach it) — drop to view.
   if (v === 'private') {
     const stack = ssGetStacks().find(s => s.id === activeStackId);
