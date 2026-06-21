@@ -1478,6 +1478,35 @@ async function ssGetRegion() {
   } catch (e) { _ssRegion = 'IN'; }   // R9.2 default
   return _ssRegion;
 }
+// Invalidate the cached region/subscriptions so the next Watch It resolve re-reads
+// the DB (used after Settings changes the region or platforms in the same session).
+function ssInvalidateRegion() { _ssRegion = null; }
+function ssInvalidateSubs() { _ssSubIds = null; }
+if (typeof window !== 'undefined') { window.ssInvalidateRegion = ssInvalidateRegion; window.ssInvalidateSubs = ssInvalidateSubs; }
+
+/* Check whether a @handle is available (unique across ALL users — normal users
+   and curators alike). Case-INSENSITIVE (ilike), excludes the caller's own id so
+   keeping your current handle reads as available. Returns
+   { ok, reason:'empty'|'invalid'|'taken'|'error'|null, clean }. Impure (DB),
+   never throws. Used by the Settings handle editor (and reusable at signup). */
+async function ssCheckUsernameAvailable(username, excludeId) {
+  var clean = (typeof ssNormalizeCuratorUsername === 'function')
+    ? (ssNormalizeCuratorUsername(username) || '')
+    : String(username == null ? '' : username).replace(/^@/, '').trim();
+  if (!clean) return { ok: false, reason: 'empty', clean: '' };
+  if (!/^[a-zA-Z0-9_.]{2,30}$/.test(clean)) return { ok: false, reason: 'invalid', clean: clean };
+  if (!window.ssDB) return { ok: false, reason: 'error', clean: clean };
+  try {
+    // ilike gives case-insensitivity, but `_` and `%` are LIKE wildcards — escape
+    // them so a handle with an underscore matches literally (not as "any char").
+    var pattern = clean.replace(/[\\%_]/g, function (m) { return '\\' + m; });
+    var res = await window.ssDB.from('users').select('id').ilike('username', pattern);
+    if (res.error) return { ok: false, reason: 'error', clean: clean };
+    var taken = (res.data || []).some(function (r) { return r.id !== excludeId; });
+    return { ok: !taken, reason: taken ? 'taken' : null, clean: clean };
+  } catch (e) { return { ok: false, reason: 'error', clean: clean }; }
+}
+if (typeof window !== 'undefined') window.ssCheckUsernameAvailable = ssCheckUsernameAvailable;
 
 // Set of platform_id the signed-in user holds; empty Set for guests/error (R8.2, R8.3).
 async function ssGetSubscribedPlatformIds() {
@@ -5483,6 +5512,7 @@ function _ssvSetupObserver(feed) {
           sessionStorage.removeItem('ss_stacks_v1');
           sessionStorage.removeItem('ss_following_v1');
           sessionStorage.removeItem('ss_view_curator_v1');
+          sessionStorage.removeItem('ss_reactchk');   // re-check reactivation on next sign-in
           _ssWriteLastUid(null);   // forget the per-user cache key on sign-out
         } catch (e) {}
         if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();
@@ -5808,22 +5838,34 @@ function _ssvSetupObserver(feed) {
     const user = window.ssCurrentUser && window.ssCurrentUser();
     if (!user) return;
     _obUser = user;
+    // Auto-restore a deactivated / pending-deletion account on sign-in (once per
+    // tab). ss_reactivate_account clears the flags and returns true iff the
+    // account was flagged, so we only greet "welcome back" when it actually was.
+    try {
+      if (window.ssDB.rpc && !sessionStorage.getItem('ss_reactchk')) {
+        sessionStorage.setItem('ss_reactchk', '1');
+        window.ssDB.rpc('ss_reactivate_account').then(function (res) {
+          if (res && !res.error && res.data === true && typeof ssToast === 'function') {
+            ssToast('👋 Welcome back — your account is restored');
+          }
+        }).catch(function () {});
+      }
+    } catch (e) {}
     try {
       const { data, error } = await window.ssDB
         .from('users').select('username, gender, genres, avatar_url, meta').eq('id', user.id).single();
-      if (error) { console.warn('ShowShak onboarding: profile read failed', error.message); _welcome(); return; }
+      if (error) { console.warn('ShowShak onboarding: profile read failed', error.message); return; }
       const done = data && data.meta && data.meta.onboarded === true;
-      if (done) { _welcome(); return; }   // already onboarded → just greet
+      if (done) { return; }   // already onboarded → nothing to do (no per-page greeting)
       // Pre-fill the auto-generated username + any provider avatar.
       _obData.username   = (data && data.username) || '';
       _obData.name       = (data && data.name) || (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
       _obData.avatar_url = (data && data.avatar_url) || (user.user_metadata && user.user_metadata.avatar_url) || '';
       _obData.gender     = (data && data.gender) || '';
       _openOnboarding();
-    } catch (e) { console.warn('ShowShak onboarding error', e); _welcome(); }
+    } catch (e) { console.warn('ShowShak onboarding error', e); }
   };
 
-  function _welcome() { if (typeof ssToast === 'function') ssToast('🎉 Welcome to ShowShak'); }
   function _ssCanQuery() { return window.ssDB && window.ssDB.from; }
 
   /* ── CSS ── */
@@ -6044,10 +6086,13 @@ function _ssvSetupObserver(feed) {
     if (!u || u.length < 3) { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = u ? 'At least 3 characters.' : ''; _obUsernameOk = false; _refreshNextBtn(); return; }
     msg.className = 'ss-ob-uname-msg'; msg.textContent = 'Checking…';
     try {
-      const { data, error } = await window.ssDB.from('users').select('id').eq('username', u).neq('id', _obUser.id).limit(1);
-      if (error) throw error;
-      if (data && data.length) { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = '@' + u + ' is taken.'; _obUsernameOk = false; }
-      else { msg.className = 'ss-ob-uname-msg ok'; msg.textContent = '@' + u + ' is available ✓'; _obUsernameOk = true; }
+      // Use the shared case-insensitive, wildcard-safe checker so signup and the
+      // Settings handle editor enforce the SAME cross-user uniqueness rule.
+      const r = await ssCheckUsernameAvailable(u, _obUser.id);
+      if (r.ok) { msg.className = 'ss-ob-uname-msg ok'; msg.textContent = '@' + u + ' is available ✓'; _obUsernameOk = true; }
+      else if (r.reason === 'taken') { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = '@' + u + ' is taken.'; _obUsernameOk = false; }
+      else if (r.reason === 'invalid') { msg.className = 'ss-ob-uname-msg bad'; msg.textContent = 'Use 2–30 letters, numbers, _ or .'; _obUsernameOk = false; }
+      else { msg.className = 'ss-ob-uname-msg'; msg.textContent = ''; _obUsernameOk = true; /* network hiccup → don't block */ }
     } catch (e) { msg.className = 'ss-ob-uname-msg'; msg.textContent = ''; _obUsernameOk = true; /* don't block on network hiccup */ }
     _refreshNextBtn();
   }
