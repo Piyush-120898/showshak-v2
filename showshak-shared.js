@@ -149,18 +149,28 @@ async function _ssFetchSheetTitles(show) {
   // Prewarmed/previously-opened → return the cached titles instantly (no network).
   if (_ssSheetTitlesCache[show.id]) return _ssSheetTitlesCache[show.id];
   try {
+    // Curator declarations are stored for the curator's region (IN default),
+    // resolved the same way the rest of the sheet flow resolves region.
+    const region  = (typeof ssGetRegion === 'function') ? (await ssGetRegion()) : 'IN';
+    const catalog = await _ssPlatformCatalogMap();
     const res = await window.ssDB.from('content_titles')
-      .select('sort_no, titles:title_id ( id, name, year, providers )')
+      .select('sort_no, curator_platform_ids, titles:title_id ( id, name, year, providers )')
       .eq('content_id', show.id)
       .order('sort_no');
     if (res.error || !res.data || !res.data.length) return single;
     const titles = res.data.map(function (row) {
       const t = row.titles || {};
+      // BACKWARD-SAFE: when the column isn't applied yet the select returns
+      // undefined → treat as [] → today's behaviour. Ids with no catalog match
+      // silently drop (.filter(Boolean)).
+      const ids = Array.isArray(row.curator_platform_ids) ? row.curator_platform_ids : [];
+      const declaredForRegion = ids.map(function (id) { return catalog[id]; }).filter(Boolean);
       return {
         name:        t.name || show.title,
         year:        t.year || show.year,
         providers:   t.providers || {},
-        curatorPlat: show.curatorPlat   // per-title curator fallback (Req 1.4/2.5/6.1)
+        declaredPlatforms: { [region]: declaredForRegion },   // NEW — Curator_Declared_Platforms (Req 4.1)
+        curatorPlat: show.curatorPlat   // legacy per-title fallback still honoured by the resolver
       };
     });
     _ssSheetTitlesCache[show.id] = titles;   // cache so reopen / post-prewarm is instant
@@ -1575,6 +1585,29 @@ async function ssGetSubscribedPlatformIds() {
   } catch (e) { /* R8.3 — swallow, leave set empty */ }
   return _ssSubIds;
 }
+
+// Best-effort memoized Platform_Catalog loader (impure: one network read).
+// Caches an { id → { platform_id, name, color, abbr } } map used by
+// _ssFetchSheetTitles to resolve curator-declared platform ids into the
+// CatalogPlatform shape the pure resolver expects. On any failure returns an
+// empty map; never throws. NOT part of the pure export block — the pure
+// resolver never calls it; declarations are handed to it as plain data.
+let _ssPlatCatalog = null;
+async function _ssPlatformCatalogMap() {
+  if (_ssPlatCatalog) return _ssPlatCatalog;
+  _ssPlatCatalog = {};
+  try {
+    if (window.ssDB) {
+      const { data } = await window.ssDB.from('platforms').select('id, name, color, abbr');
+      (data || []).forEach(function (r) {
+        if (r && r.id) {
+          _ssPlatCatalog[r.id] = { platform_id: r.id, name: r.name, color: r.color, abbr: r.abbr };
+        }
+      });
+    }
+  } catch (e) { /* best-effort — leave map empty on failure */ }
+  return _ssPlatCatalog;
+}
 window.ssGetRegion = ssGetRegion;
 window.ssGetSubscribedPlatformIds = ssGetSubscribedPlatformIds;
 
@@ -1582,49 +1615,116 @@ window.ssGetSubscribedPlatformIds = ssGetSubscribedPlatformIds;
    Feed, Discover, and the unified viewer all funnel through it so Watch It
    behaves identically everywhere. It never throws on missing providers,
    region, or subs (R6.3, R8.3). */
+/* Local name normalization for dedup, mirroring the TMDB-match normalization:
+   NFKD-strip diacritics, lowercase, trim. Pure; never throws on non-strings. */
+function _ssNormalizePlatformName(s) {
+  try {
+    return String(s == null ? '' : s)
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+/* Dedup key for a resolved option: its platform_id when present, else its
+   normalized name. First occurrence wins; TMDB-sourced instances are kept
+   ahead of declared duplicates (concat order). */
+function _ssDedupKey(option) {
+  return (option && option.platform_id)
+    ? option.platform_id
+    : _ssNormalizePlatformName(option && option.name);
+}
+
 function ssResolveWatchOptions(clip, region, subscribedPlatformIds) {
-  region = region || 'IN';
-  const subs = subscribedPlatformIds || new Set();
-  const regionProviders = (clip && clip.providers && clip.providers[region]) || [];
+  // Only a non-empty string region is honoured; anything else (falsy, or a
+  // hostile non-string that would throw on key coercion) defaults to 'IN'
+  // (R7.2 + Property 9 totality).
+  region = (typeof region === 'string' && region) ? region : 'IN';
+  // Guard subs: only a real Set (has a `.has` method) is honoured; anything else
+  // (array, null, junk) degrades to an empty set so we never throw (Property 9).
+  const subs = (subscribedPlatformIds && typeof subscribedPlatformIds.has === 'function')
+    ? subscribedPlatformIds
+    : new Set();
 
-  // 1. Region has cached flatrate providers → map each to a sheet option.
-  if (regionProviders.length) {
-    const options = regionProviders.map(function (e) {
-      const matched  = !!e.color;                                       // catalog-matched → branded (R11.1)
-      const included = !!(e.platform_id && subs.has(e.platform_id));    // R5.2
-      return {
-        name:        e.catalog_name || e.provider_name,
-        color:       matched ? e.color : 'var(--ss-neutral, #2a2a2a)',  // R11.2 neutral default
-        label:       e.abbr || (e.provider_name ? e.provider_name.charAt(0) : '▶'),
-        sub:         included ? 'In your plan' : 'Available to stream',
-        included:    included,
-        platform_id: e.platform_id || null
-      };
-    });
-    // R5.3 — In_Your_Plan first, otherwise stable order.
-    options.sort(function (a, b) { return (b.included ? 1 : 0) - (a.included ? 1 : 0); });
-    return { options: options, fallback: false, message: null };
-  }
+  const NEUTRAL_COLOR = 'var(--ss-neutral, #2a2a2a)';
 
-  // 2. Fallback chain — curator's chosen platform as a single option (R6.1).
-  if (clip && clip.curatorPlat) {
-    const cp = clip.curatorPlat;
-    const included = !!(cp.platform_id && subs.has(cp.platform_id));
+  // ── Gather the two sources for the region, guarding every access. ──
+  let tmdb = (clip && clip.providers && clip.providers[region]) || [];
+  if (!Array.isArray(tmdb)) tmdb = [];
+
+  let declared = (clip && clip.declaredPlatforms && clip.declaredPlatforms[region]) || [];
+  if (!Array.isArray(declared)) declared = [];
+  // Backward compat: no declarations but a legacy curatorPlat → treat as declared.
+  if (!declared.length && clip && clip.curatorPlat) declared = [clip.curatorPlat];
+
+  const hadTmdb = tmdb.length > 0;
+
+  // ── Map TMDB providers to the unified Watch_Option shape (R5.1/5.3, R11). ──
+  const mapTmdb = function (entry) {
+    const e        = entry || {};
+    const included = !!(e.platform_id && subs.has(e.platform_id));
     return {
-      options: [{
-        name:  cp.name,
-        color: cp.color || 'var(--ss-neutral, #2a2a2a)',
-        label: cp.abbr || (cp.name ? cp.name.charAt(0) : '▶'),
-        sub:   included ? 'In your plan' : 'Available to stream',
-        included: included,
-        platform_id: cp.platform_id || null
-      }],
-      fallback: true, message: null
+      name:        e.catalog_name || e.provider_name,
+      color:       e.color ? e.color : NEUTRAL_COLOR,
+      label:       e.abbr || (e.provider_name ? String(e.provider_name).charAt(0) : '▶'),
+      sub:         included ? 'In your plan' : 'Available to stream',
+      included:    included,
+      platform_id: e.platform_id || null
     };
+  };
+
+  // ── Backward-compatibility guard (Property 10): with NO curator declarations
+  //    the result is EXACTLY today's behaviour — the legacy 1:1 TMDB mapping
+  //    (NOT de-duplicated, preserving any duplicate provider rows as before),
+  //    else the neutral message. The de-duplicated union (below) governs only
+  //    the merge case where declarations are present, so the two regions of the
+  //    input space never overlap. ──
+  if (!declared.length) {
+    if (hadTmdb) {
+      const options = tmdb.map(mapTmdb);
+      options.sort(function (a, b) { return (b.included ? 1 : 0) - (a.included ? 1 : 0); });
+      return { options: options, fallback: false, message: null };
+    }
+    return { options: [], fallback: true, message: 'Not available to stream in your region' };
   }
 
-  // 3. Neutral message — nothing cached, no curator platform (R6.2).
-  return { options: [], fallback: true, message: 'Not available to stream in your region' };
+  // ── Map curator-declared platforms to the identical shape. ──
+  const declaredOptions = declared.map(function (entry) {
+    const d        = entry || {};
+    const included = !!(d.platform_id && subs.has(d.platform_id));
+    return {
+      name:        d.name,
+      color:       d.color ? d.color : NEUTRAL_COLOR,
+      label:       d.abbr || (d.name ? String(d.name).charAt(0) : '▶'),
+      sub:         included ? 'In your plan' : 'Available to stream',
+      included:    included,
+      platform_id: d.platform_id || null
+    };
+  });
+
+  // ── De-duplicated union: TMDB first, then declared. First occurrence wins;
+  //    a dropped duplicate ORs its `included` into the kept option (R4.2). ──
+  const byKey = {};
+  const merged = [];
+  tmdb.map(mapTmdb).concat(declaredOptions).forEach(function (opt) {
+    const key = _ssDedupKey(opt);
+    if (Object.prototype.hasOwnProperty.call(byKey, key)) {
+      const kept = byKey[key];
+      kept.included = kept.included || opt.included;
+      kept.sub = kept.included ? 'In your plan' : 'Available to stream';
+    } else {
+      byKey[key] = opt;
+      merged.push(opt);
+    }
+  });
+
+  // ── In_Your_Plan first, otherwise stable order (R6.2). ──
+  merged.sort(function (a, b) { return (b.included ? 1 : 0) - (a.included ? 1 : 0); });
+
+  // declared is non-empty here, so `merged` is always non-empty.
+  // fallback === true IFF there were NO TMDB providers (declared-only result).
+  return { options: merged, fallback: !hadTmdb, message: null };
 }
 window.ssResolveWatchOptions = ssResolveWatchOptions;
 

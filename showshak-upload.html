@@ -592,6 +592,10 @@ const draft = {
                       // { id, name, year, poster_url, tmdb_id, meta }. selectedTitles[0] is the
                       // primary (sort_no 0, mirrors content.title_id). Shape consumed directly by
                       // ssBuildTitleLinks / ssCanPublish (showshak-shared.js).
+                      // Confirm_Availability_Step (Req 2, 3.5): each entry also gains
+                      // `curatorPlatformIds: string[]` — the Platform_Catalog ids the curator
+                      // declares this title streams on, per (clip, title). Defaults to [] and is
+                      // persisted onto content_titles.curator_platform_ids at save/publish (Req 3.1).
   pitch: '',
   vibes: [],
   coverTime: 0,       // Cover frame (Req 8): OFFSET INTO THE PUBLISHED (trimmed) clip in
@@ -1121,6 +1125,41 @@ const titlesIndex = {};        // id → title row (selected), for toggle lookup
 let upManual = { open: false };     // manual-entry panel open state
 let upPlatformCatalog = null;       // cached platforms list for manual entry
 
+/* ── Confirm_Availability_Step state + helpers (Req 2, 3.5) ──────────────────
+   The curator's region, resolved once (IN default), so the per-title resolved
+   availability line can be computed synchronously during render. ssGetRegion is
+   async + memoized in shared.js; we mirror its value here and re-render once it
+   lands. */
+let upRegion = 'IN';
+async function upEnsureRegion() {
+  try {
+    if (typeof ssGetRegion === 'function') {
+      const r = await ssGetRegion();
+      if (typeof r === 'string' && r) upRegion = r;
+    }
+  } catch (e) { /* keep IN default */ }
+}
+
+/* Ensure a selected-title entry carries the curatorPlatformIds array (Req 3.5).
+   Idempotent: defaults to [] when absent, never clobbers an existing array. */
+function upEnsureTitleDecls(t) {
+  if (t && typeof t === 'object' && !Array.isArray(t.curatorPlatformIds)) {
+    t.curatorPlatformIds = [];
+  }
+  return t;
+}
+
+/* The curatorPlatformIds for a given title_id, looked up in `list` (the curator
+   order source: draft.selectedTitles on save, or the publish-resolved list).
+   Returns a fresh array copy, or [] when the title isn't found / has none. Used
+   by the three content_titles insert sites (Req 3.1, 3.2, 3.5). */
+function upPlatIdsForTitle(titleId, list) {
+  const arr = Array.isArray(list) ? list : [];
+  const e = arr.find(t => t && t.id === titleId);
+  const ids = (e && Array.isArray(e.curatorPlatformIds)) ? e.curatorPlatformIds : [];
+  return ids.slice();
+}
+
 /* Split a trailing 4-digit year off a query, e.g. "Dune 2021" → {name:'Dune', year:2021}.
    Year is optional; "Dune" → {name:'Dune', year:null}. */
 function upParseTitleQuery(raw) {
@@ -1164,8 +1203,16 @@ function renderTitlesList(query) {
   const rows = [];
 
   // Selected titles always render first (so the curator can see / unlink them),
-  // with the primary (sort_no 0) badged.
-  draft.selectedTitles.forEach((t, i) => rows.push(titleRowHtml(t, true, i === 0)));
+  // with the primary (sort_no 0) badged. Each selected title is immediately
+  // followed by its Confirm_Availability_Step panel (resolved availability +
+  // add/correct platform chips) — one INDEPENDENT block per title (Req 2.5, 9.2).
+  draft.selectedTitles.forEach((t, i) => {
+    rows.push(titleRowHtml(t, true, i === 0));
+    rows.push(confirmAvailabilityHtml(t));
+  });
+  // The chips + resolved line need the active Platform_Catalog and the curator's
+  // region; warm them once (idempotent) and re-render when they land.
+  if (draft.selectedTitles.length) upWarmConfirmStep();
 
   // TMDB candidates not already selected (dedup by tmdb_id).
   const selTmdb = new Set(draft.selectedTitles.map(s => String(s.tmdb_id)));
@@ -1238,6 +1285,92 @@ function upToggleManualPlat(el) {
   el.style.borderColor = on ? 'var(--border)' : 'var(--red)';
 }
 
+/* ── Confirm_Availability_Step (Req 2.1–2.6, 9.2) ────────────────────────────
+   Per linked title, render (a) the RESOLVED region availability via the SAME
+   pure resolver the Watch It sheet uses, merging TMDB providers with this
+   title's Curator_Declared_Platforms, and (b) an always-available add/correct
+   chip control drawn ONLY from the active Platform_Catalog (upPlatformCatalog).
+   The chip "on" state is membership in THIS title's curatorPlatformIds; toggling
+   updates that title's set and re-renders the line live. Each call is scoped to
+   one title (Req 2.5 independence). Title/platform display stays confined to the
+   upload flow (Req 9.2). */
+function confirmAvailabilityHtml(t) {
+  upEnsureTitleDecls(t);
+  const region = upRegion || 'IN';
+
+  // Map this title's declared ids → the CatalogPlatform shape the resolver wants.
+  const catMap = {};
+  (upPlatformCatalog || []).forEach(c => { if (c && c.id) catMap[c.id] = c; });
+  const declared = (t.curatorPlatformIds || [])
+    .map(id => { const c = catMap[id]; return c ? { platform_id: c.id, name: c.name, color: c.color, abbr: c.abbr } : null; })
+    .filter(Boolean);
+
+  // Resolve for the curator's region with NO subscription marking (this is an
+  // authoring preview, not the viewer's sheet). The resolver is pure + total.
+  let res;
+  try {
+    res = window.ssResolveWatchOptions(
+      { providers: (t.providers || {}), declaredPlatforms: { [region]: declared } },
+      region, new Set());
+  } catch (e) { res = { options: [], fallback: true, message: null }; }
+
+  const names = (res && Array.isArray(res.options)) ? res.options.map(o => upEsc(o.name)).filter(Boolean) : [];
+  const availHtml = (res && res.message) || !names.length
+    ? 'We couldn’t confirm where this streams — add the platforms below.'
+    : `<strong>Streams on:</strong> ${names.join(', ')}`;
+
+  // Chips — only from the active Platform_Catalog (Req 2.6). "on" = declared here.
+  const onSet = new Set(t.curatorPlatformIds || []);
+  let chipsHtml;
+  if (upPlatformCatalog === null) {
+    chipsHtml = '<span style="color:var(--gray2);font-size:13px">Loading platforms…</span>';
+  } else {
+    const cats = upPlatformCatalog || [];
+    chipsHtml = cats.length
+      ? cats.map(c => {
+          const on = onSet.has(c.id);
+          return `<span onclick="upToggleTitlePlat('${upEsc(t.id)}','${upEsc(c.id)}')" style="display:inline-block;padding:7px 13px;margin:4px 6px 0 0;border-radius:100px;border:1.5px solid ${on ? 'var(--red)' : 'var(--border)'};background:${on ? 'var(--red)' : 'var(--bg2)'};color:${on ? '#fff' : 'var(--gray)'};font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">${upEsc(c.name)}</span>`;
+        }).join('')
+      : '<span style="color:var(--gray2);font-size:13px">No platforms available</span>';
+  }
+
+  return `
+    <div class="up-confirm-panel" style="padding:13px 14px;margin:-2px 0 10px;border:1.5px solid var(--border2);border-radius:14px;background:var(--bg);">
+      <div style="font-size:12.5px;color:var(--gray);line-height:1.5;">${availHtml}</div>
+      <div style="font-size:11px;color:var(--gray2);font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin:10px 0 2px;">Where can people watch it?</div>
+      <div style="display:flex;flex-wrap:wrap;">${chipsHtml}</div>
+    </div>`;
+}
+
+/* Toggle a Platform_Catalog id in/out of ONE title's curatorPlatformIds (Req
+   2.3 add / 2.4 remove), then re-render so the resolved line updates live. */
+function upToggleTitlePlat(titleId, pid) {
+  const t = draft.selectedTitles.find(s => s && s.id === titleId);
+  if (!t) return;
+  upEnsureTitleDecls(t);
+  const i = t.curatorPlatformIds.indexOf(pid);
+  if (i >= 0) t.curatorPlatformIds.splice(i, 1);
+  else t.curatorPlatformIds.push(pid);
+  const inp = document.getElementById('up-show-input');
+  renderTitlesList(inp ? inp.value : '');
+}
+
+/* Warm the Platform_Catalog + region once, then re-render so chips + the
+   resolved availability line appear. Idempotent: only fires the catalog load
+   while it is unloaded; the loaders themselves are memoized. */
+let _upConfirmWarming = false;
+function upWarmConfirmStep() {
+  if (_upConfirmWarming || upPlatformCatalog !== null) { upEnsureRegion(); return; }
+  _upConfirmWarming = true;
+  Promise.all([upEnsurePlatformCatalog(), upEnsureRegion()])
+    .then(() => {
+      _upConfirmWarming = false;
+      const inp = document.getElementById('up-show-input');
+      renderTitlesList(inp ? inp.value : '');
+    })
+    .catch(() => { _upConfirmWarming = false; });
+}
+
 function titleRowHtml(t, selected, isPrimary) {
   const posterStyle = t.poster_url
     ? `background-image:url('${upEsc(t.poster_url)}')`
@@ -1264,7 +1397,7 @@ function upToggleTitle(id) {
     draft.selectedTitles.splice(i, 1);
   } else {
     const t = titlesIndex[id];
-    if (t) draft.selectedTitles.push(t);
+    if (t) draft.selectedTitles.push(upEnsureTitleDecls(t));
   }
   renderTitlesList(document.getElementById('up-show-input').value);
   syncFooter();
@@ -1287,7 +1420,7 @@ async function upPickTmdb(tmdbId, mediaType) {
     if (error || !data || !data.ok || !data.title) { ssToast('Couldn’t link that title — try again'); return; }
     const t = data.title;
     titlesIndex[t.id] = t;
-    if (!draft.selectedTitles.some(s => s.id === t.id)) draft.selectedTitles.push(t);
+    if (!draft.selectedTitles.some(s => s.id === t.id)) draft.selectedTitles.push(upEnsureTitleDecls(t));
     ssToast(`Linked “${t.name}”`);
     renderTitlesList(document.getElementById('up-show-input').value);
     syncFooter();
@@ -1331,6 +1464,15 @@ async function upSubmitManual() {
     if (error || !data || !data.ok || !data.title) { ssToast('Couldn’t add — try again'); return; }
     const t = data.title;
     titlesIndex[t.id] = t;
+    // Reconcile the manual path onto the SAME mechanism as the TMDB path (Req 2.3,
+    // 3.2, 3.4): the platforms the curator picked here ARE this (clip, title)'s
+    // Curator_Declared_Platforms, stored on the selectedTitles entry — NOT only on
+    // the shared titles.providers cache. The edge-function `manual` mode may still
+    // create/seed the title row; the resolver de-dups by platform_id so any
+    // residual providers-baking is harmless. This is the single source of truth the
+    // publish write (curator_platform_ids) and edit flow read/write.
+    upEnsureTitleDecls(t);
+    t.curatorPlatformIds = platformIds.slice();
     if (!draft.selectedTitles.some(s => s.id === t.id)) draft.selectedTitles.push(t);
     upManual.open = false;
     ssToast(`Added “${t.name}”`);
@@ -1736,7 +1878,7 @@ async function saveDraft() {
     const links = window.ssDraftToLinks(draft);
     await window.ssDB.from('content_titles').delete().eq('content_id', draft.draftId);
     if (links.length) {
-      const linkRows = links.map((l) => ({ content_id: draft.draftId, title_id: l.title_id, sort_no: l.sort_no }));
+      const linkRows = links.map((l) => ({ content_id: draft.draftId, title_id: l.title_id, sort_no: l.sort_no, curator_platform_ids: upPlatIdsForTitle(l.title_id, draft.selectedTitles) }));
       const linkIns = await window.ssDB.from('content_titles').insert(linkRows);
       if (linkIns.error) {
         ssToast('Draft saved, but couldn’t link all titles — you can re-save');
@@ -1874,7 +2016,10 @@ async function publish() {
   // → mint → PUT) and the success state after are identical and obey the same
   // validation gates (ssCurrentUser, draft.file, ssCanPublish) at the top of publish().
   let newContentId;
-  const buildLinkRows = (cid) => links.map((l) => ({ content_id: cid, title_id: l.title_id, sort_no: l.sort_no }));
+  // Each content_titles row carries this (clip, title)'s Curator_Declared_Platforms
+  // (Req 3.1/3.2/3.5). `resolved` is the curator-order title list (carries
+  // curatorPlatformIds); map ssBuildTitleLinks' {title_id} back to read them.
+  const buildLinkRows = (cid) => links.map((l) => ({ content_id: cid, title_id: l.title_id, sort_no: l.sort_no, curator_platform_ids: upPlatIdsForTitle(l.title_id, resolved) }));
 
   if (draft.draftId) {
     // ── 5a) Publishing a SAVED/RESUMED draft → UPDATE the SAME row (Req 9.5) ──
@@ -2066,7 +2211,7 @@ async function saveEdit() {
     const links = window.ssBuildTitleLinks(draft.selectedTitles);
     await window.ssDB.from('content_titles').delete().eq('content_id', draft.editId);
     if (links.length) {
-      const linkRows = links.map((l) => ({ content_id: draft.editId, title_id: l.title_id, sort_no: l.sort_no }));
+      const linkRows = links.map((l) => ({ content_id: draft.editId, title_id: l.title_id, sort_no: l.sort_no, curator_platform_ids: upPlatIdsForTitle(l.title_id, draft.selectedTitles) }));
       const linkIns = await window.ssDB.from('content_titles').insert(linkRows);
       if (linkIns.error) ssToast('Changes saved, but couldn’t update all titles — you can edit again');
     }
@@ -2209,16 +2354,17 @@ async function resumeDraft(contentId) {
   try {
     const res = await window.ssDB
       .from('content_titles')
-      .select('title_id, sort_no')
+      .select('title_id, sort_no, curator_platform_ids')
       .eq('content_id', contentId);
     if (!res.error && Array.isArray(res.data)) links = res.data;
   } catch (e) { links = []; }
 
-  // ── Hydrate the canonical draft state via the shared inverse helper ────────
-  // ssRowToDraft is the exact inverse of ssDraftToRow + ssDraftToLinks: it
-  // restores pitch, vibes, coverTime, trim, and selectedTitles. NOTE it rebuilds
-  // selectedTitles as [{id}] STUBS only (sorted by sort_no) — names/years/posters
-  // are not stored on the draft row, so we re-fetch the real rows below.
+  // Map title_id → Curator_Declared_Platforms so the reopened draft keeps the
+  // declarations (Req 3.5 round-trip). BACKWARD-SAFE: a missing column reads as
+  // undefined → []. ssRowToDraft normalises selectedTitles to {id} stubs and drops
+  // this, so we re-attach it after the title re-fetch below.
+  const declsByTitle = {};
+  links.forEach(l => { if (l && l.title_id) declsByTitle[l.title_id] = Array.isArray(l.curator_platform_ids) ? l.curator_platform_ids.slice() : []; });
   const d = window.ssRowToDraft(row, links);
   draft.draftId = contentId;
   draft.pitch = (typeof d.pitch === 'string') ? d.pitch : '';
@@ -2247,6 +2393,9 @@ async function resumeDraft(contentId) {
       // still show the ids; the full rows are simply preferred when available.
     } catch (e) { /* keep stubs */ }
   }
+  // Re-attach the Curator_Declared_Platforms loaded above onto each title entry
+  // (by title_id) so a reopened draft keeps the declarations (Req 3.5).
+  draft.selectedTitles.forEach(t => { if (t && t.id) { upEnsureTitleDecls(t); t.curatorPlatformIds = (declsByTitle[t.id] || []).slice(); } });
 
   // ── No-video caveat (the 16.1 limitation) ──────────────────────────────────
   // A saved draft carries NO video bytes / Mux asset, so there is nothing to
@@ -2326,14 +2475,24 @@ async function enterEditMode(contentId) {
   if (row.status === 'draft') { resumeDraft(contentId); return; }
 
   // ── Fetch the content_titles links (owner-readable). On error → no links ────
+  // curator_platform_ids carries the per-(clip,title) Curator_Declared_Platforms
+  // so Edit loads the same declarations the resolver merges (Req 8.1).
   let links = [];
   try {
     const res = await window.ssDB
       .from('content_titles')
-      .select('title_id, sort_no')
+      .select('title_id, sort_no, curator_platform_ids')
       .eq('content_id', contentId);
     if (!res.error && Array.isArray(res.data)) links = res.data;
   } catch (e) { links = []; }
+
+  // Map title_id → Curator_Declared_Platforms so the edit flow keeps the
+  // declarations (Req 8.1), mirroring resumeDraft. BACKWARD-SAFE: a missing
+  // curator_platform_ids column reads as undefined → []. ssRowToDraft normalises
+  // selectedTitles to {id} stubs and drops this, so we re-attach after the title
+  // re-fetch below (by title_id).
+  const declsByTitle = {};
+  links.forEach(l => { if (l && l.title_id) declsByTitle[l.title_id] = Array.isArray(l.curator_platform_ids) ? l.curator_platform_ids.slice() : []; });
 
   // ── Hydrate the canonical draft state via the shared inverse helper ────────
   // ssRowToDraft restores pitch, vibes, coverTime, trim, and selectedTitles (as
@@ -2377,6 +2536,10 @@ async function enterEditMode(contentId) {
       // On a failed/blocked fetch we keep the {id} stubs.
     } catch (e) { /* keep stubs */ }
   }
+
+  // Re-attach the Curator_Declared_Platforms loaded above onto each title entry
+  // (by title_id) so Edit shows + persists the current declarations (Req 8.1).
+  draft.selectedTitles.forEach(t => { if (t && t.id) { upEnsureTitleDecls(t); t.curatorPlatformIds = (declsByTitle[t.id] || []).slice(); } });
 
   // ── Restore dependent UI to reflect the hydrated state ─────────────────────
   const pitchEl = document.getElementById('up-pitch');
