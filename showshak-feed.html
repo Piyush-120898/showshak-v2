@@ -644,18 +644,21 @@ html, body { overflow: hidden; }
   try { standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; } catch (e) {}
   var shownThisSession = false;
   try { shownThisSession = sessionStorage.getItem('ss_splash_v1') === '1'; } catch (e) {}
-  // Show ONLY on an installed-app cold launch, once per session — never on the
-  // website or on internal navigation back to the feed.
+  // Show ONLY on an installed-app launch — never on the website, and never on
+  // internal navigation back to the feed within a session (shownThisSession).
   if (!standalone || shownThisSession) { splash.remove(); return; }
   try { sessionStorage.setItem('ss_splash_v1', '1'); } catch (e) {}
   document.body.style.opacity = '1';   // splash covers FOUC → reveal it immediately
-  // Brand moment: hold the cold-launch splash long enough for the logo + tagline
-  // to register (a Netflix-style intro beat), even when the feed is ready sooner.
-  // This is the productive prefetch window — the feed mounts + warms BEHIND the
-  // splash (see initFeed), so when it lifts, scrolling is already smooth.
-  // Cold-launch ONLY (gated above) — never on internal navigation, so the fast
-  // ~160ms page transitions are untouched. Tune SS_SPLASH_MIN_MS to taste.
-  var SS_SPLASH_MIN_MS = 3000;
+  // First-EVER launch gets the full ~3s brand beat (logo + tagline register,
+  // Netflix-style); every later app-open gets a quick ~700ms splash so it still
+  // feels like a deliberate "open" without testing patience. A PERSISTENT
+  // localStorage flag distinguishes first-ever from subsequent (sessionStorage
+  // resets each PWA relaunch). Internal page nav never shows the splash (the
+  // splash markup only lives on the feed + the per-session gate above).
+  var everLaunched = false;
+  try { everLaunched = localStorage.getItem('ss_launched_v1') === '1'; } catch (e) {}
+  try { localStorage.setItem('ss_launched_v1', '1'); } catch (e) {}
+  var SS_SPLASH_MIN_MS = everLaunched ? 700 : 3000;
   var shown = Date.now();
   window.__ssHideSplash = function () {
     var el = document.getElementById('ss-splash'); if (!el) return;

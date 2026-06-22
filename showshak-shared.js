@@ -757,11 +757,19 @@ function ssStackPreviewClips(clips, cap) {
 function ssStackContributors(owner, members) {
   function norm(x) {
     if (x == null) return null;
-    if (typeof x === 'string') { var s = x.replace(/^@/, '').trim(); return s ? { id: s, username: s } : null; }
+    if (typeof x === 'string') { var s = x.replace(/^@/, '').trim(); return s ? { id: s, username: s, name: s } : null; }
     if (typeof x === 'object') {
       var key = x.user_id || x.id || x.username;
       if (!key) return null;
-      return { id: String(key), username: (x.username != null ? x.username : String(key)), role: x.role };
+      // Carry display name + curator flag through (additive — UX uses them to
+      // show a real NAME and to gate clickability to curators only).
+      return {
+        id: String(key),
+        username: (x.username != null ? x.username : String(key)),
+        name: (x.name != null ? x.name : null),
+        role: x.role,
+        is_curator: !!x.is_curator
+      };
     }
     return null;
   }
@@ -3588,12 +3596,18 @@ function _ssvResolveMuted(mode) {
 function _activatePostUnlock(prevSurface, surface) {
   if (prevSurface) { try { prevSurface.pause(); } catch (e) {} }
   if (!surface) return;
+  // A continuation must NEVER act on a surface that has since been paused
+  // (i.e. the user scrolled away). play()'s promise rejects on that pause, and
+  // the old code's .catch() blindly retried play() — resurrecting a
+  // scrolled-away clip with its audio (you'd SEE the new clip but HEAR the old
+  // one). This guard makes every retry/unmute a no-op once intent is gone.
+  var live = function () { return !surface.intendsToPlay || surface.intendsToPlay(); };
   var wantMuted = ssResolveSurfaceMuted(true, ssGetMutePref());
   if (wantMuted) {
     // Muted by preference: set + play, no unmute step.
     try { surface.setMuted(true); } catch (e) {}
     var pm = surface.play();
-    Promise.resolve(pm).catch(function () { try { surface.play(); } catch (e) {} });
+    Promise.resolve(pm).catch(function () { if (!live()) return; try { surface.play(); } catch (e) {} });
     return;
   }
   // Sound ON: start MUTED (muted autoplay is ALWAYS allowed), then unmute the
@@ -3605,11 +3619,13 @@ function _activatePostUnlock(prevSurface, surface) {
   try { surface.setMuted(true); } catch (e) {}
   var p = surface.play();
   Promise.resolve(p).then(function () {
+    if (!live()) return;                           // scrolled away → don't unmute
     try { surface.setMuted(false); } catch (e) {}
   }).catch(function () {
+    if (!live()) return;                           // scrolled away → don't resurrect
     var p2 = surface.play();                       // retry (still muted)
-    Promise.resolve(p2).then(function () { try { surface.setMuted(false); } catch (e) {} })
-      .catch(function () { try { surface.setMuted(true); surface.play(); } catch (e) {} });
+    Promise.resolve(p2).then(function () { if (!live()) return; try { surface.setMuted(false); } catch (e) {} })
+      .catch(function () { if (!live()) return; try { surface.setMuted(true); surface.play(); } catch (e) {} });
   });
 }
 
@@ -3624,16 +3640,22 @@ function _activatePostUnlock(prevSurface, surface) {
    gesture then unlocks + applies the Mute_Preference. */
 function _ssActivateSurface(surface, wantMuted) {
   if (!surface) return;
+  // Same anti-resurrection guard as _activatePostUnlock: once the surface is
+  // paused (scrolled away), no continuation may replay or unmute it.
+  var live = function () { return !surface.intendsToPlay || surface.intendsToPlay(); };
   surface.setMuted(true);
   var p = surface.play();
   Promise.resolve(p).then(function () {
+    if (!live()) return;                     // scrolled away → stop here
     if (wantMuted || !surface.setMuted) return;
     surface.setMuted(false);                 // honor "sound on"
     var p2 = surface.play();                  // re-assert in case unmute paused it
     Promise.resolve(p2).catch(function () {
+      if (!live()) return;
       try { surface.setMuted(true); surface.play(); } catch (e) {}  // keep video playing, muted
     });
   }).catch(function () {
+    if (!live()) return;                     // scrolled away → don't resurrect
     try { surface.setMuted(true); surface.play(); } catch (e) {}    // rare: one muted retry
   });
 }
@@ -4105,6 +4127,9 @@ const ClipEngine = {
     if (!surface) return;
     _ssvClearPause(document.getElementById(`ssv-clip-${idx}`));   // new clip is playing → no pause UI
 
+    // Solo audio: mute every OTHER mounted surface so only this clip is heard.
+    _ssMuteOthers(_ssvSurfaces, idx);
+
     const muted = _ssvResolveMuted(m);
     surface._ssPaused = false;
     // Post-unlock: just pause-prev + play (no muted→unmuted dance → audio stays
@@ -4561,6 +4586,21 @@ function _inlineTogglePause(idx) {
   }
 }
 
+/* Mute every mounted surface EXCEPT the active one (audio-correctness invariant).
+   Belt-and-braces alongside the play-intent guard: even if any future path
+   leaves a non-active surface playing, this guarantees audio can only ever come
+   from the clip you're actually looking at. The active surface's own mute state
+   is set by the activation path that follows. Host-agnostic (pass the host's
+   surface array). */
+function _ssMuteOthers(surfaces, activeIdx) {
+  if (!Array.isArray(surfaces)) return;
+  for (var i = 0; i < surfaces.length; i++) {
+    if (i === activeIdx) continue;
+    var s = surfaces[i];
+    if (s && typeof s.setMuted === 'function') { try { s.setMuted(true); } catch (e) {} }
+  }
+}
+
 /* INLINE setActive — pause the previous surface, play this one with the
    resolved Mute_Preference (autoplay-rejection → muted retry), and re-sync the
    shared desktop rail to this clip. The .active class is toggled by the
@@ -4576,6 +4616,9 @@ function _inlineSetActive(idx) {
   _inlineActiveIdx = idx;
   const surface = _inlineSurfaces[idx];
   if (!surface) return;
+
+  // Solo audio: mute every OTHER mounted surface so only this clip can be heard.
+  _ssMuteOthers(_inlineSurfaces, idx);
 
   const muted = _ssvResolveMuted('INLINE');
   surface._ssPaused = false;
@@ -6365,6 +6408,7 @@ function GradientSurface(clip, opts) {
     // contract; notify listeners so the engine can keep the mute icon in sync.
     setMuted: function (m) { muted = !!m; onMute.forEach(function (cb) { cb(muted); }); },
     isMuted: function () { return muted; },
+    intendsToPlay: function () { return true; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     preload: function () {},                   // nothing to buffer for a gradient
     setMaxResolution: function () {},          // gradients have no resolution ceiling
@@ -6582,6 +6626,7 @@ function VideoSurface(clip, opts) {
       if (el) { try { el.muted = muted; if (muted) el.setAttribute('muted', ''); else el.removeAttribute('muted'); } catch (e) {} }
     },
     isMuted: function () { return el ? !!el.muted : muted; },
+    intendsToPlay: function () { return wantPlay; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
     seek: function (f) { if (el && isFinite(el.duration)) el.currentTime = ssSeekToTime(f, el.duration); },

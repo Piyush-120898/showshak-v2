@@ -47,12 +47,27 @@
     var clips = res.clips || [];
     var members = res.members || [];
 
-    // Owner identity (prefer the owner member row — it carries the @username).
-    var ownerRow = members.filter(function (m) { return m.role === 'owner'; })[0]
-                 || { user_id: stack.user_id, username: 'curator', role: 'owner' };
+    // Owner identity — prefer the authoritative `stack.owner` from the RPC
+    // (always present, carries name + is_curator), then the owner member row,
+    // then a safe fallback. This fixes the "@curator" placeholder a normal
+    // user's view-stack showed (the owner has no stack_members row there).
+    var ownerRow = stack.owner
+                 || members.filter(function (m) { return m.role === 'owner'; })[0]
+                 || { user_id: stack.user_id, username: 'curator', name: 'Curator', role: 'owner' };
     var contributors = (typeof ssStackContributors === 'function')
       ? ssStackContributors(ownerRow, members) : [ownerRow];
     var collab = stack.mode === 'collaborative';
+
+    // Render a contributor as their display NAME (not @handle). Clickable to the
+    // public profile ONLY for curators (normal users have no public profile yet
+    // — shown as plain, non-clickable text).
+    function contribChip(p, isOwner) {
+      var nm = esc((p && (p.name || p.username)) || 'Curator');
+      if (p && p.is_curator && p.username) {
+        return '<span class="sf-handle' + (isOwner ? ' owner' : '') + '" data-handle="' + esc(p.username) + '">' + nm + '</span>';
+      }
+      return '<span class="sf-by-name' + (isOwner ? ' owner' : '') + '">' + nm + '</span>';
+    }
 
     var headerBlur = clips.length && clips[0].poster ? '' : '';
     var nameRow = '<div class="sf-name">' + esc(stack.name || 'Shared stack') +
@@ -63,13 +78,11 @@
     var contribHtml;
     if (collab && contributors.length > 1) {
       contribHtml = '<div class="sf-contrib"><span class="sf-contrib-label">Curated by</span>' +
-        contributors.map(function (p, i) {
-          return '<span class="sf-handle' + (i === 0 ? ' owner' : '') + '" data-handle="' + esc(p.username) + '">@' + esc(p.username) + '</span>';
-        }).join('') + '</div>';
+        contributors.map(function (p, i) { return contribChip(p, i === 0); }).join('') + '</div>';
     } else {
       var oc = contributors[0] || ownerRow;
       contribHtml = '<div class="sf-contrib"><span class="sf-contrib-label">By</span>' +
-        '<span class="sf-handle owner" data-handle="' + esc(oc.username) + '">@' + esc(oc.username) + '</span></div>';
+        contribChip(oc, true) + '</div>';
     }
 
     var actions = '<div class="sf-actions"><button class="sf-share" id="sf-share-btn">' +

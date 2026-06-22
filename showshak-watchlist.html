@@ -1274,8 +1274,13 @@ document.addEventListener('visibilitychange', () => {
    have all run, so SSData / ssGetStacks / ssSyncAllSaveBtns / ssOnStacksChange
    exist here. The static shell already painted, so this is off the first-paint
    path. */
-function wlInit() {
-  ALL_CLIPS = SSData.watchlistClips();
+async function wlInit() {
+  // The "Recommended" grid used to be hardcoded mock data (SSData.watchlistClips())
+  // and never reflected newly-added clips. Now it's cache-then-revalidate against
+  // the REAL DB clips (same loader the Feed/Discover use), with the mock as a
+  // last-resort fallback for guests/offline/empty — so the grid stays live.
+  var cached = (typeof ssReadPageCache === 'function') ? ssReadPageCache('watchlist') : null;
+  ALL_CLIPS = (cached && cached.length) ? cached : SSData.watchlistClips();
   buildRec();
   render();
   ssSyncAllSaveBtns();
@@ -1284,6 +1289,21 @@ function wlInit() {
   // (e.g. "New Stack" or saving a clip), re-render immediately instead of
   // waiting for a refresh. ssOnStacksChange is provided by showshak-shared.js.
   if (typeof ssOnStacksChange === 'function') ssOnStacksChange(refresh);
+
+  // Revalidate the recommended grid against real clips, then re-render ONLY if
+  // the list actually changed (no needless rebuild / flash). Falls back silently
+  // to whatever's already shown on failure (guest/offline/no clips yet).
+  try {
+    if (typeof ssLoadClips === 'function' && typeof ssClipsForDiscover === 'function') {
+      var base = await ssLoadClips(48, 0);
+      if (base && base.length) {
+        var real = ssClipsForDiscover(base);
+        if (typeof ssWritePageCache === 'function') ssWritePageCache('watchlist', real);
+        var changed = (typeof ssFeedListChanged !== 'function') || ssFeedListChanged(ALL_CLIPS, real);
+        if (changed) { ALL_CLIPS = real; buildRec(); ssSyncAllSaveBtns(); }
+      }
+    }
+  } catch (e) { /* keep the cached/mock grid on failure */ }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wlInit);
 else wlInit();

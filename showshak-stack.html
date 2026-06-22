@@ -72,6 +72,14 @@
   }
   .sf-handle.owner { color: var(--red2); border-color: var(--border2); }
   .sf-handle:hover { border-color: var(--border2); }
+  /* Non-clickable contributor name (normal users — no public profile yet). Same
+     pill look as .sf-handle but no pointer/hover affordance. */
+  .sf-by-name {
+    font-size: 12.5px; font-weight: 600; color: var(--white);
+    padding: 4px 10px; border-radius: 100px; background: var(--bg2); border: 1px solid var(--border);
+    cursor: default;
+  }
+  .sf-by-name.owner { color: var(--red2); border-color: var(--border2); }
   .sf-actions { margin-top: 16px; display: flex; gap: 10px; }
   .sf-share {
     display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
