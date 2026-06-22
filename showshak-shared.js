@@ -318,12 +318,18 @@ function ssPlatformWatchUrl(platform, titleName) {
     'jiohotstar':          'https://www.hotstar.com/in/search?q=' + q,
     'hotstar':             'https://www.hotstar.com/in/search?q=' + q,
     'jiocinema':           'https://www.jiocinema.com/search/' + q,
-    'apple tv+':           'https://tv.apple.com/search?term=' + q,
+    'apple tv+':           'https://tv.apple.com/in/search?term=' + q,
     'sonyliv':             'https://www.sonyliv.com/search?searchTerm=' + q,
-    'hbo max':             'https://play.max.com/search?q=' + q,
+    'hbo max':             'https://www.hotstar.com/in/search?q=' + q,
     'max':                 'https://play.max.com/search?q=' + q,
     'zee5':                'https://www.zee5.com/search?q=' + q,
-    'hulu':                'https://www.hulu.com/search?q=' + q
+    'hulu':                'https://www.hulu.com/search?q=' + q,
+    'youtube':             'https://www.youtube.com/results?search_query=' + q,
+    'crunchyroll':         'https://www.crunchyroll.com/search?q=' + q
+    // Regional app-first platforms (Aha, Sun NXT, Hoichoi, Chaupal, KableOne,
+    // STAGE, Planet Marathi, ManoramaMax, ETV Win) have no reliable web search
+    // URL — they intentionally fall through to the Google "watch on <platform>"
+    // resolver below, which always resolves and opens their app/site.
   };
   return map[key] || ('https://www.google.com/search?q=' + encodeURIComponent((titleName || '') + ' watch on ' + (platform || '')));
 }
