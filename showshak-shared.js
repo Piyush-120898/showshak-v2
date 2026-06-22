@@ -1005,6 +1005,38 @@ if (typeof window !== 'undefined') {
    SMOOTH PAGE NAVIGATION
 ════════════════════════════════════════════════ */
 function ssNavigate(url) {
+  // Phase 2: reconcile the manual fade with cross-document View Transitions so
+  // exactly ONE animation runs (never both). The pure ssNavStrategy (Property 4)
+  // owns the decision; here we only compute the real-environment booleans it
+  // expects and branch on the result.
+  try {
+    // supportsViewTransition: presence of document.startViewTransition is a
+    // reliable proxy for a browser that supports the View Transitions API. The
+    // cross-document (MPA) transition is actually driven by the CSS
+    // `@view-transition` opt-in + the navigation itself — we do NOT call
+    // startViewTransition here; we only DECIDE whether to skip the manual fade.
+    var supportsViewTransition =
+      (typeof document !== 'undefined' && 'startViewTransition' in document);
+
+    // reducedMotion: guarded so it never throws if matchMedia is unavailable;
+    // defaults to false in that case.
+    var reducedMotion = false;
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      reducedMotion = !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    if (ssNavStrategy({ supportsViewTransition: supportsViewTransition, reducedMotion: reducedMotion }) === 'view-transition') {
+      // Skip the manual opacity fade — the browser cross-fades old→new via the
+      // CSS @view-transition opt-in. No 90ms manual hold (no double-animation).
+      window.location.href = url;
+      return;
+    }
+  } catch (_) {
+    // Any error computing the environment → fall through to the manual-fade
+    // path below. Never break navigation.
+  }
+
+  // 'instant' strategy (or fallback): keep today's behavior EXACTLY.
   document.body.style.transition = 'opacity 0.1s ease';
   document.body.style.opacity = '0';
   // Navigate almost immediately — the old 230ms hold was pure dead time before
@@ -6945,12 +6977,37 @@ function ssShouldRevealBody(evt) {
   return type === 'DOMContentLoaded' || type === 'pageshow';
 }
 
+/**
+ * ssNavStrategy — resolve the cross-document navigation strategy (Phase 2).
+ * Pure: the env booleans are computed by the caller (matchMedia +
+ * 'startViewTransition' detection); this helper never touches the DOM.
+ *
+ *   env = {
+ *     supportsViewTransition: boolean,  // browser supports cross-document View Transitions
+ *     reducedMotion:          boolean,  // prefers-reduced-motion: reduce
+ *   }
+ *
+ * Returns 'view-transition' IFF (supportsViewTransition === true AND
+ * reducedMotion === false); every other combination → 'instant'. When
+ * 'view-transition' the caller skips the manual ssNavigate opacity fade (the
+ * browser owns the animation); when 'instant' it degrades to today's instant
+ * cut. Defensive: missing/loose fields coerce via !! so a bad env resolves to
+ * 'instant' rather than throwing.
+ */
+function ssNavStrategy(env) {
+  var e = env || {};
+  var supportsViewTransition = !!e.supportsViewTransition;
+  var reducedMotion = !!e.reducedMotion;
+  return (supportsViewTransition && !reducedMotion) ? 'view-transition' : 'instant';
+}
+
 /* Expose consistently with the other ss* helpers (window in the browser),
    plus a guarded CommonJS export so the Node property tests can require these
    pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
 if (typeof window !== 'undefined') {
   window.ssResolveFirstFrame = ssResolveFirstFrame;
   window.ssShouldRevealBody = ssShouldRevealBody;
+  window.ssNavStrategy = ssNavStrategy;
   window.ssClipProgress = ssClipProgress;
   window.ssSeekToTime = ssSeekToTime;
   window.ssSetMediaMuted = ssSetMediaMuted;
@@ -6968,6 +7025,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // PWA Black Screen Load — Phase 1 pure helpers
   module.exports.ssResolveFirstFrame = ssResolveFirstFrame;
   module.exports.ssShouldRevealBody = ssShouldRevealBody;
+  module.exports.ssNavStrategy = ssNavStrategy;
   module.exports.ssClipProgress = ssClipProgress;
   module.exports.ssSeekToTime = ssSeekToTime;
   module.exports.ssSetMediaMuted = ssSetMediaMuted;

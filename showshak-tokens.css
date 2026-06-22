@@ -65,6 +65,28 @@ html, body {
   color: var(--white);
 }
 
+/* ─── CROSS-DOCUMENT VIEW TRANSITIONS ─────────────
+   Opt in to same-origin MPA View Transitions. The at-rule MUST be
+   top-level (not nested). Unsupported browsers ignore it and fall
+   back to today's instant cut — explicit graceful fallback, no JS.
+   Fast, subtle cross-fade tuned to ShowShak's motion tokens so it
+   matches the snappy ssNavigate feel (no reintroduced sluggishness).
+─────────────────────────────────────────────── */
+@view-transition { navigation: auto; }
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+  animation-timing-function: var(--ease-smooth);
+}
+
+/* Reduced-motion guard: kill the cross-fade so the declarative layer
+   is self-consistent with the JS 'instant' strategy (Task 9.4). */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; }
+}
+
 /* ─── FONT IMPORT REMINDER ────────────────────
    Each page must include this in <head>:
    <link rel="preconnect" href="https://fonts.googleapis.com">

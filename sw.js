@@ -15,7 +15,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v11';
+var CACHE_VERSION = 'v12';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 // Best-effort precache of the app shell (failures are ignored so install never

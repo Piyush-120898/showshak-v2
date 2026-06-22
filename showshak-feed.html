@@ -649,17 +649,26 @@ html, body { overflow: hidden; }
   if (!standalone || shownThisSession) { splash.remove(); return; }
   try { sessionStorage.setItem('ss_splash_v1', '1'); } catch (e) {}
   document.body.style.opacity = '1';   // splash covers FOUC → reveal it immediately
+  // Brand moment: hold the cold-launch splash long enough for the logo + tagline
+  // to register (a Netflix-style intro beat), even when the feed is ready sooner.
+  // This is the productive prefetch window — the feed mounts + warms BEHIND the
+  // splash (see initFeed), so when it lifts, scrolling is already smooth.
+  // Cold-launch ONLY (gated above) — never on internal navigation, so the fast
+  // ~160ms page transitions are untouched. Tune SS_SPLASH_MIN_MS to taste.
+  var SS_SPLASH_MIN_MS = 3000;
   var shown = Date.now();
   window.__ssHideSplash = function () {
     var el = document.getElementById('ss-splash'); if (!el) return;
-    var wait = Math.max(0, 800 - (Date.now() - shown));   // min display so it never flashes
+    var wait = Math.max(0, SS_SPLASH_MIN_MS - (Date.now() - shown));   // hold for the brand beat
     setTimeout(function () {
       el.style.opacity = '0';
       setTimeout(function () { if (el && el.parentNode) el.remove(); }, 480);
     }, wait);
     window.__ssHideSplash = null;
   };
-  setTimeout(function () { if (window.__ssHideSplash) window.__ssHideSplash(); }, 3500); // safety net
+  // Safety net: always clear the splash even if the feed never signals ready
+  // (exceeds the min-display floor + the fade-out so it can never get stuck).
+  setTimeout(function () { if (window.__ssHideSplash) window.__ssHideSplash(); }, SS_SPLASH_MIN_MS + 2000);
 })();
 </script>
 
@@ -830,6 +839,18 @@ async function initFeed() {
   const cache = (typeof ssReadFeedCache === 'function') ? ssReadFeedCache() : null;
   const haveCache = !!(cache && cache.clips && cache.clips.length);
 
+  // Cold-launch warm depth: the ~3s splash brand-beat is a FREE prefetch window,
+  // so warm MORE of the first window than the steady-state 2-ahead — gated by
+  // network tier so a weak connection isn't choked. Warming = HLS manifest +
+  // poster prefetch only (de-duped); it NEVER mounts a player, so the bounded
+  // live-player pool (locked decision) is unaffected.
+  let _coldWarm = 5;
+  try {
+    const _et = (navigator.connection && navigator.connection.effectiveType) || undefined;
+    const _tier = (typeof ssNetworkTier === 'function') ? ssNetworkTier(_et) : 'medium';
+    _coldWarm = (_tier === 'slow') ? 2 : (_tier === 'fast') ? 8 : 5;
+  } catch (e) { /* default depth */ }
+
   // Cold open (no cached feed): paint the skeleton immediately so the feed is
   // never an empty void during the first fetch. Lift the splash so the skeleton
   // (real progress) is what shows. mountInline() replaces it once clips load.
@@ -846,7 +867,7 @@ async function initFeed() {
     // doesn't wait on a cold fetch.
     if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, 1);
     ClipEngine.mountInline(feedEl, SHOWS);
-    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS);
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, _coldWarm);
     mountedFromCache = true;
     if (window.__ssHideSplash) window.__ssHideSplash();   // feed is visible → lift the splash
     // Very fresh cache → skip the revalidation query entirely (lighter on DB).
@@ -860,7 +881,7 @@ async function initFeed() {
   const real = await loadRealClips();
   if (real) {
     if (typeof ssWriteFeedCache === 'function') ssWriteFeedCache(SHOWS);
-    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS);
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, _coldWarm);
     // Re-mount ONLY if the first window changed — a correct cache never flashes
     // or interrupts the clip already playing.
     if (!mountedFromCache || (typeof ssFeedListChanged === 'function' && ssFeedListChanged(cache && cache.clips, SHOWS))) {

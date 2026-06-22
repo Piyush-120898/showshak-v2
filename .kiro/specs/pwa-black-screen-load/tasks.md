@@ -172,7 +172,7 @@ real-device checks only.
     `prop-reveal-body`) MUST be green. Ask the user if questions arise.
   - _Requirements: 3.5_
 
-- [~] 7. Phase 1 founder-run real-device verification (FOUNDER-RUN — no migrations)
+- [x] 7. Phase 1 founder-run real-device verification (FOUNDER-RUN — no migrations)
   - **Founder runs this on the installed PWA on a real device** (mid-tier Android + throttled 4G).
   - Navigate Feed → each page → back, repeatedly, with cold caches. **Pass:** no black screen
     at any point; a non-black shell/skeleton is visible on the very first frame of every
@@ -183,7 +183,7 @@ real-device checks only.
 
 ### PHASE 2 — Cross-Document View Transitions (additive; ship after Phase 1)
 
-- [~] 8. Write property test for `ssNavStrategy(env)`
+- [x] 8. Write property test for `ssNavStrategy(env)`
   - **Property 4: View-Transition Strategy Has No Double-Animation** - ssNavStrategy
   - Author `tests/prop-nav-strategy.test.js` (fast-check; `installDomStub()`; `{ numRuns: ITER }`;
     tagged `// Feature: pwa-black-screen-load, Property 4` + `// **Validates: Requirements 2.1, 3.4**`).
@@ -193,16 +193,16 @@ real-device checks only.
   - _Files: tests/prop-nav-strategy.test.js, tests/run-all.js_
   - _Requirements: 2.1, 3.4_
 
-- [ ] 9. Implement Phase 2 — View Transitions reconciled with `ssNavigate`
+- [x] 9. Implement Phase 2 — View Transitions reconciled with `ssNavigate`
 
-  - [~] 9.1 Add `ssNavStrategy({ supportsViewTransition, reducedMotion })` to `showshak-shared.js`
+  - [x] 9.1 Add `ssNavStrategy({ supportsViewTransition, reducedMotion })` to `showshak-shared.js`
     - Returns `'view-transition' | 'instant'` per Property 4; dual-export (`module.exports.*`
       + `window.*`).
     - _Expected_Behavior: ssNavStrategy returns 'view-transition' only when supported && !reducedMotion_
     - _Files: showshak-shared.js, tests/prop-nav-strategy.test.js_
     - _Requirements: 2.1, 3.4_
 
-  - [~] 9.2 Add the `@view-transition` opt-in + fast transition CSS to the shared CSS file
+  - [x] 9.2 Add the `@view-transition` opt-in + fast transition CSS to the shared CSS file
     - `@view-transition { navigation: auto; }` plus a fast cross-fade tuned to ShowShak's
       motion tokens (target ~120–180ms, `var(--ease-smooth)`), in the global tokens CSS file
       (`showshak-tokens.css` / `showshak-components.css`). Unsupported browsers ignore the
@@ -211,7 +211,7 @@ real-device checks only.
     - _Files: showshak-tokens.css (or showshak-components.css)_
     - _Requirements: 2.1_
 
-  - [~] 9.3 Reconcile `ssNavigate()` — exactly one animation (no double-animation)
+  - [x] 9.3 Reconcile `ssNavigate()` — exactly one animation (no double-animation)
     - When `ssNavStrategy` is `'view-transition'`: skip the manual `opacity` fade and navigate
       immediately (`window.location.href = url`); the browser owns the animation. When
       `'instant'`: keep today's ~90ms manual fade + redirect (or an instant cut under reduced
@@ -221,26 +221,26 @@ real-device checks only.
     - _Files: showshak-shared.js_
     - _Requirements: 2.1, 3.4_
 
-  - [~] 9.4 Respect `prefers-reduced-motion`
+  - [x] 9.4 Respect `prefers-reduced-motion`
     - `ssNavStrategy` returns `'instant'` under reduced motion; additionally wrap the transition
       CSS in `@media (prefers-reduced-motion: reduce) { ::view-transition-old(root), ::view-transition-new(root) { animation: none; } }`.
     - _Preservation: reduced-motion / unsupported browser degrades to today's instant behavior (Req 3.4)_
     - _Files: showshak-tokens.css (or showshak-components.css), showshak-shared.js_
     - _Requirements: 3.4_
 
-  - [~] 9.5 Verify the nav-strategy property test passes
+  - [x] 9.5 Verify the nav-strategy property test passes
     - **Property 4: View-Transition Strategy Has No Double-Animation** - ssNavStrategy
     - **IMPORTANT**: Re-run the SAME test from task 8. Run `node tests/run-all.js`.
     - **EXPECTED OUTCOME**: `prop-nav-strategy` PASSES.
     - _Files: tests/prop-nav-strategy.test.js_
     - _Requirements: 2.1, 3.4_
 
-  - [~] 9.6 Verify preservation tests still pass (no regressions from Phase 2)
+  - [x] 9.6 Verify preservation tests still pass (no regressions from Phase 2)
     - **Property 2: Preservation** - Non-Buggy Inputs Unchanged
     - Re-run the baseline from task 2 + Phase 1 tests. Run `node tests/run-all.js`.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [~] 10. Phase 2 checkpoint — keep the suite green
+- [x] 10. Phase 2 checkpoint — keep the suite green
   - Run `node tests/run-all.js`; the full suite (incl. `prop-nav-strategy`) MUST be green.
   - _Requirements: 3.5_
 
