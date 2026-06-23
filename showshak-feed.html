@@ -683,7 +683,12 @@ html, body { overflow: hidden; }
       var first = obj && obj.clips && obj.clips[0];
       if (!first) return;
       if (first.poster && typeof Image === 'function') { try { var im = new Image(); im.src = first.poster; } catch (e) {} }
-      if (first.muxPlaybackId && typeof fetch === 'function') _coldPrefetchSeg(first.muxPlaybackId);
+      // The first-segment prefetch is only reusable when the SW Segment_Cache is
+      // on; otherwise it just competes with the active clip for the stream.mux.com
+      // connection pool. Gate on the same opt-in flag (ss_ff_segcache='on').
+      var _segOn = false;
+      try { _segOn = localStorage.getItem('ss_ff_segcache') === 'on'; } catch (e) {}
+      if (_segOn && first.muxPlaybackId && typeof fetch === 'function') _coldPrefetchSeg(first.muxPlaybackId);
     } catch (e) {}
   })();
 

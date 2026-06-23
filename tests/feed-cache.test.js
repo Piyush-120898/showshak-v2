@@ -67,6 +67,9 @@ global.document = {
   createElement: () => elementStub(), createElementNS: () => elementStub(),
 };
 global.window.performance = global.performance;
+// _ssSegPrefetchOn()/_ssFeatureOff() read the BARE `localStorage` global (as in a
+// browser page), so mirror window.localStorage onto it for the gate to resolve.
+global.localStorage = global.window.localStorage;
 global.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
 global.MutationObserver = class { observe() {} disconnect() {} takeRecords() { return []; } };
 
@@ -146,6 +149,9 @@ check('C4: ssFeedListChanged false iff first window matches by id+order', () => 
 });
 
 check('C5: ssWarmClips bounded to N, de-duped per playback id, never throws', () => {
+  // The first-segment prefetch is gated on the SW Segment_Cache being opt-in
+  // (ss_ff_segcache='on'); enable it here so the prefetch path is exercised.
+  W.localStorage.setItem('ss_ff_segcache', 'on');
   _fetchCalls = []; _imageSrcs = [];
   const clips = makeClips(8);
   W.ssWarmClips(clips, 2);          // warm first 2
@@ -157,6 +163,19 @@ check('C5: ssWarmClips bounded to N, de-duped per playback id, never throws', ()
   // never throws on missing/empty
   W.ssWarmClips(null, 3); W.ssWarmClips([], 3); W.ssWarmClips([{ id: 'x' }], 3);
   assert(_fetchCalls.length === 4, 'clips without playback ids add no fetches');
+  W.localStorage.removeItem('ss_ff_segcache');
+});
+
+check('C6: ssWarmClips does NOT prefetch video when the SW cache is off (default)', () => {
+  // Default (no ss_ff_segcache flag): the first-segment prefetch is gated OFF so
+  // it never competes with the active clip for the stream.mux.com connection
+  // pool. Posters still warm (cheap, different host); zero stream fetches.
+  W.localStorage.removeItem('ss_ff_segcache');
+  _fetchCalls = []; _imageSrcs = [];
+  const clips = makeClips(6).map((c, i) => ({ ...c, muxPlaybackId: 'off-' + i }));  // fresh pids (avoid _ssWarmed dedup from C5)
+  W.ssWarmClips(clips, 4);
+  assert(_fetchCalls.length === 0, 'gated off → no stream.mux.com prefetch, got ' + _fetchCalls.length);
+  assert(_imageSrcs.length > 0, 'posters should still warm when the prefetch is gated off');
 });
 
 console.log('\n' + (failures ? `FAILED (${failures})` : 'ALL PASSED'));

@@ -5221,7 +5221,9 @@ function ssWarmClips(clips, n) {
       _ssWarmed[pid] = true;
       // Circuit_Breaker engaged → active-only: skip the (budget-charged) video
       // prefetch for the rest of the session (Req 3.3). Posters still warm.
-      if (!_ssCircuitOpen) {
+      // Also gated on the SW cache being on (_ssSegPrefetchOn) — without it the
+      // prefetched bytes aren't reusable and only starve the active clip's pipe.
+      if (!_ssCircuitOpen && _ssSegPrefetchOn()) {
         try { _ssPrefetchFirstSegment(pid); } catch (e) {}
       }
     }
@@ -5348,6 +5350,21 @@ function _ssFeatureOff(name) {
   } catch (e) { return false; }
 }
 
+/* _ssSegPrefetchOn() — master gate for the explicit first-segment prefetch
+   (warm / progressive deepening / cold-start). These fetches only HELP when the
+   SW Segment_Cache is on to make the bytes reusable; with it off they just
+   compete with the ACTIVE clip for the limited stream.mux.com connection pool
+   (~6/host) and STALL playback as upcoming-clip prefetches pile up. So the whole
+   prefetch pipeline is gated on the SAME opt-in flag as the SW cache
+   (ss_ff_segcache='on'). Off by default → behaviour matches the website (native
+   players + poster warming only). Fail-soft: any error → false (off). */
+function _ssSegPrefetchOn() {
+  try {
+    if (typeof localStorage === 'undefined' || !localStorage) return false;
+    return localStorage.getItem('ss_ff_segcache') === 'on';
+  } catch (e) { return false; }
+}
+
 /* ── Progressive-deepening controller (feed-clip-load-performance Phase 2,
    task 11; Req 2.1/2.2/2.4/3.3/3.4/3.6) ───────────────────────────────────
    Impure loop that spends SPARE bandwidth deepening upcoming clips ONLY once
@@ -5416,6 +5433,10 @@ function _ssDeepenTick() {
 function _ssStartDeepenController(host) {
   _ssDeepenHost = (host === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
   if (_ssFeatureOff('deepen')) { _ssStopDeepenController(); return; }   // kill-switch
+  // Deepening prefetches upcoming segments; those bytes are only reusable when
+  // the SW Segment_Cache is on, and otherwise just starve the active clip's
+  // stream.mux.com connection pool. Gate on the same opt-in flag.
+  if (!_ssSegPrefetchOn()) { _ssStopDeepenController(); return; }
   if (_ssDeepenTimer) return;                   // already running (idempotent across setActive calls)
   if (typeof setInterval !== 'function') return;
   _ssDeepenTimer = setInterval(_ssDeepenTick, SS_DEEPEN_TICK_MS);
