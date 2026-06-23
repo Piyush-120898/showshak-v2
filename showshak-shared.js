@@ -4314,10 +4314,17 @@ const ClipEngine = {
     // Render the clip frames (Feed's existing classes/ids).
     container.innerHTML = _inlineClips.map((c, i) => _inlineClipHTML(c, i)).join('');
 
-    // Build one Media_Surface + one Progress_Bar per clip via the shared
-    // per-clip wiring (_inlineWireClip), which appendInline reuses for the
-    // sliding window. The engine speaks ONLY the Media_Surface contract here.
-    _inlineClips.forEach((clip, i) => _inlineWireClip(i));
+    // Mount Media_Surfaces ONLY for the initial Player_Pool band around clip 0 —
+    // NOT one per clip. iOS/WebKit strictly limits how many <video> elements can
+    // hold loaded media at once; mounting a <mux-player> for every clip (up to
+    // Metadata_Window = 30) made iOS refuse to start clips — they stuck on the
+    // first frame (Android/Chrome is lenient, so it played fine there). The
+    // frames + poster backgrounds are rendered for ALL clips above; the
+    // IntersectionObserver + pruneInlineSurfaces (the Player_Pool) mount the rest
+    // on demand as you scroll, bounded to SS_MAX_LIVE_PLAYERS — same as the
+    // fullscreen viewer (which is why fullscreen never showed this bug).
+    ssMountedPlayerSet(0, _inlineClips.length, SS_MAX_LIVE_PLAYERS)
+      .forEach(function (i) { _inlineWireClip(i); });
 
     // Wire the fixed desktop #action-rail's controls to the engine (acting on
     // the active clip). Save's data-save-id + state are refreshed in _inlineSyncRail.
@@ -4361,7 +4368,12 @@ const ClipEngine = {
     _inlineClips = _inlineClips.concat(fresh);
     container.insertAdjacentHTML('beforeend',
       fresh.map((c, k) => _inlineClipHTML(c, startIdx + k)).join(''));
-    fresh.forEach((c, k) => _inlineWireClip(startIdx + k));
+    // Do NOT mount a Media_Surface for each appended clip — that re-introduces the
+    // "too many live <mux-player>s" bug (iOS refuses to start clips → stuck on the
+    // first frame). The appended clips are ahead of the mounted band; their frames
+    // + posters are rendered above, and the IntersectionObserver below drives
+    // pruneInlineSurfaces to mount each one on demand (bounded to SS_MAX_LIVE_PLAYERS)
+    // when it scrolls into view — same Player_Pool discipline as the initial mount.
     // Observe the newly appended frames so the active-clip observer drives them.
     if (_inlineObserver) fresh.forEach((c, k) => {
       const node = document.getElementById(`clip-${startIdx + k}`);

@@ -15,7 +15,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v19';
+var CACHE_VERSION = 'v20';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
