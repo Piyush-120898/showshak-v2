@@ -4703,18 +4703,29 @@ function _inlineTogglePause(idx) {
   }
 }
 
-/* Mute every mounted surface EXCEPT the active one (audio-correctness invariant).
-   Belt-and-braces alongside the play-intent guard: even if any future path
-   leaves a non-active surface playing, this guarantees audio can only ever come
-   from the clip you're actually looking at. The active surface's own mute state
-   is set by the activation path that follows. Host-agnostic (pass the host's
-   surface array). */
+/* Solo the active clip: PAUSE + mute every mounted surface EXCEPT the active one.
+   This is the "only the clip you're looking at ever plays" invariant. Muting
+   alone is NOT enough: a non-active <mux-player> that is still PLAYING (e.g. its
+   autoplay attribute / play-intent got re-armed when the player pool repointed it
+   while scrolling the feed) steals one of the platform's scarce simultaneous-
+   video slots. On iOS that forces the ON-SCREEN clip to pause — so it freezes on
+   the first frame while an off-screen clip plays silently in the background (the
+   "clip sticks after the thumbnail; another clip is a quarter through" bug, which
+   only shows in the heavily-recycling inline Feed, never in the fullscreen viewer
+   that barely recycles). Pausing keeps the element's buffered data + preload, so
+   scrolling to a paused-but-warmed clip still starts instantly. The active
+   surface's own play/mute state is set by the activation path that follows.
+   Host-agnostic (pass the host's surface array). */
 function _ssMuteOthers(surfaces, activeIdx) {
   if (!Array.isArray(surfaces)) return;
   for (var i = 0; i < surfaces.length; i++) {
     if (i === activeIdx) continue;
     var s = surfaces[i];
-    if (s && typeof s.setMuted === 'function') { try { s.setMuted(true); } catch (e) {} }
+    if (!s) continue;
+    // Pause FIRST (also clears the autoplay attribute via the surface's pause())
+    // so the element can never grab a playback slot, then mute as a backstop.
+    if (typeof s.pause === 'function')    { try { s.pause(); } catch (e) {} }
+    if (typeof s.setMuted === 'function') { try { s.setMuted(true); } catch (e) {} }
   }
 }
 
