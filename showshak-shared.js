@@ -5437,7 +5437,13 @@ function _ssPostSegWindow(host) {
   try {
     if (typeof navigator === 'undefined' || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
     var ctrl = navigator.serviceWorker.controller;
-    if (_ssFeatureOff('segcache')) { ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: false }); return; }
+    // The SW Segment_Cache is OPT-IN (off by default) until its range/206 path
+    // is validated on-device — with it off, the PWA delivers Mux exactly like
+    // the website (no SW interception). Enable on-device with
+    // localStorage ss_ff_segcache='on'.
+    var segOn = false;
+    try { segOn = (typeof localStorage !== 'undefined' && localStorage) && localStorage.getItem('ss_ff_segcache') === 'on'; } catch (e) { segOn = false; }
+    if (!segOn) { ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: false }); return; }
     ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: true });
     var isInline  = (host === 'INLINE');
     var clips     = isInline ? _inlineClips : _ssvClips;
@@ -7102,6 +7108,14 @@ function VideoSurface(clip, opts) {
     play: function () {
       wantPlay = true;
       if (!el) return Promise.resolve();
+      // The clip we intend to PLAY is, by definition, the ACTIVE clip — which
+      // always fully preloads ("active wins the pipe"). Force preload='auto'
+      // HERE so playback never stalls waiting on the tier-assignment order
+      // (_ssApplyPreloadTiers runs later in setActive). This fixes the "poster
+      // clears / first frame shows, then the clip freezes until reopened" race
+      // introduced when mount stopped hardcoding preload='auto'.
+      try { el.preload = 'auto'; el.setAttribute('preload', 'auto'); } catch (e) {}
+      preloadTier = 'auto';
       // autoplay backstops the case where the source isn't ready yet: the player
       // resumes the moment it can, even if this immediate play() doesn't stick.
       // The `autoplay` ATTRIBUTE (not just the property) survives a custom-element

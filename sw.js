@@ -15,7 +15,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v16';
+var CACHE_VERSION = 'v17';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -31,7 +31,7 @@ var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 var SEG_CACHE = 'showshak-seg';               // dedicated, version-independent bucket
 var SEG_CACHE_CEILING = 200 * 1024 * 1024;    // ~200 MB LRU-by-bytes ceiling
 var SEG_WINDOW = { ahead: 5, behind: 5 };     // eviction eligibility window (clips around active)
-var _segCacheEnabled = true;                  // toggled by the page kill-switch
+var _segCacheEnabled = false;                 // OFF by default — Phase 4 is OPT-IN (page posts enable when ss_ff_segcache='on') until the 206 path is validated on-device
 var _segWindow = { ids: [], activeIdx: 0 };   // ordered playback ids + active index (page-supplied)
 var _segIndex = {};                           // href → { key, bytes, lastUsed, clipDistance }
 var _segEvictScheduled = false;
