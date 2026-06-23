@@ -94,12 +94,12 @@ check('C1: write then read round-trips clips, capped at SS_FEED_CACHE_MAX', () =
   for (let it = 0; it < 200; it++) {
     _user = { id: 'u' + rint(5) };
     W.localStorage.clear();
-    const n = 1 + rint(25);
+    const n = 1 + rint(40);
     const clips = makeClips(n);
     W.ssWriteFeedCache(clips);
     const got = W.ssReadFeedCache();
     assert(got && Array.isArray(got.clips), 'expected a cache hit');
-    assert(got.clips.length === Math.min(n, 10), 'expected cap at 10, got ' + got.clips.length);
+    assert(got.clips.length === Math.min(n, W.SS_FEED_CACHE_MAX), 'expected cap at ' + W.SS_FEED_CACHE_MAX + ', got ' + got.clips.length);
     for (let i = 0; i < got.clips.length; i++) assert(got.clips[i].id === clips[i].id, 'clip order/id mismatch');
     assert(typeof got.ageMs === 'number' && got.ageMs >= 0, 'ageMs should be a non-negative number');
   }
@@ -133,14 +133,15 @@ check('C3: cache is keyed per user (no cross-user bleed)', () => {
 
 check('C4: ssFeedListChanged false iff first window matches by id+order', () => {
   for (let it = 0; it < 200; it++) {
-    const a = makeClips(1 + rint(12));
+    const a = makeClips(1 + rint(40));
     const b = a.map((c) => ({ id: c.id }));          // same ids/order
     assert(W.ssFeedListChanged(a, b) === false, 'identical first window should be unchanged');
     if (b.length > 1) {                               // swap two → changed
       const swapped = b.slice(); const t = swapped[0]; swapped[0] = swapped[1]; swapped[1] = t;
       assert(W.ssFeedListChanged(a, swapped) === true, 'reordered window should be changed');
     }
-    assert(W.ssFeedListChanged(a, b.concat([{ id: 'extra' }])) === (Math.min(a.length, 10) !== Math.min(b.length + 1, 10)), 'length-diff detection');
+    const CAP = W.SS_FEED_CACHE_MAX;
+    assert(W.ssFeedListChanged(a, b.concat([{ id: 'extra' }])) === (Math.min(a.length, CAP) !== Math.min(b.length + 1, CAP)), 'length-diff detection');
   }
 });
 

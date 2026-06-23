@@ -4263,6 +4263,16 @@ const ClipEngine = {
     // Reach = genuine attention: record a view only after this clip has stayed
     // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
     _ssScheduleViewDwell('FULLSCREEN');
+
+    // Refresh the preload ladder + resolution cap for the whole mounted band
+    // relative to the new active clip (only the active clip is 'auto').
+    _ssApplyPreloadTiers('FULLSCREEN');
+    // Spend spare bandwidth deepening upcoming clips once the active clip's
+    // buffer is satisfied (Phase 2; active always wins the pipe).
+    _ssStartDeepenController('FULLSCREEN');
+    // Tell the SW the active-clip window so its Segment_Cache can compute
+    // clipDistance for window/LRU eviction (Phase 4).
+    _ssPostSegWindow('FULLSCREEN');
   },
 
   /* mountInline(container, clips, opts) — the INLINE render mode. Rebuilds the
@@ -4282,6 +4292,7 @@ const ClipEngine = {
 
     // Tear down any previous inline mount (no surface/observer/timer leaks).
     _ssCancelViewDwell();   // drop any pending dwell-view from the old mount
+    _ssStopDeepenController();   // stop deepening from the old mount (restarted on first setActive)
     _inlineSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
     if (_inlineObserver) { _inlineObserver.disconnect(); _inlineObserver = null; }
     if (typeof _inlineInteractionCleanup === 'function') { _inlineInteractionCleanup(); _inlineInteractionCleanup = null; }
@@ -4751,6 +4762,16 @@ function _inlineSetActive(idx) {
   // Reach = genuine attention: record a view only after this clip has stayed
   // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
   _ssScheduleViewDwell('INLINE');
+
+  // Refresh the preload ladder + resolution cap for the whole mounted band
+  // relative to the new active clip (only the active clip is 'auto').
+  _ssApplyPreloadTiers('INLINE');
+  // Spend spare bandwidth deepening upcoming clips once the active clip's
+  // buffer is satisfied (Phase 2; active always wins the pipe).
+  _ssStartDeepenController('INLINE');
+  // Tell the SW the active-clip window so its Segment_Cache can compute
+  // clipDistance for window/LRU eviction (Phase 4).
+  _ssPostSegWindow('INLINE');
 }
 
 /* Sync the single fixed desktop #action-rail to the active clip (mirrors the
@@ -4885,7 +4906,7 @@ function ssStartFeedPager(container, initialCount) {
      • Warming is BOUNDED to the next couple of clips so we never burn Mux
        bandwidth or crash mobile with too many live players. */
 var SS_FEED_CACHE_VERSION = 1;                    // bump to invalidate all caches
-var SS_FEED_CACHE_MAX     = 10;                   // cap stored clips (~first window)
+var SS_FEED_CACHE_MAX     = 30;                   // cap stored clips = Metadata_Window (Req 7.1/7.4; feed-clip-load-performance Phase 4, task 19). METADATA ONLY — never video bytes; matches SS_METADATA_WINDOW so scroll-back within the window renders with no DB round-trip.
 var SS_FEED_CACHE_TTL_MS  = 6 * 60 * 60 * 1000;   // 6h: render stale, then refresh
 var SS_FEED_FRESH_MS      = 30 * 1000;            // <30s old → skip revalidation (saves a query)
 var SS_WARM_AHEAD         = 2;                     // warm only the next N clips
@@ -4895,6 +4916,79 @@ var SS_WARM_AHEAD         = 2;                     // warm only the next N clips
 // quality. This is the universal first-frame lever; Phase 5 layers a
 // tier-driven max-auto-resolution ceiling on top for slow connections.
 var SS_START_BW_KBPS      = 700;                   // kbps seed for the first segment
+
+/* ════════════════════════════════════════════════════════════════════════
+   FEED CLIP-LOAD PERFORMANCE — TUNABLE CONSTANTS (Phase 0; Req 11.1/11.2)
+   ────────────────────────────────────────────────────────────────────────
+   Every prefetch/cache magnitude lives here as a NAMED tunable so the founder
+   can dial generosity up or down without touching control logic. These are
+   consumed by later phases (preload ladder, deepening, splash lane, SW segment
+   cache); Phase 0 only wires SS_SESSION_BYTE_BUDGET into the prefetch counter
+   below. Dual-exported (window.* + module.exports) like the other SS_* consts.
+   ════════════════════════════════════════════════════════════════════════ */
+var SS_PREFETCH_DEPTH     = { slow: 1, medium: 3, fast: 5 };   // clips ahead eligible to prefetch, per Network_Tier (Req 1.5; single source for ssNetworkPolicy.preloadDepth)
+var SS_SESSION_BYTE_BUDGET = 150 * 1024 * 1024;                // ~150 MB per-session prefetch (non-active) byte ceiling (Req 3.7)
+var SS_SEG_CACHE_WINDOW   = { behind: 5, ahead: 5 };           // segment-cache eviction window: N behind + N ahead of active (Req 4.5)
+var SS_SEG_CACHE_CEILING  = 200 * 1024 * 1024;                 // ~200 MB LRU-by-bytes ceiling for the SW segment cache (Req 4.6)
+var SS_RES_CAP            = { slow: '480p', medium: '720p', fast: '720p' }; // delivered-resolution cap per Network_Tier (Req 6.2/6.3)
+var SS_SPLASH_FLOOR_MS    = 700;                               // min brand-splash duration (first-ever launch uses 3000 — that lives in the feed splash script; not changed here) (Req 5.7)
+var SS_SPLASH_CEILING_MS  = 4000;                              // hard max splash duration; lifts regardless of clip readiness (Req 5.7)
+var SS_METADATA_WINDOW    = 30;                                // clips retained in the L1 metadata (SWR) cache (Req 7.1/7.4)
+var SS_BUFFER_SATISFIED_S = 5;                                 // active-clip buffered-ahead seconds that gate progressive deepening (Req 2.1)
+var SS_DWELL_THRESHOLD    = 0.5;                               // min dwell (0.0–1.0) at/above which aggressive deepening is permitted (Req 2.3)
+
+if (typeof window !== 'undefined') {
+  window.SS_PREFETCH_DEPTH      = SS_PREFETCH_DEPTH;
+  window.SS_SESSION_BYTE_BUDGET = SS_SESSION_BYTE_BUDGET;
+  window.SS_SEG_CACHE_WINDOW    = SS_SEG_CACHE_WINDOW;
+  window.SS_SEG_CACHE_CEILING   = SS_SEG_CACHE_CEILING;
+  window.SS_RES_CAP             = SS_RES_CAP;
+  window.SS_SPLASH_FLOOR_MS     = SS_SPLASH_FLOOR_MS;
+  window.SS_SPLASH_CEILING_MS   = SS_SPLASH_CEILING_MS;
+  window.SS_METADATA_WINDOW     = SS_METADATA_WINDOW;
+  window.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
+  window.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports.SS_PREFETCH_DEPTH      = SS_PREFETCH_DEPTH;
+  module.exports.SS_SESSION_BYTE_BUDGET = SS_SESSION_BYTE_BUDGET;
+  module.exports.SS_SEG_CACHE_WINDOW    = SS_SEG_CACHE_WINDOW;
+  module.exports.SS_SEG_CACHE_CEILING   = SS_SEG_CACHE_CEILING;
+  module.exports.SS_RES_CAP             = SS_RES_CAP;
+  module.exports.SS_SPLASH_FLOOR_MS     = SS_SPLASH_FLOOR_MS;
+  module.exports.SS_SPLASH_CEILING_MS   = SS_SPLASH_CEILING_MS;
+  module.exports.SS_METADATA_WINDOW     = SS_METADATA_WINDOW;
+  module.exports.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
+  module.exports.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
+}
+
+/* ── Session prefetch byte budget + circuit breaker (Req 3.1/3.2/3.5) ──
+   A single per-session running total of bytes prefetched for NON-active clips.
+   _ssChargePrefetch(bytes) adds finite, non-negative byte counts (ignoring
+   NaN/negative) and engages the circuit breaker once the cumulative total
+   reaches SS_SESSION_BYTE_BUDGET. _ssResetPrefetchBudget() starts a clean
+   session (called from the feed cold-open in initFeed). These are impure
+   session helpers (like ssRecordView), so they are WINDOW-ONLY — not part of
+   the pure module.exports block. No prefetch charges the budget yet; Phases
+   1–2 wire the actual downloads through _ssChargePrefetch. */
+var _ssPrefetchBytes = 0;
+var _ssCircuitOpen = false;
+
+function _ssChargePrefetch(bytes) {
+  if (typeof bytes !== 'number' || !isFinite(bytes) || bytes < 0) return;   // ignore NaN/Infinity/negative
+  _ssPrefetchBytes += bytes;
+  if (_ssPrefetchBytes >= SS_SESSION_BYTE_BUDGET) _ssCircuitOpen = true;
+}
+
+function _ssResetPrefetchBudget() {
+  _ssPrefetchBytes = 0;
+  _ssCircuitOpen = false;
+}
+
+if (typeof window !== 'undefined') {
+  window._ssChargePrefetch = _ssChargePrefetch;
+  window._ssResetPrefetchBudget = _ssResetPrefetchBudget;
+}
 
 function _ssFeedCacheKey() {
   var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
@@ -4992,8 +5086,131 @@ function ssFeedListChanged(a, b) {
 }
 
 /* Warm the next few clips so playback + first frame are instant when reached.
-   Bounded by SS_WARM_AHEAD; de-duped per playback id so we never re-fetch. */
+   Bounded by SS_WARM_AHEAD; de-duped per playback id so we never re-fetch.
+
+   feed-clip-load-performance Phase 1, task 6 (Req 1.2/3.1/10.7): instead of the
+   old opaque `no-cors` manifest fetch (which the player can't reuse), we do a
+   real CORS first-segment prefetch — fetch the Mux media playlist, parse out the
+   first variant's rendition playlist, then fetch its init/map segment (if any) +
+   the first media (.ts/.m4s) segment with `cache: 'force-cache'`. Each completed
+   segment fetch is sized and charged against the session prefetch budget via
+   _ssChargePrefetch. De-duped per playback_id through _ssWarmed, posters still
+   warmed, everything fire-and-forget + fail-soft (any error is swallowed; the
+   player's own fetch still works). When the session Circuit_Breaker is open
+   (_ssCircuitOpen) we SKIP the video prefetch entirely (active-only buffering).
+
+   NOTE: without the Phase-4 service-worker segment cache these prefetched bytes
+   prime DNS/TLS + the Mux CDN edge but are NOT yet guaranteed to be reused by the
+   player; that guarantee lands in Phase 4. This task's job is to remove the
+   wasted opaque warm and start charging the budget. */
 var _ssWarmed = {};
+
+/* _ssResolveUrl(uri, base) — resolve a possibly-relative HLS URI against the
+   playlist URL it came from. Uses the URL constructor when available; falls
+   back to a naive path join. Never throws. */
+function _ssResolveUrl(uri, base) {
+  if (!uri) return null;
+  try { if (typeof URL === 'function') return new URL(uri, base).href; } catch (e) {}
+  if (/^https?:\/\//i.test(uri)) return uri;
+  try { var i = String(base).lastIndexOf('/'); return (i >= 0 ? String(base).slice(0, i + 1) : '') + uri; }
+  catch (e) { return uri; }
+}
+
+/* _ssFirstVariantUrl(text, base) — given a Mux master playlist, return the URL
+   of the first variant's rendition playlist. If `text` is already a media
+   playlist (no #EXT-X-STREAM-INF), return `base` itself so the caller reads its
+   segments directly. Never throws. */
+function _ssFirstVariantUrl(text, base) {
+  if (typeof text !== 'string') return null;
+  var lines = text.split(/\r?\n/);
+  var isMaster = false;
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i].trim();
+    if (ln.indexOf('#EXT-X-STREAM-INF') === 0) {
+      isMaster = true;
+      for (var j = i + 1; j < lines.length; j++) {
+        var u = lines[j].trim();
+        if (u && u.charAt(0) !== '#') return _ssResolveUrl(u, base);
+      }
+    }
+  }
+  return isMaster ? null : base;   // already a media playlist → use base
+}
+
+/* _ssFirstSegmentUrls(text, base) — given a media (rendition) playlist, return
+   { init, first }: the #EXT-X-MAP init/map segment URL (if any) and the first
+   media segment URL. Resolves relative URIs against `base`. Never throws. */
+function _ssFirstSegmentUrls(text, base) {
+  var out = { init: null, first: null };
+  if (typeof text !== 'string') return out;
+  var lines = text.split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i].trim();
+    if (!out.init && ln.indexOf('#EXT-X-MAP:') === 0) {
+      var m = ln.match(/URI="([^"]+)"/);
+      if (m && m[1]) out.init = _ssResolveUrl(m[1], base);
+    }
+    if (!out.first && ln.indexOf('#EXTINF') === 0) {
+      for (var j = i + 1; j < lines.length; j++) {
+        var u = lines[j].trim();
+        if (u && u.charAt(0) !== '#') { out.first = _ssResolveUrl(u, base); break; }
+      }
+    }
+    if (out.init && out.first) break;
+  }
+  return out;
+}
+
+/* _ssFetchAndCharge(url) — best-effort CORS fetch of a segment with
+   `cache: 'force-cache'`; on success read its size (Content-Length, else clone
+   the body and measure arrayBuffer().byteLength) and charge the session prefetch
+   budget. Fire-and-forget + fail-soft. */
+function _ssFetchAndCharge(url) {
+  if (typeof fetch !== 'function' || !url) return Promise.resolve();
+  return fetch(url, { cache: 'force-cache' }).then(function (resp) {
+    if (!resp || !resp.ok) return;
+    var len = 0;
+    try {
+      var cl = resp.headers && resp.headers.get && resp.headers.get('Content-Length');
+      if (cl) len = parseInt(cl, 10) || 0;
+    } catch (e) {}
+    if (len > 0) { _ssChargePrefetch(len); return; }
+    // No Content-Length → measure the body off a clone so the original stays
+    // readable for the cache/player.
+    return resp.clone().arrayBuffer().then(function (buf) {
+      _ssChargePrefetch(buf && buf.byteLength ? buf.byteLength : 0);
+    }).catch(function () {});
+  }).catch(function () {});
+}
+
+/* _ssPrefetchFirstSegment(pid) — CORS-fetch the Mux media playlist for a
+   playback id, resolve the first variant's rendition playlist, then prefetch its
+   init + first media segment (each charged against the budget). Fire-and-forget;
+   any failure falls back to the player's own fetch. */
+function _ssPrefetchFirstSegment(pid) {
+  if (typeof fetch !== 'function' || !pid) return;
+  var base = 'https://stream.mux.com/' + pid + '.m3u8';
+  try {
+    fetch(base, { cache: 'force-cache' }).then(function (resp) {
+      if (!resp || !resp.ok) return;
+      return resp.text().then(function (master) {
+        var variantUrl = _ssFirstVariantUrl(master, base);
+        if (!variantUrl) return;
+        return fetch(variantUrl, { cache: 'force-cache' }).then(function (vr) {
+          if (!vr || !vr.ok) return;
+          return vr.text().then(function (media) {
+            var segs = _ssFirstSegmentUrls(media, variantUrl);
+            var jobs = [];
+            if (segs.init)  jobs.push(_ssFetchAndCharge(segs.init));
+            if (segs.first) jobs.push(_ssFetchAndCharge(segs.first));
+            return Promise.all(jobs);
+          });
+        });
+      });
+    }).catch(function () {});
+  } catch (e) {}
+}
+
 function ssWarmClips(clips, n) {
   if (!Array.isArray(clips)) return;
   var count = Math.min((n || SS_WARM_AHEAD), clips.length);
@@ -5002,9 +5219,10 @@ function ssWarmClips(clips, n) {
     var pid = c.muxPlaybackId;
     if (pid && !_ssWarmed[pid]) {
       _ssWarmed[pid] = true;
-      // Prime DNS/TLS/CDN + the HLS manifest so the first segment loads fast.
-      if (typeof fetch === 'function') {
-        try { fetch('https://stream.mux.com/' + pid + '.m3u8', { mode: 'no-cors', cache: 'force-cache' }).catch(function () {}); } catch (e) {}
+      // Circuit_Breaker engaged → active-only: skip the (budget-charged) video
+      // prefetch for the rest of the session (Req 3.3). Posters still warm.
+      if (!_ssCircuitOpen) {
+        try { _ssPrefetchFirstSegment(pid); } catch (e) {}
       }
     }
     // Prime the poster image (instant first frame when the clip is reached).
@@ -5073,12 +5291,178 @@ function _warmTick(a, clips, policy) {
   setTimeout(function () { if (_ssWarmInFlight > 0) _ssWarmInFlight--; }, 600);
 }
 
+/* _ssApplyPreloadTiers(host) — impure: assign the pure ssPreloadTier ladder +
+   the tier resolution cap to every mounted surface of `host`, relative to the
+   active clip (feed-clip-load-performance Phase 1, task 5; Req 1.1/1.4/6.1/6.2/
+   3.3/12.4/12.5). The active clip (distance 0) is the ONLY surface set to
+   'auto'; clips at distance 1..Prefetch_Depth get 'metadata'; everything else
+   (behind the active clip or beyond the tier's depth) gets 'none'. While the
+   session Circuit_Breaker is open (_ssCircuitOpen), every NON-active surface is
+   forced to 'none' so the session falls back to active-only buffering — the
+   active clip stays 'auto'. Tier comes from ssNetworkTier(_connEffectiveType()),
+   resolution cap from ssNetworkPolicy(tier). Never throws; gradient surfaces
+   no-op through their stub methods. Called at the end of ClipEngine.setActive /
+   _inlineSetActive and after _poolRecycle re-points, so the tiers refresh on
+   every active-clip change and every pool recycle. */
+function _ssApplyPreloadTiers(host) {
+  var isInline  = (host === 'INLINE');
+  var surfaces  = isInline ? _inlineSurfaces : _ssvSurfaces;
+  var activeIdx = isInline ? _inlineActiveIdx : _ssvActiveIdx;
+  if (!Array.isArray(surfaces)) return;
+  // Kill-switch (founder on-device, no redeploy): tiering OFF → restore the
+  // pre-feature behaviour (every mounted surface buffers eagerly).
+  if (_ssFeatureOff('tiering')) {
+    for (var k = 0; k < surfaces.length; k++) {
+      var sk = surfaces[k];
+      if (sk && typeof sk.setPreloadTier === 'function') sk.setPreloadTier('auto');
+    }
+    return;
+  }
+  var tier   = ssNetworkTier(_connEffectiveType());
+  var maxRes = ssNetworkPolicy(tier).maxResolution;
+  for (var i = 0; i < surfaces.length; i++) {
+    var s = surfaces[i];
+    if (!s) continue;
+    var distance = i - activeIdx;
+    var pt = ssPreloadTier(distance, tier);
+    // Circuit_Breaker engaged → active-only buffering for the rest of the
+    // session: force every non-active surface to 'none' (the active clip,
+    // distance 0, is untouched and stays 'auto') (Req 3.3).
+    if (_ssCircuitOpen && distance !== 0) pt = 'none';
+    if (typeof s.setPreloadTier === 'function') s.setPreloadTier(pt);
+    if (typeof s.setMaxResolution === 'function') s.setMaxResolution(maxRes);
+  }
+}
+
+/* _ssFeatureOff(name) — runtime kill-switch (feed-clip-load-performance; the
+   "guardrail" the founder can flip on-device WITHOUT a redeploy). Returns true
+   when the named feature has been disabled by setting localStorage
+   `ss_ff_<name>` to the string 'off' (e.g. ss_ff_tiering, ss_ff_deepen,
+   ss_ff_coldstart, ss_ff_segcache). Any feature with the flag off falls back to
+   the pre-feature behaviour. Fail-soft: missing storage / any error → false
+   (feature stays ON). Impure (reads localStorage) so it is window-only. */
+function _ssFeatureOff(name) {
+  try {
+    if (typeof localStorage === 'undefined' || !localStorage) return false;
+    return localStorage.getItem('ss_ff_' + name) === 'off';
+  } catch (e) { return false; }
+}
+
+/* ── Progressive-deepening controller (feed-clip-load-performance Phase 2,
+   task 11; Req 2.1/2.2/2.4/3.3/3.4/3.6) ───────────────────────────────────
+   Impure loop that spends SPARE bandwidth deepening upcoming clips ONLY once
+   the active clip's buffer is satisfied — the active clip always wins the pipe.
+   A coalesced interval tick reads the active surface's bufferedAhead + dwell,
+   then asks the pure ssShouldDeepen(...) per candidate clip (distance 1..depth)
+   and, when every gate passes, prefetches that clip's first segment into the
+   cache (charging the session byte budget via _ssPrefetchFirstSegment). When the
+   Circuit_Breaker is open (_ssCircuitOpen) it stops deepening (and the ladder —
+   task 5 — forces non-active preload='none'). Single prefetch per tick keeps a
+   single download in flight. Fail-soft: every read is guarded; any error is
+   swallowed so playback is never affected. Started from setActive, stopped on
+   feed/viewer teardown. */
+var SS_DEEPEN_TICK_MS          = 750;                  // coalesced deepening evaluation cadence (ms)
+var SS_DEEPEN_SEGMENT_EST_BYTES = 1.5 * 1024 * 1024;   // ~1.5 MB assumed next-segment size for the budget gate
+var _ssDeepenTimer = null;
+var _ssDeepenHost  = null;
+
+function _ssDeepenTick() {
+  try {
+    var host = _ssDeepenHost;
+    if (!host) return;
+    if (_ssCircuitOpen) return;                 // breaker engaged → active-only for the session
+    var isInline  = (host === 'INLINE');
+    var surfaces  = isInline ? _inlineSurfaces : _ssvSurfaces;
+    var clips     = isInline ? _inlineClips    : _ssvClips;
+    var activeIdx = isInline ? _inlineActiveIdx : _ssvActiveIdx;
+    if (!Array.isArray(surfaces) || !Array.isArray(clips)) return;
+    var active = surfaces[activeIdx];
+    if (!active) return;
+
+    var ahead = (typeof active.bufferedAhead === 'function') ? active.bufferedAhead() : 0;
+    var activeBufferSatisfied = (typeof ahead === 'number') && ahead >= SS_BUFFER_SATISFIED_S;
+    if (!activeBufferSatisfied) return;         // active clip not safe yet → defer (never starve it)
+
+    var dwell = (typeof active.getProgress === 'function') ? active.getProgress() : 0;
+    var tier  = ssNetworkTier(_connEffectiveType());
+    var depth = ssNetworkPolicy(tier).preloadDepth;
+
+    for (var d = 1; d <= depth; d++) {
+      var idx = activeIdx + d;
+      if (idx >= clips.length) break;           // clamp to clips that exist (graceful degradation)
+      var clip = clips[idx];
+      var pid  = clip && clip.muxPlaybackId;
+      if (!pid || _ssWarmed[pid]) continue;     // skip gradients / already-warmed
+      var budgetRemaining = SS_SESSION_BYTE_BUDGET - _ssPrefetchBytes;
+      var should = ssShouldDeepen({
+        activeBufferSatisfied: activeBufferSatisfied,
+        distance: d,
+        networkTier: tier,
+        budgetRemainingBytes: budgetRemaining,
+        nextSegmentBytes: SS_DEEPEN_SEGMENT_EST_BYTES,
+        dwell: dwell,
+        dwellThreshold: SS_DWELL_THRESHOLD,
+        maxDistance: depth
+      });
+      if (should) {
+        _ssWarmed[pid] = true;                  // de-dupe per playback id
+        try { _ssPrefetchFirstSegment(pid); } catch (e) {}
+        break;                                  // one prefetch per tick (single in-flight)
+      }
+    }
+  } catch (e) { /* never affect playback */ }
+}
+
+function _ssStartDeepenController(host) {
+  _ssDeepenHost = (host === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
+  if (_ssFeatureOff('deepen')) { _ssStopDeepenController(); return; }   // kill-switch
+  if (_ssDeepenTimer) return;                   // already running (idempotent across setActive calls)
+  if (typeof setInterval !== 'function') return;
+  _ssDeepenTimer = setInterval(_ssDeepenTick, SS_DEEPEN_TICK_MS);
+}
+
+function _ssStopDeepenController() {
+  if (_ssDeepenTimer) { try { clearInterval(_ssDeepenTimer); } catch (e) {} _ssDeepenTimer = null; }
+  _ssDeepenHost = null;
+}
+
+/* _ssPostSegWindow(host) — tell the service worker the current ordered window of
+   Mux playback ids + the active index (feed-clip-load-performance Phase 4, task
+   22; Req 4.5). The SW uses this to compute each cached segment's clipDistance
+   for window-based + LRU eviction (ssSegmentEvictionPlan). Also carries the
+   segment-cache kill-switch: localStorage ss_ff_segcache='off' → tells the SW to
+   stop intercepting Mux on-device without a redeploy. Fail-soft; no-op when there
+   is no controlling SW. */
+function _ssPostSegWindow(host) {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    var ctrl = navigator.serviceWorker.controller;
+    if (_ssFeatureOff('segcache')) { ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: false }); return; }
+    ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: true });
+    var isInline  = (host === 'INLINE');
+    var clips     = isInline ? _inlineClips : _ssvClips;
+    var activeIdx = isInline ? _inlineActiveIdx : _ssvActiveIdx;
+    if (!Array.isArray(clips)) return;
+    var ids = [];
+    for (var i = 0; i < clips.length; i++) ids.push((clips[i] && clips[i].muxPlaybackId) || '');
+    ctrl.postMessage({ type: 'SS_SEG_WINDOW', ids: ids, activeIdx: activeIdx });
+  } catch (e) { /* best-effort */ }
+}
+
+if (typeof window !== 'undefined') {
+  window._ssFeatureOff            = _ssFeatureOff;
+  window._ssStartDeepenController = _ssStartDeepenController;
+  window._ssStopDeepenController  = _ssStopDeepenController;
+  window._ssPostSegWindow         = _ssPostSegWindow;
+}
+
 if (typeof window !== 'undefined') {
   window.ssReadFeedCache  = ssReadFeedCache;
   window.ssWriteFeedCache = ssWriteFeedCache;
   window.ssFeedListChanged = ssFeedListChanged;
   window.ssWarmClips      = ssWarmClips;
   window.SS_FEED_FRESH_MS = SS_FEED_FRESH_MS;
+  window.SS_FEED_CACHE_MAX = SS_FEED_CACHE_MAX;
 }
 if (typeof window !== 'undefined') {
   window.ssLoadClipWindow = ssLoadClipWindow;
@@ -5371,6 +5755,7 @@ function ssCloseClip() {
 function _ssvTeardownViewer() {
   // Cancel any pending dwell-view so a clip the viewer was leaving never records.
   _ssCancelViewDwell();
+  _ssStopDeepenController();   // stop progressive deepening when the viewer closes
   const viewer = document.getElementById('ss-clip-viewer');
   if (viewer) { viewer.classList.remove('open'); viewer.style.opacity = ''; }
   const feed = document.getElementById('ssv-feed');
@@ -5541,6 +5926,11 @@ function _poolRecycle(activeIdx, host) {
   // leaving, so this destroys nothing (Req 2.6).
   reuseVideo.forEach(function (s) { try { s.destroy(); } catch (e) {} });
   reuseGradient.forEach(function (s) { try { s.destroy(); } catch (e) {} });
+
+  // Re-point changed which clips are mounted around the active one, so refresh
+  // the preload ladder + resolution cap for the new band (only the active clip
+  // is 'auto'; circuit-open forces non-active to 'none').
+  _ssApplyPreloadTiers(host);
 }
 
 /* _ssvPruneSurfaces(activeIdx) — FULLSCREEN host entry point, now delegating to
@@ -6463,6 +6853,9 @@ var MediaSurfaceContract = {
   onTimeupdate: function (cb) {},     // cb(progress:0..1) fired as playback advances
   onEnded: function (cb) {},          // cb() fired when the clip reaches its end
   preload: function () {},            // eagerly buffer ahead (no-op for gradient)
+  bufferedAhead: function () {},      // -> seconds buffered ahead of the play head (deepening gate)
+  setPreloadTier: function (tier) {}, // 'auto'|'metadata'|'none' engine-assigned preload priority
+  setMaxResolution: function (res) {},// tier-driven quality ceiling ('480p'|'720p'|'1080p')
   destroy: function () {},            // stop timers/listeners, detach DOM
 };
 
@@ -6517,6 +6910,8 @@ function GradientSurface(clip, opts) {
     intendsToPlay: function () { return true; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     preload: function () {},                   // nothing to buffer for a gradient
+    bufferedAhead: function () { return Infinity; },  // gradient is always "ready" — never blocks deepening
+    setPreloadTier: function () {},            // gradients have no preload tier
     setMaxResolution: function () {},          // gradients have no resolution ceiling
     getProgress: function () {
       return Math.max(0, Math.min(1, elapsedBase / DURATION_MS));
@@ -6557,6 +6952,12 @@ function VideoSurface(clip, opts) {
   var _lastVol = 1;                              // track volume to detect a raise
   var wantPlay = false;                          // intent: should this surface be playing?
   var loopClip = !opts || opts.loop !== false;   // active clip loops by default
+  // Engine-assigned preload priority (feed-clip-load-performance Phase 1, Req
+  // 1.1/1.4). Defaults to 'none' so a freshly-mounted/re-pointed surface does
+  // NOT start buffering on its own; the engine calls setPreloadTier() (via
+  // _ssApplyPreloadTiers) right after to assign the real ladder tier — only the
+  // active clip ever becomes 'auto'.
+  var preloadTier = 'none';
 
   function handleTimeupdate() {
     var p = ssClipProgress(el && el.currentTime, el && el.duration);
@@ -6647,7 +7048,13 @@ function VideoSurface(clip, opts) {
         if (_viewer && _viewer.id) el.setAttribute('metadata-viewer-user-id', String(_viewer.id));
       } catch (e) { /* labeling is best-effort — never block playback */ }
       el.setAttribute('playsinline', '');
-      el.setAttribute('preload', 'auto');  // mounted = look-ahead band → buffer ahead (Req 9.2)
+      // Default to the engine-assigned preload tier (default 'none'): a mounted
+      // surface no longer hardcodes preload="auto" — the engine assigns the real
+      // ladder tier immediately after mount via _ssApplyPreloadTiers, so only the
+      // active clip becomes 'auto' and the look-ahead band stops contending with
+      // it on a constrained mobile link (feed-clip-load-performance Phase 1, Req
+      // 1.1/1.4). The active clip still autoplays with sound (its tier is 'auto').
+      try { el.preload = preloadTier; el.setAttribute('preload', preloadTier); } catch (e) {}
       // Instant first frame (Phase 4, Req 3.1): seed ABR LOW so the first
       // segment is a small/low rendition that renders fast. ABR climbs to full
       // quality after the first frame is on screen.
@@ -6719,6 +7126,18 @@ function VideoSurface(clip, opts) {
     preload: function () {
       if (el) { try { el.preload = 'auto'; el.setAttribute('preload', 'auto'); } catch (e) {} }
     },
+    // setPreloadTier(tier) — apply the engine-assigned preload priority from the
+    // pure ssPreloadTier ladder (feed-clip-load-performance Phase 1, Req
+    // 1.1/1.4/6.1). Maps 'auto'|'metadata'|'none' to the <mux-player> `preload`
+    // attribute AND gates this surface's load intent: 'none' must not start
+    // buffering, 'metadata' fetches just enough for the first frame, 'auto'
+    // buffers fully (the active clip). Any unknown value falls back to the safe
+    // 'none'. No-op until mounted; never throws. The active clip's autoplay path
+    // (play()/autoplay) is independent of this, so 'auto' keeps playback as-is.
+    setPreloadTier: function (tier) {
+      preloadTier = (tier === 'auto' || tier === 'metadata') ? tier : 'none';
+      if (el) { try { el.preload = preloadTier; el.setAttribute('preload', preloadTier); } catch (e) {} }
+    },
     // setMaxResolution(res) — apply the tier-driven quality ceiling (Phase 5,
     // Req 4.3/4.4). '480p'|'720p'|'1080p'. No-op if the element isn't mounted.
     setMaxResolution: function (res) {
@@ -6735,6 +7154,24 @@ function VideoSurface(clip, opts) {
     intendsToPlay: function () { return wantPlay; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
+    // bufferedAhead() — seconds of media buffered ahead of the current play head
+    // (feed-clip-load-performance Phase 2, Req 2.1). The progressive-deepening
+    // controller reads this off the ACTIVE surface to decide whether the active
+    // clip's buffer is satisfied (≥ SS_BUFFER_SATISFIED_S) before spending spare
+    // bandwidth on upcoming clips. Fail-soft: any error / no buffered ranges → 0
+    // (treated as "not satisfied", so the active clip keeps the pipe).
+    bufferedAhead: function () {
+      if (!el) return 0;
+      try {
+        var b = el.buffered;
+        var t = (typeof el.currentTime === 'number' && isFinite(el.currentTime)) ? el.currentTime : 0;
+        if (!b || !b.length) return 0;
+        for (var i = 0; i < b.length; i++) {
+          if (t >= b.start(i) - 0.25 && t <= b.end(i) + 0.25) return Math.max(0, b.end(i) - t);
+        }
+        return Math.max(0, b.end(b.length - 1) - t);
+      } catch (e) { return 0; }
+    },
     seek: function (f) { if (el && isFinite(el.duration)) el.currentTime = ssSeekToTime(f, el.duration); },
     onTimeupdate: function (cb) { onTick.push(cb); },
     onEnded: function (cb) { onEnd.push(cb); },
@@ -6764,6 +7201,11 @@ function VideoSurface(clip, opts) {
       // Re-seed ABR low for the new clip's fresh hls instance (Phase 4, Req 3.1).
       try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
       el.setAttribute('playback-id', clip.muxPlaybackId);   // new clean hls + Mux Data view
+      // Default the recycled element back to preload 'none' so it does not start
+      // buffering on its own; the engine re-assigns the real ladder tier right
+      // after the re-point via _ssApplyPreloadTiers (Req 1.1/1.4).
+      preloadTier = 'none';
+      try { el.preload = 'none'; el.setAttribute('preload', 'none'); } catch (e) {}
       // Re-seed sound from the SESSION preference, NOT this recycled element's
       // stale muted state. A pooled <mux-player> that last showed a muted clip
       // would otherwise stay muted even after the user chose sound-on — that's
@@ -7035,12 +7477,10 @@ function ssNetworkTier(effectiveType) {
  * slow<medium<fast; maxResolution is non-decreasing across the same order.
  */
 function ssNetworkPolicy(tier) {
-  switch (tier) {
-    case 'slow': return { preloadDepth: 1, maxResolution: '480p' };
-    case 'fast': return { preloadDepth: 5, maxResolution: '1080p' };
-    case 'medium':
-    default:     return { preloadDepth: 3, maxResolution: '720p' };
-  }
+  // Single source of truth: the per-tier tunables SS_PREFETCH_DEPTH + SS_RES_CAP
+  // (defined above). Unknown/garbage tier falls back to the medium row.
+  var t = (tier === 'slow' || tier === 'fast') ? tier : 'medium';
+  return { preloadDepth: SS_PREFETCH_DEPTH[t], maxResolution: SS_RES_CAP[t] };
 }
 
 /**
@@ -7065,6 +7505,188 @@ function ssPreloadAction(state) {
   if (warmed >= depth) return 'idle';
   if (inFlight === 0) return 'start';
   return 'idle';
+}
+
+/**
+ * ssPreloadTier(distance, networkTier, depthByTier) — pure preload-priority
+ * ladder for the feed (feed-clip-load-performance Phase 1, Req 1.1, 1.3, 1.5,
+ * 1.6). Maps a clip's signed distance from the active clip to an HTML media
+ * `preload` tier. The active clip is the ONLY clip ever 'auto'.
+ *
+ *   - distance === 0 (strict numeric)                 → 'auto'
+ *   - 1 <= distance <= depth (finite number)          → 'metadata'
+ *   - everything else (behind active, beyond depth,
+ *     NaN/Infinity, non-number, garbage)              → 'none'
+ *
+ * Prefetch depth resolution (defensive, total):
+ *   - depthByTier is a finite positive number         → use that number
+ *   - depthByTier is an object                        → depthByTier[networkTier]
+ *     (when it is a finite positive number)
+ *   - otherwise                                       → ssNetworkPolicy(networkTier).preloadDepth
+ *     (an unknown/garbage tier falls back to the medium row via ssNetworkPolicy).
+ *
+ * Pure: no DOM, no network, deterministic; never throws on any input.
+ */
+function ssPreloadTier(distance, networkTier, depthByTier) {
+  // Resolve the prefetch depth from the most specific source available.
+  var depth;
+  if (typeof depthByTier === 'number' && isFinite(depthByTier) && depthByTier > 0) {
+    depth = depthByTier;
+  } else if (depthByTier !== null && typeof depthByTier === 'object') {
+    // Only index by a primitive key — using an object as a property key coerces
+    // it via toString(), which THROWS on a malformed object (totality bug).
+    var tierKey = (typeof networkTier === 'string' || typeof networkTier === 'number') ? networkTier : undefined;
+    var byTier = (tierKey !== undefined) ? depthByTier[tierKey] : undefined;
+    if (typeof byTier === 'number' && isFinite(byTier) && byTier > 0) depth = byTier;
+  }
+  if (typeof depth !== 'number' || !isFinite(depth) || depth <= 0) {
+    var pol = ssNetworkPolicy(networkTier);
+    depth = (pol && typeof pol.preloadDepth === 'number' && isFinite(pol.preloadDepth) && pol.preloadDepth > 0)
+      ? pol.preloadDepth
+      : 2; // last-resort medium default; never reached for the documented tiers.
+  }
+
+  // The active clip (strict numeric 0) is the only surface that ever fully preloads.
+  if (distance === 0) return 'auto';
+  // Upcoming clips inside the tier's prefetch window get lightweight metadata.
+  if (typeof distance === 'number' && isFinite(distance) && distance >= 1 && distance <= depth) return 'metadata';
+  // Behind the active clip, beyond the window, or any non-finite/garbage input.
+  return 'none';
+}
+
+/**
+ * ssShouldDeepen(state) — progressive-deepening gate for the feed
+ * (feed-clip-load-performance Phase 2, Req 2.1-2.5; design Property 3/4). Spare
+ * bandwidth deepens an upcoming clip ONLY when EVERY gate passes; the active clip
+ * always wins the pipe. Pure, total, deterministic; never throws.
+ *
+ *   state = { activeBufferSatisfied, distance, networkTier, budgetRemainingBytes,
+ *             nextSegmentBytes, dwell, dwellThreshold, maxDistance }
+ *
+ * Returns TRUE iff ALL hold (else false; any missing/non-finite/wrong-type → false):
+ *   - state is an object AND activeBufferSatisfied === true
+ *   - distance is a finite number with 1 <= distance <= maxDistance (maxDistance finite)
+ *   - distance <= ssNetworkPolicy(networkTier).preloadDepth
+ *   - budgetRemainingBytes and nextSegmentBytes finite AND budgetRemainingBytes > nextSegmentBytes
+ *   - dwell and dwellThreshold finite AND dwell >= dwellThreshold
+ */
+function ssShouldDeepen(state) {
+  if (!state || typeof state !== 'object') return false;
+  var isNum = function (x) { return typeof x === 'number' && isFinite(x); };
+
+  // Gate 1 — the active clip's buffer must be satisfied (active always wins).
+  if (state.activeBufferSatisfied !== true) return false;
+
+  // Gate 2 — distance is a finite, in-range look-ahead position.
+  if (!isNum(state.distance) || !isNum(state.maxDistance)) return false;
+  if (!(state.distance >= 1 && state.distance <= state.maxDistance)) return false;
+
+  // Gate 3 — distance is within the network tier's prefetch depth.
+  var pol = ssNetworkPolicy(state.networkTier);
+  var depth = (pol && isNum(pol.preloadDepth)) ? pol.preloadDepth : NaN;
+  if (!isNum(depth)) return false;
+  if (!(state.distance <= depth)) return false;
+
+  // Gate 4 — the session byte budget must cover the next segment.
+  if (!isNum(state.budgetRemainingBytes) || !isNum(state.nextSegmentBytes)) return false;
+  if (!(state.budgetRemainingBytes > state.nextSegmentBytes)) return false;
+
+  // Gate 5 — the viewer has dwelt long enough on the active clip.
+  if (!isNum(state.dwell) || !isNum(state.dwellThreshold)) return false;
+  if (!(state.dwell >= state.dwellThreshold)) return false;
+
+  return true;
+}
+
+/**
+ * ssSplashLift(state) — cold-start splash-lane decision
+ * (feed-clip-load-performance Phase 3, Req 5.3-5.5; design Property 5).
+ *
+ *   state = { floorElapsed, clipReady, ceilingReached }   (booleans, coerced via !!)
+ *
+ * Returns 'lift' when ceilingReached OR (floorElapsed AND clipReady), else 'hold'.
+ * Ceiling precedence guarantees the splash can never hang. Pure, total,
+ * deterministic; never throws/blocks on null/garbage input (every field coerced).
+ */
+function ssSplashLift(state) {
+  var s = (state && typeof state === 'object') ? state : {};
+  var ceiling = !!s.ceilingReached;
+  var floor   = !!s.floorElapsed;
+  var ready   = !!s.clipReady;
+  return (ceiling || (floor && ready)) ? 'lift' : 'hold';
+}
+
+/**
+ * ssSegmentEvictionPlan(input) — service-worker Segment_Cache eviction planner
+ * (feed-clip-load-performance Phase 4, Req 4.4-4.6, 9.1, 10.1; design Property
+ * 6/7/8/9). Operates on a snapshot the SW passes in. Pure, total, deterministic;
+ * never throws.
+ *
+ *   input = { segments:[{key,bytes,lastUsed,clipDistance}], ceilingBytes,
+ *             windowAhead, windowBehind }
+ *
+ * Algorithm:
+ *   (1) a segment is OUT-OF-WINDOW iff clipDistance < -windowBehind OR
+ *       clipDistance > windowAhead → evict ALL of them first;
+ *   (2) among IN-WINDOW segments, if total kept bytes > ceilingBytes, evict LRU
+ *       (smallest/oldest lastUsed first) until kept bytes <= ceiling. Documented
+ *       floor: a single in-window segment larger than the ceiling is kept (we
+ *       never drop the last in-window segment), preferring the most-recently-used.
+ *
+ * Output partitions the input keys exactly: every well-formed input segment's key
+ * appears in exactly one of evict/keep. Defensive: non-object input, non-array
+ * segments, or non-finite ceilingBytes/windowAhead/windowBehind → { evict:[], keep:[] };
+ * malformed segment entries are skipped safely.
+ */
+function ssSegmentEvictionPlan(input) {
+  var empty = { evict: [], keep: [] };
+  if (!input || typeof input !== 'object') return empty;
+  var isNum = function (x) { return typeof x === 'number' && isFinite(x); };
+
+  var segments = input.segments;
+  if (!Array.isArray(segments)) return empty;
+  if (!isNum(input.ceilingBytes) || !isNum(input.windowAhead) || !isNum(input.windowBehind)) return empty;
+
+  var ceiling = input.ceilingBytes;
+  var ahead   = input.windowAhead;
+  var behind  = input.windowBehind;
+
+  // Sanitize: skip malformed segment entries (never throw, never partition garbage).
+  var valid = [];
+  for (var i = 0; i < segments.length; i++) {
+    var seg = segments[i];
+    if (!seg || typeof seg !== 'object') continue;
+    if (typeof seg.key !== 'string') continue;
+    if (!isNum(seg.bytes) || !isNum(seg.lastUsed) || !isNum(seg.clipDistance)) continue;
+    valid.push(seg);
+  }
+
+  // Step 1 — evict every out-of-window segment.
+  var evict = [];
+  var inWindow = [];
+  for (var j = 0; j < valid.length; j++) {
+    var s = valid[j];
+    if (s.clipDistance < -behind || s.clipDistance > ahead) evict.push(s);
+    else inWindow.push(s);
+  }
+
+  // Step 2 — LRU-by-bytes among in-window: oldest lastUsed first, until within
+  // the ceiling. Sort ascending so the front is the least-recently-used; never
+  // shed the last remaining in-window segment (documented floor).
+  inWindow.sort(function (a, b) { return a.lastUsed - b.lastUsed; });
+  var keptBytes = 0;
+  for (var k = 0; k < inWindow.length; k++) keptBytes += inWindow[k].bytes;
+  var keep = inWindow.slice();
+  while (keptBytes > ceiling && keep.length > 1) {
+    var victim = keep.shift();   // oldest in-window
+    evict.push(victim);
+    keptBytes -= victim.bytes;
+  }
+
+  return {
+    evict: evict.map(function (e) { return e.key; }),
+    keep:  keep.map(function (e) { return e.key; })
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -7171,6 +7793,10 @@ if (typeof window !== 'undefined') {
   window.ssNetworkTier = ssNetworkTier;
   window.ssNetworkPolicy = ssNetworkPolicy;
   window.ssPreloadAction = ssPreloadAction;
+  window.ssPreloadTier = ssPreloadTier;
+  window.ssShouldDeepen = ssShouldDeepen;
+  window.ssSplashLift = ssSplashLift;
+  window.ssSegmentEvictionPlan = ssSegmentEvictionPlan;
 }
 if (typeof module !== 'undefined' && module.exports) {
   // PWA Black Screen Load — Phase 1 pure helpers
@@ -7192,6 +7818,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssNetworkTier = ssNetworkTier;
   module.exports.ssNetworkPolicy = ssNetworkPolicy;
   module.exports.ssPreloadAction = ssPreloadAction;
+  module.exports.ssPreloadTier = ssPreloadTier;
+  module.exports.ssShouldDeepen = ssShouldDeepen;
+  module.exports.ssSplashLift = ssSplashLift;
+  module.exports.ssSegmentEvictionPlan = ssSegmentEvictionPlan;
   module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;
   module.exports.SS_PRELOAD_AHEAD = SS_PRELOAD_AHEAD;
   module.exports.SS_MAX_LIVE_PLAYERS = SS_MAX_LIVE_PLAYERS;

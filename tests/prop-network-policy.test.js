@@ -9,9 +9,10 @@
    stub (tests/_pbt.js) BEFORE requiring it. The helper is PURE (a tier string
    in, a { preloadDepth, maxResolution } object out).
 
-   Semantics: slow → {1,'480p'}, medium → {3,'720p'}, fast → {5,'1080p'};
+   Semantics: slow → {1,'480p'}, medium → {3,'720p'}, fast → {5,'720p'};
    unknown tier falls back to the medium row. preloadDepth strictly increases
-   slow<medium<fast; maxResolution is non-decreasing across the same order.
+   slow<medium<fast; maxResolution is non-decreasing across the same order
+   (fast is capped at 720p for the vertical phone feed — see feed-clip-load-performance).
 ═══════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -66,7 +67,7 @@ try {
   // Exact rows.
   assert(slow.preloadDepth === 1 && slow.maxResolution === '480p', 'slow row');
   assert(medium.preloadDepth === 3 && medium.maxResolution === '720p', 'medium row');
-  assert(fast.preloadDepth === 5 && fast.maxResolution === '1080p', 'fast row');
+  assert(fast.preloadDepth === 5 && fast.maxResolution === '720p', 'fast row');
 
   console.log('  \u2713 Property 3');
 } catch (e) {

@@ -658,20 +658,95 @@ html, body { overflow: hidden; }
   var everLaunched = false;
   try { everLaunched = localStorage.getItem('ss_launched_v1') === '1'; } catch (e) {}
   try { localStorage.setItem('ss_launched_v1', '1'); } catch (e) {}
-  var SS_SPLASH_MIN_MS = everLaunched ? 700 : 3000;
+  var SS_SPLASH_MIN_MS = everLaunched ? 700 : 3000;   // brand-beat FLOOR (Req 5.7)
+  var SS_SPLASH_CEILING_MS = SS_SPLASH_MIN_MS + 2000; // hard lift backstop — the splash can NEVER hang (Req 5.4)
   var shown = Date.now();
-  window.__ssHideSplash = function () {
+  var _clipReady = false;
+  var _lifted = false;
+
+  // ── Cold-start lane (feed-clip-load-performance Phase 3, Req 5.1/5.2) ──
+  // The brand-splash window is FREE prefetch time. Synchronously read the L1
+  // feed cache (same key shared.js uses: ss_feed_cache_v<ver>_<uid>, uid from
+  // the synchronously-persisted ss_last_uid) and, within ~100ms of launch,
+  // prime clip-1's poster + first HLS segment so its first frame is ready as
+  // the splash lifts. shared.js isn't loaded yet, so this is a tiny, fail-soft,
+  // self-contained prefetch; the SW Segment_Cache (Phase 4) makes these bytes a
+  // guaranteed hit for the player. Kill-switch: localStorage ss_ff_coldstart='off'.
+  (function coldStartPrefetch(){
+    try {
+      if (localStorage.getItem('ss_ff_coldstart') === 'off') return;
+      var uid = 'guest';
+      try { uid = localStorage.getItem('ss_last_uid') || 'guest'; } catch (e) {}
+      var raw = localStorage.getItem('ss_feed_cache_v1_' + uid);
+      if (!raw) return;
+      var obj = JSON.parse(raw);
+      var first = obj && obj.clips && obj.clips[0];
+      if (!first) return;
+      if (first.poster && typeof Image === 'function') { try { var im = new Image(); im.src = first.poster; } catch (e) {} }
+      if (first.muxPlaybackId && typeof fetch === 'function') _coldPrefetchSeg(first.muxPlaybackId);
+    } catch (e) {}
+  })();
+
+  function _coldPrefetchSeg(pid){
+    var base = 'https://stream.mux.com/' + pid + '.m3u8';
+    function rez(uri, b){ try { return new URL(uri, b).href; } catch (e) { return uri; } }
+    try {
+      fetch(base, { cache: 'force-cache' }).then(function(r){
+        if (!r || !r.ok) return; return r.text().then(function(master){
+          var lines = master.split(/\r?\n/), variant = null, isMaster = false;
+          for (var i=0;i<lines.length;i++){ var ln=lines[i].trim();
+            if (ln.indexOf('#EXT-X-STREAM-INF')===0){ isMaster=true;
+              for(var j=i+1;j<lines.length;j++){ var u=lines[j].trim(); if(u && u.charAt(0)!=='#'){ variant=rez(u,base); break; } }
+              if(variant) break; } }
+          var vurl = isMaster ? variant : base; if (!vurl) return;
+          return fetch(vurl, { cache:'force-cache' }).then(function(vr){
+            if(!vr||!vr.ok) return; return vr.text().then(function(media){
+              var ml=media.split(/\r?\n/), init=null, seg=null;
+              for(var k=0;k<ml.length;k++){ var l=ml[k].trim();
+                if(!init && l.indexOf('#EXT-X-MAP:')===0){ var m=l.match(/URI="([^"]+)"/); if(m&&m[1]) init=rez(m[1],vurl); }
+                if(!seg && l.indexOf('#EXTINF')===0){ for(var p=k+1;p<ml.length;p++){ var s=ml[p].trim(); if(s&&s.charAt(0)!=='#'){ seg=rez(s,vurl); break; } } }
+                if(init&&seg) break; }
+              if(init) fetch(init,{cache:'force-cache'}).catch(function(){});
+              if(seg)  fetch(seg,{cache:'force-cache'}).catch(function(){});
+            });
+          });
+        });
+      }).catch(function(){});
+    } catch (e) {}
+  }
+
+  // Lift decision via the pure ssSplashLift truth table (ceiling precedence) —
+  // inlined as a fallback because shared.js may not have loaded yet; once it
+  // has, the exported window.ssSplashLift is the single source of truth.
+  function _liftDecision(floorElapsed, clipReady, ceilingReached){
+    if (typeof window.ssSplashLift === 'function') {
+      return window.ssSplashLift({ floorElapsed: floorElapsed, clipReady: clipReady, ceilingReached: ceilingReached }) === 'lift';
+    }
+    return !!ceilingReached || (!!floorElapsed && !!clipReady);
+  }
+  function _activeClipReady(){
+    if (_clipReady) return true;   // initFeed signalled the feed is mounted/ready
+    try { var p = document.querySelector('#feed mux-player, #feed video'); if (p && typeof p.readyState === 'number' && p.readyState >= 2) return true; } catch (e) {}
+    return false;
+  }
+  function _doLift(){
+    if (_lifted) return; _lifted = true;
     var el = document.getElementById('ss-splash'); if (!el) return;
-    var wait = Math.max(0, SS_SPLASH_MIN_MS - (Date.now() - shown));   // hold for the brand beat
-    setTimeout(function () {
-      el.style.opacity = '0';
-      setTimeout(function () { if (el && el.parentNode) el.remove(); }, 480);
-    }, wait);
-    window.__ssHideSplash = null;
-  };
-  // Safety net: always clear the splash even if the feed never signals ready
-  // (exceeds the min-display floor + the fade-out so it can never get stuck).
-  setTimeout(function () { if (window.__ssHideSplash) window.__ssHideSplash(); }, SS_SPLASH_MIN_MS + 2000);
+    el.style.opacity = '0';
+    setTimeout(function () { if (el && el.parentNode) el.remove(); }, 480);
+  }
+  // initFeed (and a ready clip) signal readiness through __ssHideSplash; the
+  // tick honours the floor (brand beat) + ceiling (hard backstop) so the splash
+  // is never lifted too early and can never get stuck (Req 5.3/5.4).
+  window.__ssHideSplash = function () { _clipReady = true; };
+
+  var _splashTick = setInterval(function () {
+    var t = Date.now() - shown;
+    if (_liftDecision(t >= SS_SPLASH_MIN_MS, _activeClipReady(), t >= SS_SPLASH_CEILING_MS)) {
+      clearInterval(_splashTick);
+      _doLift();
+    }
+  }, 100);
 })();
 </script>
 
@@ -836,6 +911,10 @@ function renderFeedSkeleton(feedEl) {
 }
 
 async function initFeed() {
+  // New session begins at the feed cold-open: start with a clean prefetch byte
+  // budget and a disengaged circuit breaker (Req 3.5).
+  if (typeof _ssResetPrefetchBudget === 'function') _ssResetPrefetchBudget();
+
   SHOWS = SSData.feedShows();
   const feedEl = document.getElementById('feed');
   let mountedFromCache = false;
@@ -884,6 +963,10 @@ async function initFeed() {
   const real = await loadRealClips();
   if (real) {
     if (typeof ssWriteFeedCache === 'function') ssWriteFeedCache(SHOWS);
+    // Cold-start lane for first-ever users (no cache existed for the splash to
+    // prime): prefetch clip-0's first segment the instant the metadata query
+    // returns, before mounting (feed-clip-load-performance Phase 3, Req 5.2).
+    if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, 1);
     if (typeof ssWarmClips === 'function') ssWarmClips(SHOWS, _coldWarm);
     // Re-mount ONLY if the first window changed — a correct cache never flashes
     // or interrupts the clip already playing.
