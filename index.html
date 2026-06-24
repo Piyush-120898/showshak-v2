@@ -1177,5 +1177,10 @@ function closeSuccess() {
 buildGenres();
 buildPlatforms();
 </script>
+<!-- Shared app JS: brings the portrait lock, logo mark, toast + shared utils to
+     the landing too. Supabase/auth-dependent features inside are all guarded, so
+     they safely no-op here (index runs its own onboarding + hands real auth to
+     showshak-feed.html). -->
+<script src="showshak-shared.js"></script>
 </body>
 </html>

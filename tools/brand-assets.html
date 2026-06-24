@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShowShak — Brand Asset Generator</title>
+<!-- Dev tool only (NOT part of the app). Open in a browser, click a button to
+     download a PNG. Renders the real logo (icon.svg) + brand fonts/colors onto a
+     canvas and exports it. Nothing here ships with the product. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#0B0B0F; --bg2:#13131A; --red:#EA3B32; --gray:#A0A0B8; --gray2:#5A5A72; --border:rgba(255,255,255,.08); }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:#fff; font-family:'DM Sans',system-ui,sans-serif; padding:28px 18px 80px; }
+  h1{ font-family:'Bebas Neue',sans-serif; letter-spacing:2px; font-size:30px; margin:0 0 4px; }
+  h1 span{ color:var(--red); }
+  .sub{ color:var(--gray2); font-size:13px; margin:0 0 22px; }
+  .row{ display:flex; flex-wrap:wrap; gap:24px; }
+  .card{ background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:16px; }
+  .card h2{ font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--gray); margin:0 0 12px; }
+  canvas{ display:block; border-radius:10px; background:#000; max-width:320px; height:auto; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+  .btn{ display:inline-block; margin-top:12px; padding:10px 16px; border-radius:100px; border:none; cursor:pointer;
+        background:var(--red); color:#fff; font-family:'DM Sans',sans-serif; font-weight:700; font-size:13px; letter-spacing:.3px; }
+  .btn.ghost{ background:transparent; border:1.5px solid var(--border); color:var(--gray); margin-left:8px; }
+  .ctrls{ margin:0 0 22px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .ctrls label{ font-size:13px; color:var(--gray); }
+  .ctrls input{ background:var(--bg2); border:1.5px solid var(--border); border-radius:10px; color:#fff;
+                font-family:'DM Sans',sans-serif; font-size:14px; padding:9px 12px; min-width:240px; }
+  .note{ color:var(--gray2); font-size:12px; margin-top:10px; line-height:1.5; max-width:320px; }
+</style>
+</head>
+<body>
+  <h1>show<span>shak</span> — brand assets</h1>
+  <p class="sub">Click a button to download a PNG. All rendered locally from the real logo + brand colors.</p>
+
+  <div class="ctrls">
+    <label for="footerTxt">Footer line (optional — e.g. <b>@yourhandle</b> or a date):</label>
+    <input id="footerTxt" type="text" placeholder="@showshak" oninput="renderAll()">
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>App icon · 1080² (square)</h2>
+      <canvas id="cIcon" width="1080" height="1080"></canvas>
+      <div><button class="btn" onclick="dl('cIcon','showshak-icon-1080.png')">Download</button></div>
+      <div class="note">Square mark on black — use as your profile picture / app icon (platforms round the corners themselves).</div>
+    </div>
+
+    <div class="card">
+      <h2>App icon · rounded tile</h2>
+      <canvas id="cIconR" width="1080" height="1080"></canvas>
+      <div><button class="btn" onclick="dl('cIconR','showshak-icon-rounded-1080.png')">Download</button></div>
+      <div class="note">The rounded glow tile, matching the in-app splash logo.</div>
+    </div>
+
+    <div class="card">
+      <h2>Instagram post · 1080² + “Coming soon”</h2>
+      <canvas id="cSquare" width="1080" height="1080"></canvas>
+      <div><button class="btn" onclick="dl('cSquare','showshak-comingsoon-square-1080.png')">Download</button></div>
+      <div class="note">Square feed post.</div>
+    </div>
+
+    <div class="card">
+      <h2>Instagram story / reel · 1080×1920</h2>
+      <canvas id="cStory" width="1080" height="1920"></canvas>
+      <div><button class="btn" onclick="dl('cStory','showshak-comingsoon-story-1080x1920.png')">Download</button></div>
+      <div class="note">9:16 — Stories, Reels cover, status.</div>
+    </div>
+
+    <div class="card">
+      <h2>Pitch deck title · 1920×1080 (16:9, clean)</h2>
+      <canvas id="cTitle169" width="1920" height="1080"></canvas>
+      <div><button class="btn" onclick="dl('cTitle169','showshak-title-1920x1080.png')">Download</button></div>
+      <div class="note">Logo + wordmark + tagline only — no “Coming soon.” Drop straight onto a deck's first slide.</div>
+    </div>
+
+    <div class="card">
+      <h2>Title card · 1080² (clean)</h2>
+      <canvas id="cTitleSq" width="1080" height="1080"></canvas>
+      <div><button class="btn" onclick="dl('cTitleSq','showshak-title-1080.png')">Download</button></div>
+      <div class="note">Square brand/title card — no “Coming soon.”</div>
+    </div>
+  </div>
+
+<script>
+/* The ShowShak mark, inlined so the canvas is never tainted (exportable to PNG
+   even from file://). Mirrors icon.svg. */
+const SS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254">
+  <rect width="1254" height="1254" fill="#000"/>
+  <g transform="translate(94,94) scale(0.85)">
+  <path fill="#EA3B32" d="M402,551C559,551 715,551 872,551C876,551 880,552 883,554C908,568 931,585 952,605C964,618 975,631 986,647L442,647C438,647 433,646 430,644C391,627 357,605 328,573C322,567 317,559 310,551Z"/>
+  <path fill="#EA3B32" d="M525,1089C492,1085 462,1075 432,1065C403,1055 375,1043 349,1029C345,1027 343,1027 340,1030C327,1043 314,1057 301,1070C300,1071 298,1073 296,1073C279,1073 261,1073 244,1073C243,1073 242,1072 241,1072L241,994C243,994 245,994 247,994C325,994 403,994 482,994C484,994 487,995 489,996C521,1016 557,1027 595,1030C630,1033 665,1030 700,1019C715,1013 730,1006 744,996C745,995 748,994 750,994C812,994 874,994 936,994C937,994 937,994 939,994C934,999 929,1003 924,1007C891,1034 854,1055 813,1070C793,1077 772,1082 752,1088C747,1089 742,1089 738,1089C668,1089 598,1089 528,1089Z"/>
+  <path fill="#EA3B32" d="M864,158C868,162 871,161 874,157C885,146 897,134 908,123C909,122 911,121 912,121C931,121 950,121 970,121L970,204C968,204 967,204 965,204C898,204 831,204 765,204C762,204 760,203 758,201C703,162 643,155 579,171C558,177 540,187 523,201C521,203 519,204 517,204C455,204 395,204 335,204C333,204 333,204 332,204C334,201 335,200 337,198C367,167 404,144 445,128C466,120 488,114 510,108C516,106 522,106 528,106C588,106 649,106 710,107C722,107 734,111 746,114C787,124 826,139 864,158Z"/>
+  <path fill="#111" d="M661,471C695,482 729,493 763,505C789,514 814,524 844,537L310,537C297,532 263,447 285,440C372,440 562,440 601,450Z"/>
+  <path fill="#111" d="M845,660L988,660C996,665 1023,749 1015,758L748,758C720,751 476,660 476,660Z"/>
+  <path fill="#EA3B32" d="M388,426C302,426 258,363 268,329C313,329 470,329 475,333C480,362 517,404 544,423Z"/>
+  <path fill="#EA3B32" d="M805,868L1025,773C1027,805 1015,868 812,867Z"/>
+  <path fill="#111" d="M799,980L764,980C771,970 803,895 816,883C864,883 1004,882 1008,889C996,921 957,976 946,980Z"/>
+  <path fill="#111" d="M466,315L272,315C268,309 290,259 313,224C325,218 497,218 493,234C472,282 473,308 466,315Z"/>
+  <path fill="#111" d="M238,912L238,888C244,882 318,882 363,882C375,888 424,945 457,975C462,980 387,980 239,974Z"/>
+  <path fill="#111" d="M924,218C938,218 970,225 970,305C960,315 861,315 850,309C820,261 780,221 780,218Z"/>
+  <path fill="#EA3B32" d="M281,772C305,772 311,775 361,868L237,868C237,836 235,772 235,772Z"/>
+  <path fill="#EA3B32" d="M917,329L970,329L970,426L904,423C877,361 862,329 862,329Z"/>
+  </g>
+</svg>`;
+
+const BG = '#0B0B0F', RED = '#EA3B32', GRAY2 = '#5A5A72';
+let markImg = null;
+
+function loadMark(){
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(SS_SVG);
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y,   x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x,   y+h, r);
+  ctx.arcTo(x,   y+h, x,   y,   r);
+  ctx.arcTo(x,   y,   x+w, y,   r);
+  ctx.closePath();
+}
+
+/* Centered text with optional letter-spacing (uses ctx.letterSpacing where
+   available; otherwise renders normally). */
+function centerText(ctx, text, cx, y, font, color, spacing){
+  ctx.save();
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  try { ctx.letterSpacing = (spacing||0) + 'px'; } catch(e){}
+  ctx.fillText(text, cx, y);
+  ctx.restore();
+}
+
+/* Wordmark SHOW + SHAK (SHAK in red), centered as one unit, with spacing. */
+function drawWordmark(ctx, cx, y, size, spacing){
+  ctx.save();
+  ctx.font = size + "px 'Bebas Neue', sans-serif";
+  ctx.textBaseline = 'alphabetic';
+  try { ctx.letterSpacing = spacing + 'px'; } catch(e){}
+  const a = 'SHOW', b = 'SHAK';
+  const wa = ctx.measureText(a).width;
+  const wb = ctx.measureText(b).width;
+  const total = wa + wb;
+  let x = cx - total/2;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff'; ctx.fillText(a, x, y);
+  ctx.fillStyle = RED;    ctx.fillText(b, x + wa, y);
+  ctx.restore();
+}
+
+/* COMING SOON pill (red outline + red text), centered. */
+function drawComingSoon(ctx, cx, cy, fontSize, spacing){
+  ctx.save();
+  ctx.font = "700 " + fontSize + "px 'DM Sans', sans-serif";
+  try { ctx.letterSpacing = spacing + 'px'; } catch(e){}
+  const label = 'COMING SOON';
+  const tw = ctx.measureText(label).width;
+  const padX = fontSize * 1.1, padY = fontSize * 0.62;
+  const w = tw + padX*2, h = fontSize + padY*2;
+  const x = cx - w/2, y = cy - h/2;
+  ctx.fillStyle = 'rgba(234,59,50,0.10)';
+  roundRect(ctx, x, y, w, h, h/2); ctx.fill();
+  ctx.lineWidth = Math.max(2, fontSize*0.07);
+  ctx.strokeStyle = RED;
+  roundRect(ctx, x, y, w, h, h/2); ctx.stroke();
+  ctx.fillStyle = '#FF6A55';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, cx, cy + fontSize*0.06);
+  ctx.restore();
+  return h;
+}
+
+/* Soft radial brand glow behind the logo. */
+function drawGlow(ctx, cx, cy, radius){
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  g.addColorStop(0,   'rgba(234,59,50,0.28)');
+  g.addColorStop(0.5, 'rgba(234,59,50,0.10)');
+  g.addColorStop(1,   'rgba(234,59,50,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(cx-radius, cy-radius, radius*2, radius*2);
+}
+
+/* Rounded logo tile (mark on black) with glow + subtle border. */
+function drawLogoTile(ctx, cx, cy, size){
+  const r = size * 0.22;
+  const x = cx - size/2, y = cy - size/2;
+  ctx.save();
+  roundRect(ctx, x, y, size, size, r); ctx.clip();
+  if (markImg) ctx.drawImage(markImg, x, y, size, size);
+  else { ctx.fillStyle = '#000'; ctx.fillRect(x, y, size, size); }
+  ctx.restore();
+  ctx.save();
+  ctx.lineWidth = Math.max(1.5, size*0.006);
+  ctx.strokeStyle = 'rgba(234,59,50,0.28)';
+  roundRect(ctx, x, y, size, size, r); ctx.stroke();
+  ctx.restore();
+}
+
+/* ── Plain square icon (mark fills the canvas, black bg) ── */
+function paintIconSquare(canvas){
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  if (markImg) ctx.drawImage(markImg, 0, 0, canvas.width, canvas.height);
+}
+
+/* ── Rounded icon tile on brand bg ── */
+function paintIconRounded(canvas){
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+  drawGlow(ctx, W/2, H/2, W*0.5);
+  drawLogoTile(ctx, W/2, H/2, W*0.66);
+}
+
+/* ── Coming-soon splash (square or story) ── */
+function paintSplash(canvas){
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const story = H > W;
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+
+  // vertical layout, centered as a group
+  const cx = W/2;
+  const logo = story ? W*0.34 : W*0.30;
+  const groupTop = story ? H*0.26 : H*0.20;
+  let y = groupTop;
+
+  drawGlow(ctx, cx, y + logo/2, logo*1.5);
+  drawLogoTile(ctx, cx, y + logo/2, logo);
+  y += logo + (story ? 280 : 210);
+
+  const wmSize = story ? 200 : 168;
+  drawWordmark(ctx, cx, y, wmSize, story ? 8 : 6);
+  y += (story ? 70 : 56);
+
+  centerText(ctx, 'SWIPE · DISCOVER · WATCH', cx, y, (story ? 30 : 26) + "px 'DM Sans', sans-serif", GRAY2, story ? 7 : 6);
+  y += (story ? 150 : 120);
+
+  drawComingSoon(ctx, cx, y, story ? 46 : 40, story ? 6 : 5);
+
+  // optional footer line (handle/date)
+  const footer = (document.getElementById('footerTxt').value || '').trim();
+  if (footer){
+    centerText(ctx, footer, cx, story ? H*0.93 : H*0.93,
+               "700 " + (story ? 34 : 30) + "px 'DM Sans', sans-serif", '#7A7A92', story ? 4 : 3);
+  }
+}
+
+/* ── Clean title slide (no Coming Soon) — scales to any aspect (16:9 / square /
+   vertical). Logo + wordmark + tagline, optically centered. ── */
+function paintTitleSlide(canvas){
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const S = Math.min(W, H);
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+  const cx = W/2;
+  const logo   = S*0.30;
+  const wmSize = S*0.16;
+  const tag    = S*0.028;
+  const gapLogoWm = S*0.16;   // generous space between logo + wordmark
+  const gapWmTag  = S*0.055;
+  const wmCap = wmSize*0.72;   // approx cap height for layout
+  const groupH = logo + gapLogoWm + wmCap + gapWmTag + tag;
+  let y = (H - groupH)/2 - S*0.02;   // nudge up for optical centering
+
+  drawGlow(ctx, cx, y + logo/2, logo*1.5);
+  drawLogoTile(ctx, cx, y + logo/2, logo);
+  y += logo + gapLogoWm + wmCap;     // wordmark baseline
+
+  drawWordmark(ctx, cx, y, wmSize, S*0.0075);
+  y += gapWmTag + tag;
+
+  centerText(ctx, 'SWIPE · DISCOVER · WATCH', cx, y, tag + "px 'DM Sans', sans-serif", GRAY2, S*0.0065);
+
+  const footer = (document.getElementById('footerTxt').value || '').trim();
+  if (footer){
+    centerText(ctx, footer, cx, H*0.93, "700 " + (S*0.028) + "px 'DM Sans', sans-serif", '#7A7A92', 3);
+  }
+}
+
+function renderAll(){
+  paintIconSquare(document.getElementById('cIcon'));
+  paintIconRounded(document.getElementById('cIconR'));
+  paintSplash(document.getElementById('cSquare'));
+  paintSplash(document.getElementById('cStory'));
+  paintTitleSlide(document.getElementById('cTitle169'));
+  paintTitleSlide(document.getElementById('cTitleSq'));
+}
+
+function dl(canvasId, filename){
+  const canvas = document.getElementById(canvasId);
+  canvas.toBlob(function(blob){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+}
+
+(async function init(){
+  markImg = await loadMark();
+  // Make sure the brand fonts are ready before the first paint (else canvas
+  // falls back to a system font). Best-effort with a short timeout.
+  try {
+    await Promise.race([
+      Promise.all([
+        document.fonts.load("168px 'Bebas Neue'"),
+        document.fonts.load("700 40px 'DM Sans'"),
+        document.fonts.load("400 26px 'DM Sans'"),
+      ]).then(() => document.fonts.ready),
+      new Promise(r => setTimeout(r, 3000)),
+    ]);
+  } catch(e){}
+  renderAll();
+})();
+</script>
+</body>
+</html>

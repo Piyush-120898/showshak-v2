@@ -317,6 +317,33 @@ html, body { overflow: hidden; }
 }
 .coll-star.on { color: #F5C04A; border-color: rgba(245,192,74,0.5); }
 .coll-star:hover { color: #F5C04A; }
+/* Remove-from-Highlights button on owner shelf cards (top-right, above other
+   badges so it's reliably tappable — replaces the old overlapping star). */
+.coll-remove {
+  position: absolute; top: 9px; right: 9px; z-index: 6;
+  width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 13px; line-height: 1; padding: 0;
+  -webkit-tap-highlight-color: transparent; transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.coll-remove:hover { background: rgba(234,59,50,0.25); color: var(--red2); border-color: var(--red); }
+#hl-add-btn:active { transform: scale(0.96); }
+/* Add-to-Highlights picker sheet */
+#hl-overlay { position: fixed; inset: 0; z-index: 520; background: rgba(0,0,0,0.6); display: none; align-items: flex-end; justify-content: center; }
+.hl-sheet { background: var(--bg2); width: 100%; max-width: 520px; border-radius: 20px 20px 0 0; max-height: 82vh; overflow-y: auto; padding: 20px 20px calc(24px + env(safe-area-inset-bottom,0px)); border: 1px solid var(--border); border-bottom: none; }
+.hl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.hl-title { font-family: var(--font-display); font-size: 21px; letter-spacing: 1px; color: #fff; }
+.hl-title em { color: var(--red); font-style: normal; }
+.hl-x { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--bg3); color: var(--gray); font-size: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hl-note { font-size: 12.5px; color: var(--gray2); line-height: 1.5; margin-bottom: 12px; }
+.hl-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.hl-row:last-child { border-bottom: none; }
+.hl-row-info { flex: 1; min-width: 0; }
+.hl-row-name { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-row-meta { font-size: 11px; color: var(--gray2); margin-top: 2px; }
+.hl-toggle { flex-shrink: 0; padding: 8px 16px; border-radius: 100px; border: 1.5px solid var(--border); background: transparent; color: var(--gray); font-family: var(--font-body); font-weight: 700; font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+.hl-toggle.on { background: var(--red); border-color: var(--red); color: #fff; }
 .coll-share {
   position: absolute; bottom: 9px; right: 9px; z-index: 4;
   width: 28px; height: 28px; border-radius: 50%;
@@ -496,6 +523,7 @@ html, body { overflow: hidden; }
 .perf-rank.top { color: var(--red); }
 .perf-thumb { width: 38px; height: 52px; border-radius: 8px; overflow: hidden; position: relative; border: 1px solid var(--border); flex-shrink: 0; }
 .perf-thumb-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.perf-thumb-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .perf-info { flex: 1; min-width: 0; }
 .perf-cap { font-size: 13px; font-weight: 600; color: var(--white); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .perf-stats { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; color: var(--gray2); }
@@ -828,9 +856,10 @@ html, body { overflow: hidden; }
 
     <!-- HIGHLIGHTS / COLLECTIONS -->
     <section class="shelf" id="shelf-section">
-      <div class="shelf-head">
+      <div class="shelf-head" style="position:relative">
         <div class="shelf-title">🔥 <em id="shelf-word">Highlights</em></div>
         <div class="shelf-sub" id="shelf-sub">Curated collections · tap to open, share to send</div>
+        <button id="hl-add-btn" onclick="openHighlightPicker()" style="display:none;position:absolute;top:2px;right:0;padding:8px 15px;border-radius:100px;border:1.5px solid var(--red);background:rgba(234,59,50,0.12);color:var(--red);font-family:var(--font-body);font-weight:700;font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;">+ Add</button>
       </div>
       <div class="shelf-scroll" id="shelf"></div>
     </section>
@@ -1484,8 +1513,10 @@ function renderHeader() {
   document.getElementById('shelf-word').textContent = isPublic() ? 'Highlights' : (isOwner() ? 'Highlights' : 'My Collections');
   document.getElementById('shelf-sub').textContent =
     isPublic() ? 'This curator’s best · tap to open · more in Shared Stacks'
-    : isOwner() ? 'Shared collections shown on your profile · ★ a public stack to feature it'
+    : isOwner() ? 'The stacks you feature on your profile · tap + Add to choose'
     : 'Your Stacks as shareable collections · private, unlisted, or public';
+  var _hlAdd = document.getElementById('hl-add-btn');
+  if (_hlAdd) _hlAdd.style.display = isOwner() ? 'inline-block' : 'none';
 }
 
 /* ── CREDENTIALS / STATS BAR ──────────────────────────
@@ -1567,6 +1598,56 @@ function toggleStackHighlight(e, id) {
   ssToast(next ? '⭐ Added to Highlights' : 'Moved to Shared Stacks');
 }
 
+/* ── ADD-TO-HIGHLIGHTS PICKER (owner) ────────────────
+   Lets the curator CHOOSE which stacks appear in their Highlights from one
+   sheet. Featuring a stack makes it public (Highlights live on the public
+   profile) and flags it highlighted; un-featuring flips highlighted off. The
+   Highlights shelf then shows ONLY these selected stacks. */
+function featureStackToggle(id) {
+  const c = currentCollections().find(x => String(x.id) === String(id));
+  if (!c) return;
+  const next = !c.highlighted;
+  // Featuring forces 'public' (a highlighted stack is shown on the public
+  // profile); un-featuring keeps it public but drops it to the Shared Stacks folder.
+  if (typeof ssSetStackVisibility === 'function') ssSetStackVisibility(id, 'public', next);
+  renderShelf(); renderStacks(); renderTabs();
+  const ov = document.getElementById('hl-overlay');
+  if (ov && ov.style.display !== 'none') openHighlightPicker();   // refresh the open picker
+  ssToast(next ? '⭐ Added to Highlights' : 'Removed from Highlights');
+}
+
+function openHighlightPicker() {
+  const stacks = (typeof currentCollections === 'function') ? currentCollections() : [];
+  let ov = document.getElementById('hl-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'hl-overlay';
+    ov.addEventListener('click', e => { if (e.target === ov) closeHighlightPicker(); });
+    document.body.appendChild(ov);
+  }
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const rows = stacks.length
+    ? stacks.map(c => {
+        const on = !!c.highlighted;
+        const meta = `${c.count || 0} clips · ${(VIS_LABEL[c.vis] || 'Private')}`;
+        return `<div class="hl-row">
+          <div class="hl-row-info"><div class="hl-row-name">${esc(c.name || 'Untitled')}</div><div class="hl-row-meta">${meta}</div></div>
+          <button class="hl-toggle ${on ? 'on' : ''}" onclick="featureStackToggle('${c.id}')">${on ? 'Featured ✓' : 'Feature'}</button>
+        </div>`;
+      }).join('')
+    : `<div style="color:var(--gray2);font-size:13px;padding:22px 0;text-align:center;">No stacks yet — save clips into a Stack first, then feature it here.</div>`;
+  ov.innerHTML = `<div class="hl-sheet">
+    <div class="hl-head"><div class="hl-title">Add to <em>Highlights</em></div><button class="hl-x" onclick="closeHighlightPicker()" aria-label="Close">✕</button></div>
+    <div class="hl-note">Choose the stacks to feature on your profile. Featured stacks become public so visitors can open them.</div>
+    <div class="hl-list">${rows}</div>
+  </div>`;
+  ov.style.display = 'flex';
+}
+function closeHighlightPicker() {
+  const ov = document.getElementById('hl-overlay');
+  if (ov) ov.style.display = 'none';
+}
+
 /* ── HIGHLIGHTS / COLLECTIONS shelf ──────────────────
    Public face: the Highlights shelf shows ONLY highlighted public stacks (the
    rest live in the Shared Stacks folder/tab). Owner/own: everything, with
@@ -1582,9 +1663,10 @@ function renderShelf() {
   // Viewing a curator → the REAL public stacks. Signed-in own profile → real
   // Stacks; logged-out/public demo → mock.
   const source = isViewingCurator() ? _viewedCuratorStacks : currentCollections();
-  // Public face: Highlights shelf = highlighted public only (Req 3.2). Owner/own:
-  // manage everything.
-  const list = pub ? source.filter(c => _placementOf(c) === 'highlights') : source;
+  // Highlights (public + owner faces) show ONLY the creator-selected (highlighted
+  // public) stacks. The normal-user "My Collections" face shows all stacks.
+  const onlyHi = pub || isOwner();
+  const list = onlyHi ? source.filter(c => _placementOf(c) === 'highlights') : source;
 
   if (!list.length) {
     if (pub) {
@@ -1594,19 +1676,25 @@ function renderShelf() {
       el.innerHTML = '';
       return;
     }
-    // OWNER / own view: KEEP the block + a prompt, so the curator discovers they
-    // can turn their Stacks into shareable collections.
     if (section) section.style.display = '';
-    el.innerHTML = `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack and it becomes a shareable collection right here.</div></div>`;
+    el.innerHTML = isOwner()
+      ? `<div class="empty-state" style="min-width:280px"><div class="empty-ic">⭐</div><div class="empty-t">No highlights yet</div><div class="empty-d">Tap <b>+ Add</b> to feature your best stacks here — they show on your public profile.</div></div>`
+      : `<div class="empty-state" style="min-width:280px"><div class="empty-ic">📁</div><div class="empty-t">No collections yet</div><div class="empty-d">Save clips into a Stack and it becomes a shareable collection right here.</div></div>`;
     return;
   }
   if (section) section.style.display = '';   // has items → ensure visible
 
   const cards = list.map(c => {
     const t = c.thumbs && c.thumbs.length ? c.thumbs : DEFAULT_WALL_GRADS;
-    const star = (!pub && c.vis === 'public')
-      ? `<button class="coll-star ${c.highlighted ? 'on' : ''}" title="${c.highlighted ? 'In Highlights — tap to move to folder' : 'Add to Highlights'}" onclick="event.stopPropagation(); toggleStackHighlight(event,'${c.id}')">★</button>`
+    // Owner: a clear, reliably-tappable ✕ to REMOVE from Highlights (replaces the
+    // old star that overlapped the count and was nearly unclickable). Adding is
+    // done via the "+ Add" picker in the shelf head.
+    const removeBtn = (!pub && isOwner())
+      ? `<button class="coll-remove" title="Remove from Highlights" onclick="event.stopPropagation(); featureStackToggle('${c.id}')">✕</button>`
       : '';
+    const shareBtn = pub ? '' : `<button class="coll-share" title="Share collection" onclick="shareCollection(event,'${c.id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>`;
     return `
     <div class="coll" onclick="openCollection('${c.id}')">
       <div class="coll-stack">
@@ -1616,21 +1704,20 @@ function renderShelf() {
           <div class="coll-vig"></div>
         </div>
         <div class="coll-count">${FIRE_SVG.replace('11','10').replace('11','10')}${c.count}</div>
-        ${star}
-        ${pub ? '' : `<div class="coll-vis ${c.vis}" title="${VIS_LABEL[c.vis]}">${VIS_ICON[c.vis]}</div>`}
-        ${pub ? '' : `<button class="coll-share" title="Share collection" onclick="shareCollection(event,'${c.id}')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-        </button>`}
+        ${removeBtn}
+        ${shareBtn}
       </div>
       <div class="coll-name">${c.name}</div>
       <div class="coll-meta">${pub ? `${c.count} clips` : `${VIS_ICON[c.vis]} ${VIS_LABEL[c.vis]}`}</div>
     </div>`;
   }).join('');
-  const addCard = pub ? '' : `
+  // "New collection" prompt only on the normal-user My-Collections face; the
+  // owner Highlights shelf uses the "+ Add" picker in the head instead.
+  const addCard = (!onlyHi) ? `
     <div class="coll coll-new" onclick="ssToast('➕ New collection — save a clip into a new Stack')">
       <div class="coll-stack"><div class="coll-plus">+</div><div class="coll-new-label">New collection</div></div>
       <div class="coll-name" style="opacity:0">.</div>
-    </div>`;
+    </div>` : '';
   el.innerHTML = cards + addCard;
 }
 
@@ -1981,16 +2068,32 @@ function renderAnalytics() {
   const trend = (txt) => own
     ? `<div class="an-trend" style="color:var(--gray2)">No change yet</div>`
     : `<div class="an-trend">${txt}</div>`;
-  const perfClips = own ? getMyClips().slice(0,5) : MOCK_CLIPS.slice(0,5);
-  const perfBlock = (own && !perfClips.length)
+  // Top performers: signed-in owner → REAL per-clip stats (PROFILE.perClip from
+  // the 0019 reader), ranked by fires → watch-its → views. Logged-out/demo keeps
+  // the mock. Each row shows the clip's REAL thumbnail (poster) and REAL watch-its
+  // (no fabricated estimate) so it matches the totals above.
+  const pcMap = PROFILE.perClip || {};
+  let perfRows;
+  if (own) {
+    perfRows = getMyClips().map(c => {
+      const s = pcMap[c.id] || {};
+      return { c: c, fires: Number(s.fires)||0, views: Number(s.views)||0, watchIts: Number(s.watchIts)||0 };
+    }).sort((a,b) => (b.fires - a.fires) || (b.watchIts - a.watchIts) || (b.views - a.views)).slice(0,5);
+  } else {
+    perfRows = MOCK_CLIPS.slice(0,5).map(c => ({ c: c, fires: c.fires||0, views: 0, watchIts: Math.round((c.fires||0)*0.18) }));
+  }
+  const perfBlock = (own && !perfRows.length)
     ? `<div class="empty-state" style="padding:28px 22px"><div class="empty-ic">📊</div><div class="empty-t">No data yet</div><div class="empty-d">Once you post clips and people react, your top performers show up here.</div></div>`
-    : perfClips.map((c,i)=>`
+    : perfRows.map((r,i)=>`
       <div class="perf-row">
         <div class="perf-rank ${i===0?'top':''}">${i+1}</div>
-        <div class="perf-thumb"><div class="perf-thumb-bg" style="background:${c.bg}"></div></div>
+        <div class="perf-thumb">
+          <div class="perf-thumb-bg" style="background:${r.c.bg}"></div>
+          ${r.c.poster ? `<img class="perf-thumb-poster" src="${r.c.poster}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}
+        </div>
         <div class="perf-info">
-          <div class="perf-cap">${(c.caption||'').replace(/<[^>]+>/g,'')}</div>
-          <div class="perf-stats"><span class="perf-fires">${FIRE_SVG} ${fmtFires(c.fires||0)} fires</span><span>▶ ${fmtFires(Math.round((c.fires||0)*0.18))} watch its</span></div>
+          <div class="perf-cap">${(r.c.caption||'').replace(/<[^>]+>/g,'') || 'Clip'}</div>
+          <div class="perf-stats"><span class="perf-fires">${FIRE_SVG} ${fmtFires(r.fires)} fires</span><span>👁 ${fmtFires(r.views)} views</span><span>▶ ${fmtFires(r.watchIts)} watch its</span></div>
         </div>
       </div>`).join('');
   document.getElementById('analytics').innerHTML = `
@@ -2654,6 +2757,7 @@ async function fetchOwnAnalytics() {
       }
       PROFILE.perClip = map;
       renderPrimary();
+      renderAnalytics();   // refresh the Top-Performing list now that real per-clip stats exist
     }
   } catch (e) { /* leave per-clip stats empty (zeros per clip) on any failure (Req 8.5) */ }
 }

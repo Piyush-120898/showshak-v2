@@ -50,6 +50,53 @@ document.body.insertAdjacentHTML('afterbegin', SS_MARK_SVG);
 
 
 /* ════════════════════════════════════════════════
+   PORTRAIT LOCK
+   ─────────────────────────────────────────────────
+   ShowShak is a vertical-clip product → portrait ONLY. The manifest
+   (orientation:"portrait") locks the INSTALLED PWA on Android, but iOS
+   ignores manifest orientation, so on a phone held in landscape we cover
+   the app with a "rotate to portrait" overlay instead of ever rendering a
+   landscape layout. Pure CSS media query (no JS resize churn). Targets
+   touch PHONES only — short landscape height + coarse pointer — so desktop
+   and the phone-width column on wide screens are never affected; tablets
+   (tall even in landscape) are left alone.
+════════════════════════════════════════════════ */
+(function ssPortraitLock() {
+  try {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (document.getElementById('ss-rotate')) return;
+    var css =
+      '@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse){' +
+        '#ss-rotate{display:flex !important}' +
+      '}' +
+      '#ss-rotate{display:none;position:fixed;inset:0;z-index:2147483600;background:#0B0B0F;' +
+        'color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:16px;' +
+        'text-align:center;padding:24px;font-family:\'DM Sans\',system-ui,sans-serif;}' +
+      '#ss-rotate .ssr-mark{width:68px;height:68px;border-radius:17px;overflow:hidden;background:#000;' +
+        'border:1px solid rgba(234,59,50,.25);box-shadow:0 0 40px rgba(234,59,50,.3);}' +
+      '#ss-rotate .ssr-mark svg{width:100%;height:100%;display:block;}' +
+      '#ss-rotate .ssr-icon{font-size:30px;color:#EA3B32;animation:ssrTurn 2.2s ease-in-out infinite;}' +
+      '#ss-rotate .ssr-title{font-family:\'Bebas Neue\',sans-serif;font-size:26px;letter-spacing:2px;}' +
+      '#ss-rotate .ssr-sub{font-size:13px;color:#A0A0B8;max-width:280px;line-height:1.5;}' +
+      '@keyframes ssrTurn{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(78deg)}}';
+    var st = document.createElement('style');
+    st.id = 'ss-rotate-style';
+    st.textContent = css;
+    document.head.appendChild(st);
+    var el = document.createElement('div');
+    el.id = 'ss-rotate';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML =
+      '<div class="ssr-mark"><svg viewBox="0 0 1254 1254" xmlns="http://www.w3.org/2000/svg"><use href="#ss-mark"/></svg></div>' +
+      '<div class="ssr-icon">\u21BB</div>' +
+      '<div class="ssr-title">ROTATE TO PORTRAIT</div>' +
+      '<div class="ssr-sub">ShowShak is built for portrait — turn your phone upright to keep watching.</div>';
+    document.body.appendChild(el);
+  } catch (e) { /* never block the app on the portrait lock */ }
+})();
+
+
+/* ════════════════════════════════════════════════
    TOAST
 ════════════════════════════════════════════════ */
 (function setupToast() {
