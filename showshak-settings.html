@@ -182,10 +182,13 @@ const TOG = {
 };
 const PLATFORMS = [
   { name:'Netflix', on:true }, { name:'Prime Video', on:true },
-  { name:'Disney+', on:false }, { name:'JioHotstar', on:true },
-  { name:'Apple TV+', on:false }, { name:'SonyLIV', on:false },
-  { name:'HBO Max', on:false }, { name:'Zee5', on:false },
+  { name:'JioHotstar', on:true }, { name:'SonyLIV', on:false },
+  { name:'Zee5', on:false }, { name:'Apple TV+', on:false },
 ];
+// Major (mainstream national) vs Regional split for the Platforms screen. The
+// real catalog comes from the DB on hydrate; anything not in this set renders
+// under "Regional".
+const MAJOR_PLATFORMS = new Set(['Netflix','Prime Video','JioHotstar','SonyLIV','Zee5','Apple TV+','YouTube','Crunchyroll']);
 const REGION = { region:'India', lang:'English' };
 /* users.region stores an ISO-ish code; the screen shows full names. */
 const REGION_CODE = { 'India':'IN', 'United States':'US', 'United Kingdom':'GB', 'Canada':'CA', 'Australia':'AU', 'UAE':'AE' };
@@ -286,14 +289,18 @@ function accountScreen() {
 }
 
 function platformsScreen() {
-  return `
-    <div class="set-foot-note" style="margin:0 4px 14px;text-align:left">Tell us what you're subscribed to and we'll route every <strong style="color:var(--white)">Watch It</strong> to a service you already have. This is never shown on your profile.</div>
-    <div class="group">
-      ${PLATFORMS.map((p,i)=>`
+  const rowHtml = ({p,i}) => `
         <div class="row static"><div class="row-ic" style="font-weight:800;font-size:11px;color:var(--white)">${p.name.slice(0,2).toUpperCase()}</div>
           <div class="row-main"><div class="row-title">${p.name}</div></div>
-          <div class="tog ${p.on?'on':''}" onclick="togglePlatform(${i}, this)"></div></div>`).join('')}
-    </div>
+          <div class="tog ${p.on?'on':''}" onclick="togglePlatform(${i}, this)"></div></div>`;
+  const subhead = (label) => `<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gray2);margin:18px 4px 8px;">${label}</div>`;
+  const indexed  = PLATFORMS.map((p,i)=>({p,i}));
+  const major    = indexed.filter(x => MAJOR_PLATFORMS.has(x.p.name));
+  const regional = indexed.filter(x => !MAJOR_PLATFORMS.has(x.p.name));
+  return `
+    <div class="set-foot-note" style="margin:0 4px 14px;text-align:left">Tell us what you're subscribed to and we'll route every <strong style="color:var(--white)">Watch It</strong> to a service you already have. This is never shown on your profile.</div>
+    ${major.length ? subhead('Major') + `<div class="group">${major.map(rowHtml).join('')}</div>` : ''}
+    ${regional.length ? subhead('Regional') + `<div class="group">${regional.map(rowHtml).join('')}</div>` : ''}
   `;
 }
 

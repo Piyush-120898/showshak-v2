@@ -1513,7 +1513,7 @@ function renderHeader() {
   document.getElementById('shelf-word').textContent = isPublic() ? 'Highlights' : (isOwner() ? 'Highlights' : 'My Collections');
   document.getElementById('shelf-sub').textContent =
     isPublic() ? 'This curator’s best · tap to open · more in Shared Stacks'
-    : isOwner() ? 'The stacks you feature on your profile · tap + Add to choose'
+    : isOwner() ? ''
     : 'Your Stacks as shareable collections · private, unlisted, or public';
   var _hlAdd = document.getElementById('hl-add-btn');
   if (_hlAdd) _hlAdd.style.display = isOwner() ? 'inline-block' : 'none';

@@ -42,10 +42,12 @@
     'Hulu':        { color: '#1CE783', abbr: 'H',   rgb: '28,231,131' },
   };
 
-  // The order/subset shown as filter chips on Discover (Hulu excluded).
+  // The order/subset shown as filter chips on Discover. Major India platforms
+  // only — no duplicates, and no services not available in India (Disney+ is
+  // merged into JioHotstar here; HBO Max / Hulu aren't in India).
   const PLATFORM_FILTER_ORDER = [
-    'Netflix', 'Prime Video', 'Disney+', 'JioHotstar',
-    'Apple TV+', 'SonyLIV', 'HBO Max', 'Zee5',
+    'Netflix', 'Prime Video', 'JioHotstar',
+    'SonyLIV', 'Zee5', 'Apple TV+',
   ];
 
   /* ════════════════════════════════════════════════
