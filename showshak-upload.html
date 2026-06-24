@@ -137,6 +137,17 @@ body { background: var(--bg); }
   background: #000; border: 1px solid var(--border); position: relative;
 }
 .up-trim-stage video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.up-trim-play {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 56px; height: 56px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; z-index: 4;
+  transition: transform 0.15s var(--ease-spring), background 0.2s;
+}
+.up-trim-play svg { width: 22px; height: 22px; fill: #fff; }
+.up-trim-play.playing { background: rgba(0,0,0,0.32); }
+.up-trim-play:active { transform: translate(-50%,-50%) scale(0.9); }
 .up-trim-controls { display: flex; flex-direction: column; gap: 16px; }
 .up-trim-row { display: flex; flex-direction: column; gap: 8px; }
 .up-trim-row-head { display: flex; align-items: center; justify-content: space-between; }
@@ -402,6 +413,9 @@ body { background: var(--bg); }
 
       <div class="up-trim-stage">
         <video id="up-trim-video" muted playsinline preload="metadata"></video>
+        <button type="button" class="up-trim-play" id="up-trim-play" onclick="ssTrimPreviewToggle()" aria-label="Preview the trimmed cut">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+        </button>
       </div>
 
       <div class="up-trim-controls">
@@ -670,6 +684,7 @@ function showStep(n) {
   // In edit mode the Clip (1) and Trim (2) steps are skipped (immutable video,
   // Req 10.3); never land on a hidden step.
   if (editMode() && n < firstStep()) n = firstStep();
+  if (typeof _ssTrimPreviewStop === 'function') _ssTrimPreviewStop();   // never let the trim preview play on another step
   step = n;
   document.querySelectorAll('.up-step').forEach(s => s.classList.remove('active'));
   document.getElementById(`step-${n}`).classList.add('active');
@@ -889,12 +904,62 @@ function upTrimRejectMessage(reason) {
 /* Entered when the curator lands on the Trim step. Hydrates the preview video
    and initialises the in/out sliders from the draft (defaulting to the full
    source, Req 7.6). */
+/* ── Trim PREVIEW (client-side, no upload, no ffmpeg) ───────────────────────
+   Lets the curator play + test the EXACT trimmed segment before posting: seek
+   to trimIn, play with sound, and loop back to trimIn when reaching trimOut.
+   Purely local on the source <video>; independent of the server-side Mux trim. */
+const _SS_TRIM_PLAY_SVG  = '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
+const _SS_TRIM_PAUSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect></svg>';
+let _ssTrimPreviewing = false;
+function _ssTrimPreviewIcon(playing) {
+  const btn = document.getElementById('up-trim-play');
+  if (!btn) return;
+  btn.innerHTML = playing ? _SS_TRIM_PAUSE_SVG : _SS_TRIM_PLAY_SVG;
+  btn.classList.toggle('playing', playing);
+}
+function _ssTrimPreviewStop() {
+  _ssTrimPreviewing = false;
+  const vid = document.getElementById('up-trim-video');
+  if (vid) { try { vid.pause(); } catch (e) {} }
+  _ssTrimPreviewIcon(false);
+}
+function _ssTrimPreviewTick() {
+  if (!_ssTrimPreviewing) return;
+  const vid = document.getElementById('up-trim-video');
+  if (!vid) return;
+  const inP  = (typeof draft.trimIn  === 'number' && isFinite(draft.trimIn))  ? draft.trimIn  : 0;
+  const outP = (typeof draft.trimOut === 'number' && isFinite(draft.trimOut)) ? draft.trimOut : (vid.duration || 0);
+  if (outP > 0 && vid.currentTime >= outP - 0.03) {       // reached the cut end → loop the segment
+    try { vid.currentTime = inP; const p = vid.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+}
+function ssTrimPreviewToggle() {
+  const vid = document.getElementById('up-trim-video');
+  if (!vid) return;
+  if (_ssTrimPreviewing) { _ssTrimPreviewStop(); return; }
+  _ssTrimPreviewing = true;
+  const inP = (typeof draft.trimIn === 'number' && isFinite(draft.trimIn)) ? draft.trimIn : 0;
+  try { vid.currentTime = inP; } catch (e) {}
+  vid.muted = false;   // a tap is a user gesture → let the curator HEAR the cut
+  const p = vid.play();
+  if (p && p.catch) p.catch(() => { try { vid.muted = true; vid.play(); } catch (e) {} });
+  _ssTrimPreviewIcon(true);
+}
+
 function enterTrimStep() {
+  _ssTrimPreviewStop();                                   // clean state on (re)entry
   const src = draft.durationSec;
   const vid = document.getElementById('up-trim-video');
   if (draft.videoUrl && vid.getAttribute('src') !== draft.videoUrl) {
     vid.src = draft.videoUrl;
   }
+  // Bind the loop watcher once per video element.
+  if (vid && !vid.dataset.ssPrevBound) {
+    vid.dataset.ssPrevBound = '1';
+    vid.addEventListener('timeupdate', _ssTrimPreviewTick);
+    vid.addEventListener('ended', _ssTrimPreviewStop);
+  }
+  _ssTrimPreviewIcon(false);
   if (typeof draft.trimIn !== 'number' || !isFinite(draft.trimIn)) draft.trimIn = 0;
   if (typeof draft.trimOut !== 'number' || !isFinite(draft.trimOut)) draft.trimOut = src;
 
@@ -936,6 +1001,7 @@ function _ssUpdateTrimFill() {
    always stays a hair before End (they can't cross), keeps the draft in sync,
    scrubs the preview to the handle being dragged, and repaints the fill. */
 function onTrimInput(which) {
+  _ssTrimPreviewStop();                 // dragging a handle pauses the preview loop
   const inEl = document.getElementById('up-trim-in');
   const outEl = document.getElementById('up-trim-out');
   let inV = Number(inEl.value);
@@ -1044,12 +1110,9 @@ function ssLoadFfmpeg() {
    steps and is ready (cached) by the time they hit Post. Fire-and-forget; on
    failure it resets so a later attempt (or the publish-time load) can retry. */
 let _ssFfmpegWarmed = false;
-function ssWarmFfmpeg() {
-  if (_ssFfmpegWarmed) return;
-  _ssFfmpegWarmed = true;
-  try { ssLoadFfmpeg().catch(function () { _ssFfmpegWarmed = false; }); }
-  catch (e) { _ssFfmpegWarmed = false; }
-}
+function ssWarmFfmpeg() { /* no-op — trimming moved SERVER-SIDE (Mux clips the
+  source asset in the webhook), so the ~25 MB ffmpeg.wasm engine is never
+  downloaded. Kept as a no-op so existing call sites need no change. */ }
 
 /* Pick a safe input filename/extension for the wasm FS from the source file. */
 function ssFfmpegInputName(file) {
@@ -1944,24 +2007,13 @@ async function publish() {
   // PUTs draft.file unchanged and never loads the engine.
   // `effectiveTrim` is what we ACTUALLY uploaded — it is dropped on the engine
   // fallback below so the stored meta.trim never lies about the bytes.
-  let uploadBlob = draft.file;
-  let effectiveTrim = (draft.trim && typeof draft.trim === 'object') ? draft.trim : null;
-  if (effectiveTrim) {
-    setBusy('Preparing editor…');   // engine may still be downloading on first use
-    try {
-      uploadBlob = await ssTrimToBlob(draft.file, effectiveTrim.in, effectiveTrim.out,
-        (pct) => setBusy('Trimming… ' + pct + '%'));
-    } catch (e) {
-      // Engine load/exec failed (design degradation, Req 7/4). The SOURCE was
-      // already capped at ≤90 s at file-select, so the UNTRIMMED source is safe
-      // to publish — it can never be over-cap here, and we never bypass the cap.
-      // Fall back to the full source AND drop meta.trim so the stored metadata
-      // matches the bytes we actually upload.
-      ssToast('Couldn’t trim in your browser — posting the full clip instead');
-      uploadBlob = draft.file;
-      effectiveTrim = null;
-    }
-  }
+  // TRIM IS SERVER-SIDE (Mux): upload the FULL source and record meta.trim =
+  // {in,out}; the mux-webhook clips the source asset to that range and keeps
+  // ONLY the trimmed asset (the source is deleted). No ffmpeg.wasm, no 25 MB
+  // download, no browser CPU — reliable on every device and instant to Post.
+  // The curator already previewed the exact cut locally on the Trim step.
+  const uploadBlob = draft.file;
+  const effectiveTrim = (draft.trim && typeof draft.trim === 'object') ? draft.trim : null;
 
   // ── 3) Mint the Mux direct-upload URL (auth-gated, Req 6.3/6.4) ────────────
   // functions.invoke attaches the curator's session JWT. Titles are already

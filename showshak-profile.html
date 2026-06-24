@@ -2383,6 +2383,30 @@ if (_params.get('curator')) {
    page shows your actual name / @username / avatar / genres instead of
    the mock. Falls back silently to the mock if logged out or offline,
    so the page never breaks. */
+/* Instant cold-start paint: apply the prewarmed identity cache to PROFILE so the
+   page + avatar show immediately, without waiting on getSession + the users
+   fetch. Only fires when a signed-in uid is known (ss_last_uid, cleared on
+   sign-out) so it never fakes a signed-in identity for a guest. Returns true if
+   it applied cached data (caller renders + drops the shell). hydrateOwnProfile()
+   then revalidates against the DB and re-renders if anything changed. */
+function applyCachedOwnProfile() {
+  if (_params.get('curator')) return false;
+  if (!(typeof _ssReadLastUid === 'function' && _ssReadLastUid())) return false;  // no known signed-in user
+  var c = (typeof ssReadMyProfileCache === 'function') ? ssReadMyProfileCache() : null;
+  if (!c) return false;
+  _signedIn = true;
+  if (c.name)     PROFILE.name   = c.name.toUpperCase();
+  if (c.username) PROFILE.handle = '@' + c.username;
+  PROFILE.letter = ((c.name || c.username || 'U').charAt(0)).toUpperCase();
+  PROFILE.photo  = c.avatar_url || null;
+  if (c.bio) PROFILE.bio = c.bio;
+  if (Array.isArray(c.genres) && c.genres.length) PROFILE.genres = c.genres;
+  if (c.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
+    face = 'owner'; activeTab = defaultTabFor(face);
+  }
+  return true;
+}
+
 async function hydrateOwnProfile() {
   if (_params.get('curator')) return;                 // viewing someone else → skip
   if (!window.ssDB) return;                           // no backend → keep mock
@@ -2405,6 +2429,7 @@ async function hydrateOwnProfile() {
       .select('username, name, bio, avatar_url, genres, verified, role')
       .eq('id', user.id).single();
     if (error || !data) return;
+    if (typeof ssWriteMyProfileCache === 'function') ssWriteMyProfileCache(data);   // refresh prewarm cache
     if (data.name)      PROFILE.name   = data.name.toUpperCase();
     if (data.username)  PROFILE.handle = '@' + data.username;
     PROFILE.letter = ((data.name || data.username || 'U').charAt(0)).toUpperCase();
@@ -2679,6 +2704,12 @@ async function boot() {
   if (_params.get('curator')) {
     await hydrateCuratorProfile();   // public/by-username path; forces face='public'
   } else {
+    // Instant cold-start paint: show the cached identity (+ avatar) immediately,
+    // then revalidate. Removes the network wait on feed→profile cold starts.
+    if (applyCachedOwnProfile()) {
+      renderAll();
+      var _sh0 = document.getElementById('ss-shell'); if (_sh0) _sh0.remove();
+    }
     // No-flash contract (curator-role-persistence R6.5): we AWAIT
     // hydrateOwnProfile() BEFORE the first renderWall()/renderAll() below, so
     // the first painted own-profile face already reflects the persisted role.

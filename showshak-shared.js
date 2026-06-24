@@ -4065,14 +4065,14 @@ function _ssvBuildList(clicked, list) {
     }
     .ssv-creator-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
     .ssv-avatar {
-      width: 28px; height: 28px; border-radius: 50%;
+      width: 36px; height: 36px; border-radius: 50%;
       border: 1.5px solid rgba(255,255,255,0.5); flex-shrink: 0;
       overflow: hidden;
       display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase;
+      font-size: 14px; font-weight: 700; color: #fff; text-transform: uppercase;
     }
     .ssv-avatar .ss-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .ssv-handle { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
+    .ssv-handle { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85); text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
     .ssv-follow {
       font-size: 10px; color: var(--red); font-weight: 700; cursor: pointer;
       padding: 2px 9px; border: 1px solid var(--red); border-radius: 100px;
@@ -4092,7 +4092,7 @@ function _ssvBuildList(clicked, list) {
     .ssv-watch {
       position: absolute; left: 14px; right: 72px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30;
       display: flex; align-items: center; justify-content: center;
-      height: 52px; border-radius: 16px; overflow: hidden; opacity: 0.92;
+      height: 52px; border-radius: 16px; overflow: hidden; opacity: 0.78;
       font-family: var(--font-body); color: #fff; border: none; cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       box-shadow: 0 5px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
@@ -5199,6 +5199,98 @@ function ssWritePageCache(name, clips) {
   } catch (e) { /* best-effort cache */ }
 }
 
+/* ── Own-profile prewarm + cache (feed → profile instant cold start) ─────────
+   Make opening Profile feel instant: cache the signed-in user's identity row
+   (name / handle / avatar / bio / genres / role) keyed by uid — with the
+   synchronous ss_last_uid fallback so it hits on a cold load before the async
+   session resolves — and warm both the avatar IMAGE and the profile DOCUMENT
+   ahead of the tap. The Profile page paints from this cache, then revalidates
+   against the DB (ssWriteMyProfileCache on the fresh read). Best-effort; the
+   cache is cleared on sign-out so it can never show a stale signed-in identity. */
+var SS_PROFILE_CACHE_TTL_MS = 1000 * 60 * 60;   // 1h — identity changes rarely
+function _ssProfileCacheKey() {
+  var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+  var id = (me && me.id) || _ssReadLastUid() || 'guest';
+  return 'ss_profile_v' + SS_FEED_CACHE_VERSION + '_' + id;
+}
+function ssReadMyProfileCache() {
+  try {
+    var raw = window.localStorage.getItem(_ssProfileCacheKey());
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (!o || o.v !== SS_FEED_CACHE_VERSION) return null;
+    if (SS_PROFILE_CACHE_TTL_MS && (Date.now() - (o.ts || 0)) > SS_PROFILE_CACHE_TTL_MS) return null;
+    return o.profile || null;
+  } catch (e) { return null; }
+}
+function ssWriteMyProfileCache(profile) {
+  try {
+    if (!profile) return;
+    window.localStorage.setItem(_ssProfileCacheKey(), JSON.stringify({
+      v: SS_FEED_CACHE_VERSION, ts: Date.now(), profile: profile,
+    }));
+  } catch (e) { /* best-effort */ }
+}
+function ssClearMyProfileCache() {
+  try { window.localStorage.removeItem(_ssProfileCacheKey()); } catch (e) {}
+}
+/* Decode an image into the browser cache so it paints with no network wait. */
+function _ssWarmImage(url) {
+  try { if (url && typeof Image === 'function') { var im = new Image(); im.decoding = 'async'; im.src = url; } } catch (e) {}
+}
+/* Prefetch a same-origin document (HTML) so a cross-page nav is warm. */
+function _ssPrefetchDoc(href) {
+  try {
+    if (typeof document === 'undefined' || !document.head) return;
+    if (document.querySelector('link[data-ss-doc="' + href + '"]')) return;
+    var l = document.createElement('link');
+    l.rel = 'prefetch'; l.href = href; l.setAttribute('as', 'document'); l.setAttribute('data-ss-doc', href);
+    document.head.appendChild(l);
+  } catch (e) { /* best-effort */ }
+}
+var _ssProfilePrewarmed = false;
+function ssPrewarmProfile() {
+  if (_ssProfilePrewarmed) return; _ssProfilePrewarmed = true;
+  try {
+    var onProfile = (typeof location !== 'undefined') && location.pathname.toLowerCase().indexOf('profile') !== -1;
+    if (!onProfile) _ssPrefetchDoc('showshak-profile.html');   // warm the HTML doc
+    // Warm the cached avatar immediately (decoded before the tap).
+    var cached = ssReadMyProfileCache();
+    if (cached && cached.avatar_url) _ssWarmImage(cached.avatar_url);
+    if (!window.ssDB) return;
+    // Resolve uid, refresh the cached identity row, warm the fresh avatar.
+    Promise.resolve()
+      .then(function () { return (window.ssDB.auth && window.ssDB.auth.getSession) ? window.ssDB.auth.getSession() : null; })
+      .then(function (s) {
+        var user = (s && s.data && s.data.session) ? s.data.session.user : null;
+        if (!user && typeof window.ssCurrentUser === 'function') user = window.ssCurrentUser();
+        if (!user) return null;
+        return window.ssDB.from('users')
+          .select('username, name, bio, avatar_url, genres, verified, role')
+          .eq('id', user.id).single();
+      })
+      .then(function (res) {
+        if (!res || res.error || !res.data) return;
+        ssWriteMyProfileCache(res.data);
+        if (res.data.avatar_url) _ssWarmImage(res.data.avatar_url);
+      })
+      .catch(function () { /* best-effort */ });
+  } catch (e) { /* never block the app */ }
+}
+if (typeof window !== 'undefined') {
+  window.ssReadMyProfileCache  = ssReadMyProfileCache;
+  window.ssWriteMyProfileCache = ssWriteMyProfileCache;
+  window.ssClearMyProfileCache = ssClearMyProfileCache;
+  window.ssPrewarmProfile      = ssPrewarmProfile;
+  // Kick a prewarm shortly after load (off the first-paint path) so Profile is
+  // warm by the time the user taps it. Guarded so it never runs under Node.
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(function () { try { ssPrewarmProfile(); } catch (e) {} }, { timeout: 2500 });
+  } else if (typeof setTimeout === 'function') {
+    setTimeout(function () { try { ssPrewarmProfile(); } catch (e) {} }, 1200);
+  }
+}
+
 /* True if the fresh first window differs (by id/order) from what we rendered,
    so we ONLY re-mount when something actually changed — a correct cache never
    causes a flash or interrupts the playing clip. */
@@ -6173,6 +6265,8 @@ function _ssvSetupObserver(feed) {
       if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
       if (_ssSession && typeof ssHydrateStacks === 'function') ssHydrateStacks();
+      // Warm the own-profile cache + avatar once the session is known.
+      if (_ssSession && typeof ssPrewarmProfile === 'function') ssPrewarmProfile();
     }).catch(() => {});
     // Live updates: login, logout, token refresh, OAuth redirect return.
     window.ssDB.auth.onAuthStateChange((_event, session) => {
@@ -6262,6 +6356,7 @@ function _ssvSetupObserver(feed) {
           sessionStorage.removeItem('ss_following_v1');
           sessionStorage.removeItem('ss_view_curator_v1');
           sessionStorage.removeItem('ss_reactchk');   // re-check reactivation on next sign-in
+          if (typeof ssClearMyProfileCache === 'function') ssClearMyProfileCache();   // drop cached identity
           _ssWriteLastUid(null);   // forget the per-user cache key on sign-out
         } catch (e) {}
         if (typeof _ssNotifyStacksChange === 'function') _ssNotifyStacksChange();

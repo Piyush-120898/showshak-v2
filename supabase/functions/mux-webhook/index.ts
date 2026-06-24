@@ -98,6 +98,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     row = (res.data as ContentRow | null) ?? null;
   }
 
+  // Phase-2 match: the TRIMMED CLIP asset is ready. Its event carries no
+  // upload_id and its id isn't on mux_asset_id yet — we stashed it in
+  // meta.mux_clip_asset_id when the clip was requested (Phase 1 below), so match
+  // on that. matchedByClip drives the live-flip to use the CLIP + delete the source.
+  let matchedByClip = false;
+  if (!row && assetId) {
+    const res = await db.from("content")
+      .select("id, meta")
+      .eq("meta->>mux_clip_asset_id", assetId)
+      .eq("status", "processing")
+      .limit(1)
+      .maybeSingle();
+    if (res.data) { row = res.data as ContentRow; matchedByClip = true; }
+  }
+
   // No match (unknown upload, or already live) → acknowledge, change nothing
   // (Req 3.4 / 3.5). Always 200 so Mux does not retry a handled event.
   if (!row) {
@@ -142,6 +157,63 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  // 3.5) SERVER-SIDE TRIM (two-phase). Active only when the row recorded
+  //      meta.trim = {in,out} at publish (the curator made a real cut).
+  const trim = (meta && typeof meta.trim === "object" && meta.trim)
+    ? meta.trim as Record<string, any>
+    : null;
+  const tIn = trim ? Number(trim.in) : NaN;
+  const tOut = trim ? Number(trim.out) : NaN;
+  const hasTrim = !!trim && isFinite(tIn) && isFinite(tOut) && tOut > tIn;
+
+  if (!matchedByClip && hasTrim) {
+    // Duplicate SOURCE-ready after we already requested the clip → the clip's
+    // own ready event (Phase 2) will finish the job. Change nothing.
+    if (meta.mux_clip_asset_id) {
+      return new Response(JSON.stringify({ clip_pending: meta.mux_clip_asset_id }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    // PHASE 1 — the SOURCE asset is ready: create a CLIP asset for [in,out] from
+    // it (Mux instant clipping via mux://assets/<id>), remember both ids, and
+    // stay 'processing'. The clip fires its OWN video.asset.ready, handled by
+    // Phase 2 (flip live with the clip + delete the source → only the trimmed
+    // part survives). On ANY failure we fall through and publish the full source
+    // so the curator is never stuck.
+    if (assetId) {
+      try {
+        const clipRes = await muxFetch("/video/v1/assets", {
+          method: "POST",
+          body: {
+            input: [{ url: `mux://assets/${assetId}`, start_time: tIn, end_time: tOut }],
+            playback_policy: ["public"],
+            video_quality: "basic",
+          },
+        });
+        if (!clipRes.ok) {
+          const detail = await clipRes.text().catch(() => "");
+          throw new Error(`mux_clip_create_failed: ${clipRes.status} ${detail}`);
+        }
+        const clipJson = await clipRes.json();
+        const clipAssetId: string | null = clipJson?.data?.id ?? null;
+        if (!clipAssetId) throw new Error("mux_clip_no_id");
+        const mergedMeta = { ...meta, mux_clip_asset_id: clipAssetId, mux_source_asset_id: assetId };
+        await db.from("content")
+          .update({ meta: mergedMeta })
+          .eq("id", row.id)
+          .eq("status", "processing");
+        return new Response(JSON.stringify({ clip_requested: clipAssetId }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        console.error("mux clip create failed; publishing full source", err);
+        // fall through → normal live-flip with the SOURCE asset.
+      }
+    }
+  }
+
   // 4) NORMAL live-flip. Use the row's STORED meta.cover_time (set at insert by
   //    the upload UI) to build a cover-time thumbnail; 0 is a valid time
   //    (first frame), so check finiteness rather than truthiness (Req 8.2).
@@ -170,6 +242,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq("status", "processing")
     .select("id");
   const updated = res.data ?? null;
+
+  // PHASE 2 cleanup: the trimmed clip is now live — delete the SOURCE asset so
+  // only the trimmed part is stored (the full upload is discarded). Best-effort;
+  // a Mux failure here never fails the webhook (the clip is already live).
+  if (matchedByClip && meta.mux_source_asset_id) {
+    try {
+      await muxFetch(`/video/v1/assets/${meta.mux_source_asset_id}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("mux source asset delete failed", meta.mux_source_asset_id, err);
+    }
+  }
 
   return new Response(JSON.stringify({ updated: updated?.length ?? 0 }), {
     status: 200,
