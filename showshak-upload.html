@@ -1487,9 +1487,43 @@ async function upPickTmdb(tmdbId, mediaType) {
     ssToast(`Linked “${t.name}”`);
     renderTitlesList(document.getElementById('up-show-input').value);
     syncFooter();
+    // The `link` edge mode returns instantly and caches TMDB providers in the
+    // BACKGROUND, so t.providers is usually empty right now → the Confirm step
+    // would wrongly say "couldn't confirm where this streams." Poll the title row
+    // until the providers land, then update + re-render so the curator sees the
+    // real availability (matching what Watch It shows once the clip is live).
+    upRefreshTitleProviders(t.id);
   } catch (e) {
     ssToast('Couldn’t link that title — try again');
   }
+}
+
+/* Poll the linked title's region providers (cached in the background by the
+   `link` edge mode) and, once present, attach them to the title + re-render the
+   Confirm_Availability_Step so its resolved line is correct at upload time.
+   Fail-soft; a few spaced retries then gives up (the curator can always add the
+   platform manually via the chips). */
+async function upRefreshTitleProviders(titleId, tries) {
+  if (!titleId || !window.ssDB) return;
+  tries = (typeof tries === 'number') ? tries : 4;
+  let prov = null;
+  try {
+    const { data } = await window.ssDB.from('titles').select('providers').eq('id', titleId).maybeSingle();
+    prov = data && data.providers;
+  } catch (e) { /* fail-soft */ }
+  const hasProv = prov && typeof prov === 'object' &&
+    Object.keys(prov).some(r => Array.isArray(prov[r]) && prov[r].length);
+  if (hasProv) {
+    if (titlesIndex[titleId]) titlesIndex[titleId].providers = prov;
+    const sel = (draft.selectedTitles || []).find(s => s && s.id === titleId);
+    if (sel) sel.providers = prov;
+    if (step === 3) {
+      const inp = document.getElementById('up-show-input');
+      renderTitlesList(inp ? inp.value : '');
+    }
+    return;
+  }
+  if (tries > 1) setTimeout(() => upRefreshTitleProviders(titleId, tries - 1), 2000);
 }
 
 /* Load the platforms catalog once for the manual-entry picker (public read). */
