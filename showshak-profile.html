@@ -1918,39 +1918,19 @@ async function renderFollowing() {
   const el = document.getElementById('following');
   if (!el) return;
 
-  let merged = [];
-
-  // Prefer the REAL follows from the DB when signed in.
-  const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
-  if (user && window.ssDB) {
-    try {
-      const { data, error } = await window.ssDB
-        .from('follows')
-        .select('creator:creator_id(username, name, avatar_url, verified)')
-        .eq('follower_id', user.id)
-        .is('deleted_at', null);
-      if (!error && data) {
-        merged = data.filter(r => r.creator).map(r => ({
-          handle: r.creator.username,
-          letter: (r.creator.name || r.creator.username || '?').charAt(0).toUpperCase(),
-          color: '#EA3B32',
-          clips: 0,
-          verified: !!r.creator.verified,
-          real: true,
-        }));
-      }
-    } catch (e) { /* fall back to local store below */ }
-  }
-
-  // Fallback / merge with the shared local store (covers guests + instant UI).
-  const local = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
-  const seen = new Set(merged.map(c => c.handle));
-  local.forEach(c => {
-    if (!seen.has(c.username)) {
-      seen.add(c.username);
-      merged.push({ handle:c.username, letter:c.letter, color:c.bg, clips:c.clips||0, verified:!!c.verified, real:true });
-    }
-  });
+  // SINGLE SOURCE: the local Following store, which ssHydrateFollowing() seeds
+  // from the DB on login/load and which follow/unfollow update optimistically.
+  // Rendering from it (not a fresh per-render DB fetch) keeps the list, the
+  // count badge, and the Follow buttons in lock-step and makes optimistic
+  // follow/unfollow instant (no DB-lag flicker, no phantom from a merge).
+  const list = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
+  const merged = list.filter(c => c && c.username).map(c => ({
+    handle:   c.username,
+    letter:   c.letter || (c.username || '?').charAt(0).toUpperCase(),
+    color:    c.bg || '#EA3B32',
+    clips:    c.clips || 0,
+    verified: !!c.verified,
+  }));
 
   if (!merged.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">👀</div><div class="empty-t">Not following anyone yet</div><div class="empty-d">Find curators whose taste you trust — tap Follow on any clip or profile and they'll show up here.</div></div>`;
@@ -2547,7 +2527,7 @@ async function hydrateCuratorProfile() {
   let contentRows = [];
   try {
     const { data } = await window.ssDB.from('content')
-      .select("id, description, fires_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq('creator_id', usersRow.id).eq('status', 'live').is('deleted_at', null)
       .order('created_at', { ascending: false }).range(0, 199);
     contentRows = data || [];
@@ -2778,6 +2758,18 @@ function _profileInit() {
       renderStacks();
       renderCreds();   // own "Stacks" credential
       renderTabs();    // Collections tab badge
+    });
+  }
+
+  // Keep the Following list + the "Following" count/badge live when the user
+  // follows/unfollows anywhere (clip, viewer, profile) OR when ssHydrateFollowing
+  // seeds the store from the DB on login/load. Without this the list/count went
+  // stale and disagreed with the DB.
+  if (typeof ssOnFollowingChange === 'function') {
+    ssOnFollowingChange(() => {
+      if (typeof renderFollowing === 'function') renderFollowing();
+      renderCreds();   // own "Following" credential
+      renderTabs();    // Following tab badge
     });
   }
 }

@@ -1244,6 +1244,42 @@ async function _ssDbFollow(username, shouldFollow) {
   } catch (e) { /* keep UI working even if the DB write fails */ }
 }
 
+/* Seed the local Following store from the DB (the source of truth for a
+   signed-in user) so the count badge, the Follow buttons, and the Following
+   list all agree — across sessions, not just within one tab. Mirrors
+   ssHydrateStacks. REPLACES the local store with the DB set, which also cleans
+   any stale/mock-only follows that never persisted. Guests keep their local
+   store (this no-ops). Fires listeners so subscribed views re-render live. */
+async function ssHydrateFollowing() {
+  try {
+    if (!window.ssDB || !window.ssCurrentUser) return;
+    const me = window.ssCurrentUser(); if (!me) return;
+    const { data, error } = await window.ssDB
+      .from('follows')
+      .select('creator:creator_id(username, name, avatar_url, verified)')
+      .eq('follower_id', me.id)
+      .is('deleted_at', null);
+    if (error || !data) return;
+    // Preserve any per-curator clip counts we already had locally (the follows
+    // join doesn't carry them); default 0 otherwise.
+    const prevClips = {};
+    ssGetFollowing().forEach(p => { if (p && p.username) prevClips[p.username] = p.clips || 0; });
+    const list = data.filter(r => r.creator && r.creator.username).map(r => {
+      const u = r.creator.username;
+      return {
+        username: u,
+        name:     r.creator.name || u,
+        letter:   (r.creator.name || u || '?').charAt(0).toUpperCase(),
+        bg:       '#EA3B32',
+        verified: !!r.creator.verified,
+        clips:    prevClips[u] || 0,
+      };
+    });
+    _ss_writeFollowing(list);   // replace local store + fire listeners (live re-render)
+  } catch (e) { /* keep UI working even if the hydrate fails */ }
+}
+if (typeof window !== 'undefined') window.ssHydrateFollowing = ssHydrateFollowing;
+
 /* Persist a fire/unfire to the DB. Inserts/deletes a content_fires row
    for the logged-in user; the DB trigger keeps content.fires_count in
    sync. No-ops for guests or clips whose id isn't a real DB row (mock
@@ -6265,6 +6301,7 @@ function _ssvSetupObserver(feed) {
       if (_ssSession && typeof _ssRepaintAllFollowButtons === 'function') _ssRepaintAllFollowButtons();
       if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
       if (_ssSession && typeof ssHydrateStacks === 'function') ssHydrateStacks();
+      if (_ssSession && typeof ssHydrateFollowing === 'function') ssHydrateFollowing();
       // Warm the own-profile cache + avatar once the session is known.
       if (_ssSession && typeof ssPrewarmProfile === 'function') ssPrewarmProfile();
     }).catch(() => {});
@@ -6682,6 +6719,7 @@ function _ssvSetupObserver(feed) {
     const user = window.ssCurrentUser && window.ssCurrentUser();
     if (!user) return;
     _obUser = user;
+    if (typeof ssHydrateFollowing === 'function') ssHydrateFollowing();   // seed Following from DB on fresh login
     // Auto-restore a deactivated / pending-deletion account on sign-in (once per
     // tab). ss_reactivate_account clears the flags and returns true iff the
     // account was flagged, so we only greet "welcome back" when it actually was.
