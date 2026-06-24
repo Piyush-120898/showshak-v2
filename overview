@@ -51,9 +51,10 @@ Closest references for mental model:
    Every clip builds to one moment: the user deciding to watch.
    "Watch It" (not "Watch Now") — decisive, personal, like a
    friend telling you what to do. It is the most important
-   interaction in the entire product. The CTA has a breathing
-   glow animation (breatheGlow keyframe) and flashes when a user
-   fires a clip (fire energy converts to watch action —
+   interaction in the entire product. The CTA carries a subtle
+   fire-orange tracing border (ssTraceBorder) — calm, not a loud
+   glow, so focus stays on the clip — and a gentle fire-flash when
+   a user fires a clip (fire energy converts to watch action —
    emotional peak → decision). This flash is called fire-flash.
 
 5. CONTENT SIGNALS ONLY — NO SOCIAL SIGNALS
@@ -414,7 +415,7 @@ Closest references for mental model:
         #rail-lit    → Fire (outline/filled SVG swap + firePulse animation)
         #rail-save   → Save (outline/filled SVG swap)
         .act-btn     → Share (SVG)
-        #rail-watch  → Watch It pill (56px rounded square, breatheGlow)
+        #rail-watch  → Watch It pill (56px rounded square, fire-orange tracing border)
     - Hidden on mobile via display:none at max-width:700px
 
   Mobile action rail (inside each .clip):
@@ -422,7 +423,7 @@ Closest references for mental model:
     - Buttons: m-lit, m-save, share (same SVG patterns as desktop)
     - .mobile-watch-btn: full-width button above mobile nav
       bottom: calc(mobile-nav-h + 14px), right: 60px
-      Has mobileButtonBreathe glow + mobileCtaFireFlash on fire
+      Has a fire-orange tracing border (ssTraceBorder) + gentle mobileCtaFireFlash on fire
 
   Interactions:
     - Single tap: pause indicator (isPaused toggle + progress bar show)

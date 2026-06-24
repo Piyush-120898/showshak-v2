@@ -125,6 +125,17 @@ function _ssEscapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+/* Avatar circle inner content: the curator's profile PHOTO when present (so the
+   feed/viewer/cards show the real face), else the uppercase first letter as a
+   fallback. URL is HTML-escaped for safe attribute interpolation. The avatar
+   itself is never dimmed — focus-dimming applies to text/rails, not the face. */
+function _ssAvatarInner(creator) {
+  if (creator && creator.avatar) {
+    return '<img class="ss-avatar-img" src="' + _ssEscapeHtml(creator.avatar) + '" alt="" loading="lazy">';
+  }
+  return _ssEscapeHtml((creator && creator.letter) || '');
+}
+
 /* Build the per-title input list the Watch It sheet renders (Req 2.4).
    RECOMMENDED lazy-fetch approach (keeps the hot feed query unchanged): for a
    REAL clip (uuid content id in show.id — the field set by ssMapContentRowsToClips
@@ -479,6 +490,10 @@ highlightActiveNav();
    FORMAT HELPERS
 ════════════════════════════════════════════════ */
 function fmtFires(n) {
+  // Coerce defensively: a missing/NaN/Infinity count must never render as
+  // "NaN"/"undefined" on the Fire pill (a sacred surface). Non-finite → 0.
+  n = Number(n);
+  if (!isFinite(n)) n = 0;
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
   return String(n);
 }
@@ -3790,15 +3805,16 @@ function _ssvNormalize(raw) {
   // creator can be an object {name,letter,bg} or a string + sibling fields
   let creator;
   if (raw.creator && typeof raw.creator === 'object') {
-    creator = { name: raw.creator.name, letter: raw.creator.letter, bg: raw.creator.bg };
+    creator = { name: raw.creator.name, letter: raw.creator.letter, bg: raw.creator.bg, avatar: raw.creator.avatar || null };
   } else if (typeof raw.creator === 'string') {
     creator = {
       name:   raw.creator,
       letter: raw.creatorLetter || raw.creator.charAt(0).toUpperCase(),
       bg:     raw.creatorBg || '#EA3B32',
+      avatar: raw.creatorAvatar || null,
     };
   } else {
-    creator = { name: 'showshak', letter: 'S', bg: '#EA3B32' };
+    creator = { name: 'showshak', letter: 'S', bg: '#EA3B32', avatar: null };
   }
 
   const fires     = (raw.fires != null) ? raw.fires : (raw.litCount != null ? raw.litCount : 0);
@@ -4050,11 +4066,13 @@ function _ssvBuildList(clicked, list) {
     .ssv-creator-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
     .ssv-avatar {
       width: 28px; height: 28px; border-radius: 50%;
-      border: 1.5px solid rgba(255,255,255,0.35); flex-shrink: 0;
+      border: 1.5px solid rgba(255,255,255,0.5); flex-shrink: 0;
+      overflow: hidden;
       display: flex; align-items: center; justify-content: center;
       font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase;
     }
-    .ssv-handle { font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
+    .ssv-avatar .ss-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ssv-handle { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
     .ssv-follow {
       font-size: 10px; color: var(--red); font-weight: 700; cursor: pointer;
       padding: 2px 9px; border: 1px solid var(--red); border-radius: 100px;
@@ -4064,26 +4082,35 @@ function _ssvBuildList(clicked, list) {
     .ssv-follow.is-following { background: var(--red); color: #fff; border-color: var(--red); }
     .ssv-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
     .ssv-caption {
-      font-size: 13px; color: rgba(255,255,255,0.78); line-height: 1.45;
+      font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45;
       text-shadow: 0 1px 8px rgba(0,0,0,0.7);
       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
     }
-    .ssv-caption em { color: #fff; font-style: normal; font-weight: 600; }
+    .ssv-caption em { color: rgba(255,255,255,0.95); font-style: normal; font-weight: 600; }
 
     /* Watch It button */
     .ssv-watch {
       position: absolute; left: 14px; right: 72px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30;
       display: flex; align-items: center; justify-content: center;
-      height: 52px; border-radius: 16px;
+      height: 52px; border-radius: 16px; overflow: hidden; opacity: 0.92;
       font-family: var(--font-body); color: #fff; border: none; cursor: pointer;
       -webkit-tap-highlight-color: transparent;
-      box-shadow: 0 6px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
-      transition: transform 0.15s, filter 0.15s;
-      animation: ssvWatchBreathe 2.8s ease-in-out infinite;
+      box-shadow: 0 5px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
+      transition: transform 0.15s, filter 0.15s, opacity 0.2s;
     }
-    @keyframes ssvWatchBreathe {
-      0%,100% { box-shadow: 0 0 0 0 rgba(var(--ssv-rgb,234,59,50),0), 0 6px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18); }
-      50%     { box-shadow: 0 0 20px 6px rgba(var(--ssv-rgb,234,59,50),0.4), 0 0 44px 14px rgba(var(--ssv-rgb,234,59,50),0.15), 0 6px 28px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18); }
+    /* Subtle fire-orange tracing border (replaces the old breathing glow) — keeps
+       focus on the clip while still marking Watch It as the climax CTA. */
+    @property --ssang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+    @keyframes ssTraceBorder { to { --ssang: 360deg; } }
+    .ssv-watch::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px;
+      background: conic-gradient(from var(--ssang,0deg),
+        rgba(234,59,50,0) 0deg, rgba(234,59,50,0) 230deg,
+        rgba(255,99,45,0.6) 312deg, rgba(255,150,70,0.82) 346deg, rgba(234,59,50,0) 360deg);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      pointer-events: none; z-index: 1;
+      animation: ssTraceBorder 4s linear infinite;
     }
     .ssv-watch:active { transform: scale(0.97); }
     .ssv-watch-inner { display: flex; align-items: center; gap: 10px; padding: 0 14px; width: 100%; pointer-events: none; }
@@ -4296,6 +4323,7 @@ const ClipEngine = {
     _inlineSurfaces.forEach(s => { try { s.destroy(); } catch (e) {} });
     if (_inlineObserver) { _inlineObserver.disconnect(); _inlineObserver = null; }
     if (typeof _inlineInteractionCleanup === 'function') { _inlineInteractionCleanup(); _inlineInteractionCleanup = null; }
+    clearTimeout(_inlineStallTimer); _inlineStallTimer = null;
 
     // Ordering goes ONLY through the Recommendation_Seam (Req 7.5). For the
     // Feed, the "clicked" clip is simply the first clip — ssClipOrdering keeps
@@ -4416,6 +4444,12 @@ function _inlineWireClip(i) {
   if (typeof surface.onMutedChange === 'function') {
     surface.onMutedChange(function (m) { if (i === _inlineActiveIdx) _inlinePaintMuteBtns(); });
   }
+  // Drive the tap-to-play affordance from this clip's REAL playback state (only
+  // while it's the active clip). On iOS a contended inline <video> can fail to
+  // start and stick on the first frame; this surfaces a clear "tap to play".
+  if (typeof surface.onPlayState === 'function') {
+    surface.onPlayState(function (playing) { _inlineReflectStall(i, playing); });
+  }
   _inlineSurfaces[i] = surface;
   _inlineBars[i] = bar;
   // FEED MODEL: a single tap OPENS the full Clip Viewer (where all actions +
@@ -4427,6 +4461,59 @@ function _inlineWireClip(i) {
     tapZone.addEventListener('click', function () {
       ssOpenClip(_inlineClips[i], _inlineClips);
     });
+  }
+}
+
+/* ssShouldShowTapToPlay(state) — PURE. Decide whether the inline feed should show
+   the tap-to-play affordance on a clip. iOS/WebKit caps how many inline <video>
+   elements can hold media at once, so a contended ACTIVE clip can fail to autoplay
+   and stick on its first frame. Rather than fight that platform limit, we surface a
+   clear affordance — shown ONLY for the ACTIVE, video clip when it is NOT actually
+   playing. Non-active clips are expected to be paused (never flagged); gradient/demo
+   clips don't stall (isVideo false → never flagged). Total/defensive: any malformed
+   input → false. Tapping the clip opens the fullscreen viewer, which mounts a
+   bounded, proven band and always plays (and on Android, where there is no stall,
+   the clip is already playing so this never shows). */
+function ssShouldShowTapToPlay(state) {
+  if (!state || typeof state !== 'object') return false;
+  return !!(state.active && state.isVideo && !state.playing);
+}
+
+var SS_STALL_GRACE_MS   = 2500;   // cold-start grace before flagging a stuck active clip
+var SS_STALL_RECHECK_MS = 1200;   // debounce after a pause/waiting before flagging
+var _inlineStallTimer   = null;
+
+/* (Re)arm the deferred stall check for the active inline clip. */
+function _inlineArmStallCheck(delay) {
+  clearTimeout(_inlineStallTimer);
+  _inlineStallTimer = setTimeout(_inlineEvalStall, delay);
+}
+
+/* Evaluate the active inline clip and toggle its tap-to-play affordance via the
+   pure decision. Reads the surface's REAL playback state. */
+function _inlineEvalStall() {
+  var i = _inlineActiveIdx;
+  if (i < 0) return;
+  var icon = document.getElementById('pause-icon-' + i);
+  if (!icon) return;
+  var clip    = _inlineClips[i];
+  var surface = _inlineSurfaces[i];
+  var isVideo = !!(clip && clip.muxPlaybackId);
+  var playing = !!(surface && typeof surface.isPlaying === 'function' && surface.isPlaying());
+  icon.classList.toggle('show', ssShouldShowTapToPlay({ active: true, isVideo: isVideo, playing: playing }));
+}
+
+/* Surface play-state callback for inline clip i: only the ACTIVE clip drives the
+   affordance. Playing → clear it at once; not-playing → re-check after a short
+   debounce so normal buffering/seek/loop never flashes the icon. */
+function _inlineReflectStall(i, playing) {
+  if (i !== _inlineActiveIdx) return;
+  if (playing) {
+    clearTimeout(_inlineStallTimer);
+    var icon = document.getElementById('pause-icon-' + i);
+    if (icon) icon.classList.remove('show');
+  } else {
+    _inlineArmStallCheck(SS_STALL_RECHECK_MS);
   }
 }
 
@@ -4550,7 +4637,14 @@ function _inlineClipHTML(c, i) {
   const tags = [...(c.genre || []), c.lang].filter(Boolean)
     .map(t => `<span class="tag">${t}</span>`).join('');
   const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
-  const platAbbr = (c.platforms && c.platforms[0] && c.platforms[0].label) || c.platAbbr;
+  // Defense-in-depth defaults: a clip arriving without these fields (e.g. a
+  // stale SW-cached payload from an older bundle) must never print "NaN" on the
+  // Fire pill or "undefined" on the Watch It label — Fire + Watch It are sacred.
+  const fires     = Number(c.fires) || 0;
+  const platLabel = c.platLabel || 'Streaming';
+  const platColor = c.platColor || '#EA3B32';
+  const platRgb   = c.platRgb   || '234,59,50';
+  const platAbbr  = (c.platforms && c.platforms[0] && c.platforms[0].label) || c.platAbbr || (platLabel.charAt(0) || '▶');
   // Poster-first frame: paint the Mux thumbnail (or the gradient) on the media
   // node up front so the clip shows an image INSTANTLY — no black/spinner while
   // the <mux-player> upgrades and buffers (Instagram/TikTok feel).
@@ -4587,7 +4681,7 @@ function _inlineClipHTML(c, i) {
             <svg class="m-fire-outline" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
             <svg class="m-fire-filled" width="30" height="30" viewBox="0 0 24 24"><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path fill="#EA3B32" stroke="#EA3B32" stroke-width="0.5" d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
           </div>
-          <span class="m-act-label" id="m-lit-count-${i}">${fmtFires(c.fires + (fired ? 1 : 0))}</span>
+          <span class="m-act-label" id="m-lit-count-${i}">${fmtFires(fires + (fired ? 1 : 0))}</span>
         </div>
         <div class="m-act-btn" id="m-save-${i}" data-save-id="${c.id}" onclick="event.stopPropagation(); ssToggleSave(_inlineClips[${i}], this)">
           <div class="m-act-icon">
@@ -4604,13 +4698,13 @@ function _inlineClipHTML(c, i) {
         </div>
       </div>
       <button class="mobile-watch-btn" id="m-watch-${i}"
-        style="background:${c.platColor}; --btn-rgb:${c.platRgb}"
+        style="background:${platColor}; --btn-rgb:${platRgb}"
         onclick="event.stopPropagation(); ssOpenSheet(_inlineClips[${i}])">
         <div class="mobile-watch-btn-inner">
           <div class="mobile-watch-plat-logo">${platAbbr}</div>
           <div class="mobile-watch-text">
             <span class="mobile-watch-text-main">Watch It</span>
-            <span class="mobile-watch-text-sub">on ${c.platLabel}</span>
+            <span class="mobile-watch-text-sub">on ${platLabel}</span>
           </div>
           <div class="mobile-watch-arrow">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -4619,7 +4713,7 @@ function _inlineClipHTML(c, i) {
       </button>
       <div class="clip-bottom">
         <div class="creator-row">
-          <div class="creator-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${c.creator.letter}</div>
+          <div class="creator-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${_ssAvatarInner(c.creator)}</div>
           <span class="creator-name" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
           <span class="creator-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
@@ -4782,6 +4876,15 @@ function _inlineSetActive(idx) {
   _inlineAnimateRailIn();
   _inlinePaintMuteBtns();   // keep the frame mute buttons in sync
 
+  // Stall affordance: clear any stale icon on this clip, then (re)arm the
+  // "is it actually playing?" check. If the active video clip hasn't started
+  // within the grace window (iOS slot exhaustion → stuck on first frame), the
+  // tap-to-play affordance appears; tapping opens the fullscreen viewer (which
+  // mounts a bounded, proven band and always plays).
+  var _actStallIcon = document.getElementById('pause-icon-' + idx);
+  if (_actStallIcon) _actStallIcon.classList.remove('show');
+  _inlineArmStallCheck(SS_STALL_GRACE_MS);
+
   // Reach = genuine attention: record a view only after this clip has stayed
   // the active one for SS_VIEW_DWELL_MS (cleared if the active clip changes).
   _ssScheduleViewDwell('INLINE');
@@ -4803,10 +4906,11 @@ function _inlineSyncRail(idx) {
   const clip = _inlineClips[idx];
   if (!clip) return;
   const fired = _inlineFired.has(idx);
+  const fires = Number(clip.fires) || 0;
 
   const litBtn   = document.getElementById('rail-lit');
   const litCount = document.getElementById('rail-lit-count');
-  if (litCount) litCount.textContent = fmtFires(clip.fires + (fired ? 1 : 0));
+  if (litCount) litCount.textContent = fmtFires(fires + (fired ? 1 : 0));
   if (litBtn) litBtn.classList.toggle('lit', fired);
 
   // Save: update data-save-id so ssSyncAllSaveBtns works, sync visual state,
@@ -4820,8 +4924,8 @@ function _inlineSyncRail(idx) {
 
   const pill = document.getElementById('rail-watch-pill');
   const plat = document.getElementById('rail-watch-pill-plat');
-  if (pill) { pill.style.background = clip.platColor; pill.style.setProperty('--pill-rgb', clip.platRgb); }
-  if (plat) plat.textContent = clip.platLabel;
+  if (pill) { pill.style.background = clip.platColor || '#EA3B32'; pill.style.setProperty('--pill-rgb', clip.platRgb || '234,59,50'); }
+  if (plat) plat.textContent = clip.platLabel || 'Streaming';
 
   ssSyncAllSaveBtns();   // keep mobile per-clip save buttons in sync too
 }
@@ -5629,7 +5733,7 @@ function _ssvClipHTML(c, i, mode) {
 
       <div class="ssv-bottom">
         <div class="ssv-creator-row">
-          <div class="ssv-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${c.creator.letter}</div>
+          <div class="ssv-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${_ssAvatarInner(c.creator)}</div>
           <span class="ssv-handle" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
           <span class="ssv-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
@@ -5957,6 +6061,9 @@ function _poolRecycle(activeIdx, host) {
       surf.onMutedChange(function (m) { if (ei === _ssvActiveIdx) _ssvPaintMuteBtn(m); });
     } else if (isInline && typeof surf.onMutedChange === 'function') {
       surf.onMutedChange(function (m) { if (ei === _inlineActiveIdx) _inlinePaintMuteBtns(); });
+    }
+    if (isInline && typeof surf.onPlayState === 'function') {
+      surf.onPlayState(function (playing) { _inlineReflectStall(ei, playing); });
     }
     var tapZone = document.getElementById((isInline ? 'tap-' : 'ssv-tap-') + ei);
     if (tapZone) {
@@ -6959,6 +7066,10 @@ function GradientSurface(clip, opts) {
     isMuted: function () { return muted; },
     intendsToPlay: function () { return true; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
+    // Gradients never stall, so they always report "playing" and the inline
+    // tap-to-play affordance never shows for them (isVideo is false anyway).
+    onPlayState: function () {},
+    isPlaying: function () { return true; },
     preload: function () {},                   // nothing to buffer for a gradient
     bufferedAhead: function () { return Infinity; },  // gradient is always "ready" — never blocks deepening
     setPreloadTier: function () {},            // gradients have no preload tier
@@ -6997,7 +7108,8 @@ function GradientSurface(clip, opts) {
  */
 function VideoSurface(clip, opts) {
   var el = null, ended = false;
-  var onTick = [], onEnd = [], onMute = [];
+  var onTick = [], onEnd = [], onMute = [], onPlay = [];
+  var _playing = false;                          // REAL playback state (drives the stall affordance)
   var muted = true, errored = false;
   var _lastVol = 1;                              // track volume to detect a raise
   var wantPlay = false;                          // intent: should this surface be playing?
@@ -7010,9 +7122,21 @@ function VideoSurface(clip, opts) {
   var preloadTier = 'none';
 
   function handleTimeupdate() {
+    // Advancing time on a non-paused element is the ground-truth "playing" signal.
+    if (el && !el.paused && !el.ended) _ssSetPlaying(true);
     var p = ssClipProgress(el && el.currentTime, el && el.duration);
     onTick.forEach(function (cb) { cb(p); });
   }
+  // Real-playback state relay (drives the inline tap-to-play affordance). Only
+  // notifies on a transition so listeners aren't spammed every timeupdate.
+  function _ssSetPlaying(v) {
+    v = !!v;
+    if (v === _playing) return;
+    _playing = v;
+    onPlay.forEach(function (cb) { try { cb(_playing); } catch (e) {} });
+  }
+  function handlePlaying()    { _ssSetPlaying(true); }
+  function handleNotPlaying() { _ssSetPlaying(false); }
   // The media element's muted state can change for reasons OTHER than an
   // explicit setMuted() call — most importantly the browser forcing muted
   // playback under the autoplay policy. `volumechange` fires on every such
@@ -7146,6 +7270,12 @@ function VideoSurface(clip, opts) {
       el.addEventListener('volumechange', handleVolumeChange);
       el.addEventListener('canplay', handleCanPlay);
       el.addEventListener('loadeddata', handleCanPlay);
+      // Real-playback signals for the inline tap-to-play affordance: 'playing'
+      // marks true; pause/waiting/stalled mark false (iOS stuck-on-first-frame).
+      el.addEventListener('playing', handlePlaying);
+      el.addEventListener('pause', handleNotPlaying);
+      el.addEventListener('waiting', handleNotPlaying);
+      el.addEventListener('stalled', handleNotPlaying);
       container.appendChild(el);
       return el;
     },
@@ -7211,6 +7341,11 @@ function VideoSurface(clip, opts) {
     isMuted: function () { return el ? !!el.muted : muted; },
     intendsToPlay: function () { return wantPlay; },
     onMutedChange: function (cb) { if (typeof cb === 'function') onMute.push(cb); },
+    // onPlayState(cb) — cb(playing:boolean) on each real playback transition;
+    // isPlaying() — the current real playback state. Drive the inline feed's
+    // tap-to-play affordance (iOS stuck-on-first-frame).
+    onPlayState: function (cb) { if (typeof cb === 'function') onPlay.push(cb); },
+    isPlaying: function () { return !!_playing; },
     getProgress: function () { return ssClipProgress(el && el.currentTime, el && el.duration); },
     // bufferedAhead() — seconds of media buffered ahead of the current play head
     // (feed-clip-load-performance Phase 2, Req 2.1). The progressive-deepening
@@ -7243,7 +7378,7 @@ function VideoSurface(clip, opts) {
     repoint: function (newClip, container) {
       clip = newClip || clip;
       ended = false; errored = false; wantPlay = false;
-      onTick = []; onMute = [];                 // engine rebinds for the new clip
+      onTick = []; onMute = []; onPlay = []; _playing = false;   // engine rebinds for the new clip
       if (!el) { return this.mount(container); } // nothing to reuse → mount fresh
       // Poster-first paint for the NEW clip before the stream swaps.
       if (clip.poster) el.setAttribute('poster', clip.poster);
@@ -7871,6 +8006,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssResolveCuratorViewModel = ssResolveCuratorViewModel;
   module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
+  module.exports.ssShouldShowTapToPlay = ssShouldShowTapToPlay;
   module.exports.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   module.exports.ssPoolPlan = ssPoolPlan;
   module.exports.ssNetworkTier = ssNetworkTier;
