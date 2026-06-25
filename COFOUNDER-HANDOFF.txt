@@ -128,16 +128,70 @@
     - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
     - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
     - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
-    - SUITE: 69 files green; migrations 0001–0028 (founder applies 0022–0028)
+    - SUITE: 73 files green; migrations 0001–0031 applied (0030 reserved for DMCA Phase 2)
     - feed-clip-load-performance ✓ (A-grade feed clip-load + caching pipeline;
       9 prop-feed-* properties; the heavy prefetch/SW-cache pieces are OPT-IN —
       see SESSION LOG; the iOS feed-stall root cause = unbounded player mount, fixed)
+    - dmca-moderation-scaffolding Phase 1 ✓ (attestation + intake + policy surfaces +
+      audit log; migration 0029 applied; submit-takedown fn code pushed, NOT yet deployed)
+    - beta-consent-gate ✓ (DPDP consent + 18+ onboarding gate; one-time Curator Terms
+      acceptance at Become-a-Curator; migration 0031 applied; legal-text seed READY,
+      founder to run — see §7)
 
 
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (DMCA/MODERATION spec + Phase 1 BUILT + India legal drafts; NOT yet pushed/applied; suite 72 files green) ──
+  ── MOST RECENT (beta-consent-gate SHIPPED + DMCA Phase 1 SHIPPED & APPLIED; pushed to main, commit 99e004a, CACHE_VERSION v30; suite 73 files green) ──
+    CONTEXT: this session SHIPPED the beta-consent-gate feature (full spec
+    .kiro/specs/beta-consent-gate/, requirements → design → tasks, executed task-by-
+    task) and PUSHED both it and the previously-built DMCA Phase 1 to main. Founder
+    applied migrations 0029 + 0031 and enabled Anonymous sign-ins. Suite 72 → 73
+    files green (+1 prop-consent with 7 properties). The DMCA-Phase-1 entry below is
+    now LIVE (was "not yet pushed").
+
+    • beta-consent-gate — the DPDP open-beta compliance unit (one lean phase):
+        - CONSENT + 18+ GATE as onboarding Step 1 in index.html: two UNTICKED-by-
+          default checkboxes (affirmative consent + 18+), ToS/Privacy links bound to
+          the exact version being recorded, advance disabled until both checked AND
+          policies resolve, records consent via ssRecordConsent BEFORE any personal-
+          data collection (DPDP affirmative-consent, no pre-ticked boxes).
+        - CURATOR TERMS acceptance at "Become a Curator" (showshak-profile.html /
+          bcActivate): the agree checkbox is now version-stamped + recorded to the DB
+          (ssRecordCuratorTerms) BEFORE the users.role flip; flip is blocked if the
+          acceptance can't be saved. This is a ONE-TIME relationship-level consent
+          (founder confirmed once is enough) — DISTINCT from the per-clip attestation,
+          which stays per-upload as the safe-harbor proof.
+        - LICENSE FRAMING CORRECTED (cofounder pushback): curator KEEPS ownership and
+          GRANTS ShowShak a non-exclusive/worldwide/royalty-free/sublicensable license
+          to host/transcode/show — NOT "ShowShak has no rights" (which would make it
+          impossible to run the product). legal/curator-terms.md authored to this.
+        - Migration 0031_beta_consent_gate.sql (APPLIED ✓): consents table with a
+          `kind` discriminator ('user_consent'|'curator_terms') + nullable per-kind
+          version cols + per-kind CHECK constraints + own-row RLS; ss_record_consent
+          + ss_record_curator_terms SECURITY DEFINER RPCs; AND it WIDENS the 0029
+          policy_versions.doc CHECK to allow 'curator' (caught mid-build — the seed
+          would've failed otherwise).
+        - Pure (dual-exported, fast-check): ssConsentComplete, ssCuratorTermsAccepted,
+          ssPolicyNeedsCounselReview (tests/prop-consent.test.js, 7 properties).
+          Wrappers (window-only, fail-soft, never-throw): ssRecordConsent,
+          ssRecordCuratorTerms, ssCurrentPolicyVersions (mints an anonymous session
+          lazily so guest consent has a real auth.uid() under RLS).
+        - showshak-legal.html now renders the CURRENT seeded policy version (incl. a
+          new doc='curator' tab), honors ?v=<version>, keeps the counsel banner while
+          [..] tokens remain, and degrades to placeholder scaffolding when unseeded.
+        - sw.js CACHE_VERSION v29 → v30.
+        - supabase/seed/seed_policy_versions.sql: READY-TO-RUN, real legal/*.md bodies
+          inlined verbatim ($SS$ dollar-quoted), idempotent. ⚠️ FOUNDER STILL TO RUN
+          IT (see §7) — until then the legal page shows placeholder + the gates
+          fail-soft.
+
+    • IDENTITY/AUTH note: the consent gate establishes the guest-first anonymous-
+      session model the backend doc always envisioned — anon session minted only at
+      the advance action (not on render), carries no PII, links to the permanent
+      account on later sign-in.
+
+  ── PREVIOUS (DMCA/MODERATION spec + Phase 1 — now SHIPPED & APPLIED this session; suite 72→73 files green) ──
     CONTEXT: this session scoped the DMCA / moderation feature as a full spec
     (.kiro/specs/dmca-moderation-scaffolding/ — requirements → design → tasks, all
     validated) and BUILT Phase 1 of it. Suite is now 72 property-test files green
@@ -673,27 +727,30 @@
   7. FOUNDER-RUN ITEMS PENDING (only YOU can do these)
 ───────────────────────────────────────────────────────────────
   CONFIRMED DONE: tmdb-providers function deployed + secrets set + batch ran;
-  migrations 0001–0028 ALL applied (incl. 0028 content_titles.curator_platform_ids).
+  migrations 0001–0028 applied; AND this session: migration 0029 (DMCA Phase 1)
+  APPLIED ✓, migration 0031 (beta-consent-gate) APPLIED ✓, Anonymous sign-ins
+  ENABLED ✓ in Supabase Auth. Code pushed to main (commit 99e004a, CACHE_VERSION v30).
+  (0030 is RESERVED for DMCA Phase 2 — not created yet.)
 
-  STILL PENDING — ⚠️ THE DMCA PHASE-1 SHIP (this session's work; do these together):
-  - APPLY migration 0029_dmca_intake_posture.sql in the Supabase SQL editor.
-    ⚠️ ORDERING MATTERS: apply 0029 BEFORE (or with) the push — the upload
-    attestation gate calls ss_record_attestation (in 0029); without it, publishing
-    a clip fails the "attestation could not be saved" path and uploads are blocked.
-    So this one is migration-FIRST, not migration-after.
-  - DEPLOY the new Edge Function: supabase functions deploy submit-takedown
-    --no-verify-jwt  (public anon takedown intake).
-  - PUSH to main + BUMP is already done in code (CACHE_VERSION is now v29);
-    after pushing, reopen the installed PWA twice to pick up v29.
+  STILL PENDING — ⚠️ TO FULLY LIGHT UP THE BETA COMPLIANCE SURFACES:
+  - RUN supabase/seed/seed_policy_versions.sql in the Supabase SQL editor. It is
+    READY TO RUN (real ToS/Privacy/Curator-Terms bodies inlined verbatim, dollar-
+    quoted as $SS$). Idempotent. Until it runs, showshak-legal.html shows the
+    placeholder scaffolding (graceful fallback), and the consent/curator gates
+    fail-soft ("policies unavailable") because no current policy_versions rows exist.
+  - DEPLOY the DMCA intake Edge Function: supabase functions deploy submit-takedown
+    --no-verify-jwt  (public anon takedown intake — code is pushed, not yet deployed).
   - FILL the [PLACEHOLDERS] in legal/*.md (entity name/type, registered address,
     [CITY] for jurisdiction, grievance/copyright/support emails, Grievance Officer
     name, effective date, version, website URL). Use REAL monitored inboxes for the
     grievance + copyright emails from day one (an unreachable Grievance Officer is
     the classic IT-Rules failure). Then book ONE IP/tech-lawyer hour to bless the
-    filled-in docs before going wide. (Decide the operating ENTITY first — company
-    vs individual — it drives the entity/liability/grievance text.)
+    filled-in docs. Re-seed a NEW version row (recipe in the seed file footer) so the
+    "counsel review required" banner clears. DON'T go wide to real users until this is
+    done. (Decide the operating ENTITY first — company vs individual.)
+  - After any of the above that needs on-device, reopen the installed PWA twice (v30).
 
-  STILL PENDING (older, not blocking the DMCA ship):
+  STILL PENDING (older, not blocking):
   - SET UP the 30-day account-purge cron (service role) for 0025 — skeleton is in
     the migration's footer. Until then, deleted accounts stay hidden + recoverable.
   - REDEPLOY tmdb-providers ONLY if its live upload TMDB search ever stops working:
@@ -832,44 +889,60 @@ clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
 The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
 "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v28; last commit 5185c9d; migrations 0001-0028 applied):
-the felt-quality + reliability sweep, watch-it-curator-availability, feed-clip-load-
-performance, server-side Mux trim, portrait lock, analytics/highlights/discover
-polish. Pure logic in showshak-shared.js, dual-exported + property-tested
-(node tests/run-all.js → now 72 files green).
+LIVE ON MAIN (CACHE_VERSION v30; last commit 99e004a; migrations 0001-0031 applied —
+0030 is RESERVED for DMCA Phase 2, so consent uses 0031): the felt-quality +
+reliability sweep, watch-it-curator-availability, feed-clip-load-performance,
+server-side Mux trim, portrait lock, analytics/highlights/discover polish, PLUS this
+session's DMCA Phase 1 + beta-consent-gate (below). Pure logic in showshak-shared.js,
+dual-exported + property-tested (node tests/run-all.js → now 73 files green).
 
-BUILT THIS SESSION BUT NOT YET PUSHED / NOT YET APPLIED — DMCA Phase 1 (Posture &
-Intake), spec at .kiro/specs/dmca-moderation-scaffolding/:
-  - 3 pure fns + tests (ssAttestationComplete, ssDmcaNoticeWellFormed,
-    ssContentPubliclyVisible); migration 0029 (attestations/policy_versions/
-    complaints/moderation_log + immutability + attestation-gate triggers + RLS +
-    3 SECURITY DEFINER RPCs); submit-takedown Edge Function; client wrappers;
-    surfaces showshak-legal.html + showshak-dmca.html; attestation gate in
-    showshak-upload.html publish(); wired settings legal links; sw.js → v29.
-  - India legal DRAFTS in legal/*.md (ToS, Privacy, Copyright, Community + README),
-    counsel-review-required, grounded in IT Act §79 + IT Rules 2021 (grievance
-    24h/15d), Copyright Rules 2013 Rule 75 (36h/21d), DPDP Act 2023 + Rules 2025.
-
-⚠️ FOUNDER MUST, TO SHIP PHASE 1 (see §7): apply migration 0029 FIRST (the upload
-attestation gate depends on it), deploy submit-takedown (--no-verify-jwt), push to
-main (v29, reopen PWA twice), and fill the [PLACEHOLDERS] in legal/*.md + book one
-IP-lawyer hour. Open question: the operating ENTITY (company vs individual).
+SHIPPED THIS SESSION (pushed to main; founder-side ops noted in §7):
+  - DMCA Phase 1 (Posture & Intake), spec .kiro/specs/dmca-moderation-scaffolding/:
+    3 pure fns (ssAttestationComplete/ssDmcaNoticeWellFormed/ssContentPubliclyVisible)
+    + tests; migration 0029 (attestations/policy_versions/complaints/moderation_log +
+    immutability + attestation-gate triggers + RLS + 3 SECURITY DEFINER RPCs);
+    submit-takedown Edge Function; client wrappers; showshak-legal.html +
+    showshak-dmca.html; per-clip attestation gate in showshak-upload.html publish();
+    settings legal links. ⚠️ migration 0029 APPLIED ✓ by founder.
+  - beta-consent-gate, spec .kiro/specs/beta-consent-gate/ — the DPDP open-beta
+    compliance unit: (1) affirmative CONSENT + 18+ GATE as onboarding Step 1 in
+    index.html (both boxes UNTICKED by default; nothing collected before consent is
+    recorded); (2) one-time CURATOR TERMS acceptance at "Become a Curator"
+    (showshak-profile.html) recorded BEFORE the users.role flip; (3) showshak-legal.html
+    renders the real seeded policy text (placeholder fallback + counsel banner). Pure
+    ssConsentComplete/ssCuratorTermsAccepted/ssPolicyNeedsCounselReview + wrappers
+    ssRecordConsent/ssRecordCuratorTerms/ssCurrentPolicyVersions. Migration 0031
+    (consents table w/ kind discriminator 'user_consent'|'curator_terms' +
+    ss_record_consent/ss_record_curator_terms RPCs + own-row RLS; widens
+    policy_versions.doc to allow 'curator'). ⚠️ migration 0031 APPLIED ✓ + Anonymous
+    sign-ins ENABLED ✓ by founder.
+  - CONSENT vs ATTESTATION (decided this session): the Curator Terms CONSENT is
+    recorded ONCE (relationship-level: ownership retained + license-to-ShowShak +
+    indemnity). The per-clip ATTESTATION (DMCA Phase 1) stays per-upload — it's the
+    safe-harbor proof-per-clip. The license framing was corrected: curator KEEPS
+    ownership and GRANTS ShowShak a license (NOT "ShowShak has no rights").
+  - LEGAL DRAFTS in legal/*.md (ToS, Privacy, Copyright, Community, Curator Terms +
+    README), counsel-review-required, grounded in IT Act §79 + IT Rules 2021
+    (grievance 24h/15d), Copyright Rules 2013 Rule 75 (36h/21d), DPDP Act 2023 + Rules
+    2025. The READY-TO-RUN seed supabase/seed/seed_policy_versions.sql has the real
+    bodies inlined verbatim (drafts still carry [PLACEHOLDER] tokens → counsel banner
+    stays until filled + re-seeded).
 
 DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is
 DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
 content.status='removed' in Supabase (RLS hides it everywhere).
 
-NEXT STEP (resume here) — pick up the agreed, not-yet-built items:
-  1. Sync the real legal/*.md text into showshak-legal.html (or seed policy_versions)
-     so the beta actually displays the policies (today the page still shows
-     placeholder text).
-  2. Add a CONSENT + 18+ GATE as onboarding Step 1: an UNTICKED-by-default mandatory
-     checkbox with clickable ToS/Privacy links, recorded in the DB (who/when/which
-     policy versions) — mirrors the attestation pattern. DPDP: consent must be
-     affirmative (no pre-ticked boxes).
-  3. THEN the real cold-start lever: FEED-FOLLOWS wiring (the feed is still flat
-     newest-first; surface the follow-driven trust loop) — this is what makes the
-     beta worth testing and what investors judge next.
+NEXT STEP (resume here):
+  FOUNDER-SIDE (only YOU can do — see §7): (a) RUN supabase/seed/seed_policy_versions.sql
+  in the Supabase SQL editor so the beta shows the real policy text; (b) DEPLOY the
+  DMCA intake fn: supabase functions deploy submit-takedown --no-verify-jwt; (c) fill
+  the [PLACEHOLDERS] in legal/*.md (entity/emails/Grievance Officer) + book the IP-lawyer
+  hour, then re-seed a new version row to clear the counsel banner. Open question: the
+  operating ENTITY (company vs individual).
+  BUILD (the real cold-start lever, the next big spec): FEED-FOLLOWS wiring — the feed
+  is still flat newest-first; surface the follow-driven trust loop. This is what makes
+  the beta worth testing and what investors judge next. Spec it (requirements → design →
+  tasks), phase it so the Feed never breaks.
   PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
   Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
 

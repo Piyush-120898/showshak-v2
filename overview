@@ -139,12 +139,15 @@ Closest references for mental model:
       overhauled + DB-wired (handle uniqueness, account deactivate/delete + 30-day
       retention). Suite 45 files green; migrations through 0025 (founder-applied).
     • STATUS (see COFOUNDER-HANDOFF.txt for the live detail): DMCA/moderation
-      Phase 1 (attestation + intake + policy surfaces + India legal drafts) is
-      BUILT but not yet pushed/applied; we are prepping an OPEN BETA in India
-      (18+, non-commercial, curator-limited). Phase 2 (admin/workflow) is deferred
-      post-raise. The remaining cold-start gap is FEED-FOLLOWS wiring (the feed is
-      still flat newest-first — surface the follow-driven trust loop), which is the
-      next big build after the beta-consent wiring.
+      Phase 1 (attestation + intake + policy surfaces + India legal drafts) AND the
+      beta-consent-gate (DPDP affirmative consent + 18+ onboarding gate; one-time
+      Curator Terms acceptance at Become-a-Curator) are BUILT, PUSHED to main, and
+      their migrations (0029 + 0031) APPLIED. We are prepping an OPEN BETA in India
+      (18+, non-commercial, curator-limited). Founder-side remaining: run the
+      policy-text seed + deploy the submit-takedown fn + fill legal placeholders.
+      Phase 2 (admin/workflow) is deferred post-raise. The remaining cold-start gap
+      is FEED-FOLLOWS wiring (the feed is still flat newest-first — surface the
+      follow-driven trust loop), which is the next big build.
   ────────────────────────────────────────────────────────────────
 
   PLANNED BACKEND (historical — now BUILT, see status update above):

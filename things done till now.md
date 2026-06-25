@@ -9,12 +9,11 @@
 > ShowShak project report — continue from where it ends, following the same
 > principles."*
 >
-> Last updated: after **server-side TMDB ingest** (the `tmdb-providers` edge
-> function — search/link/manual/batch), **live TMDB title search in upload**,
-> title-blind **share deep-links**, the **views sync fix**, iOS PWA layout
-> hardening, and the **stack-sharing spec** (the next build).
-> **See Section 20 (bottom) for the latest; COFOUNDER-HANDOFF.txt is the freshest
-> single source — read it first in a new chat.**
+> Last updated: after **DMCA Phase 1 shipped + applied** and the **beta-consent-gate**
+> (DPDP consent + 18+ onboarding gate + one-time Curator Terms acceptance) — pushed to
+> main (commit 99e004a, CACHE_VERSION v30, migrations 0001–0031). **See Section 23
+> (bottom) for the latest; COFOUNDER-HANDOFF.txt is the freshest single source — read
+> it first in a new chat.**
 
 ---
 
@@ -1607,3 +1606,72 @@ Founder explored letting curators add songs. Conclusions:
 ---
 
 *Keep this file updated as we complete each step — it's the project's memory.*
+
+
+---
+
+## 23. DMCA Phase 1 SHIPPED + beta consent/18+ gate + Curator Terms (latest session)
+
+> Read **COFOUNDER-HANDOFF.txt §5 (top entry) + the refreshed KICKOFF PROMPT**
+> first — freshest single source. State at end of this session: **CACHE_VERSION
+> v30**, suite **73 property-test files green**, migrations **0001–0031 applied**
+> (0030 reserved for DMCA Phase 2), last commit **99e004a**, all pushed to main.
+
+### 23.1 DMCA / moderation scaffolding — Phase 1 (now LIVE)
+Built in a prior session, **pushed + applied this session.** Neutral-host posture:
+per-clip **attestation + indemnity** at upload (every publish), real
+Terms/Privacy/Copyright/Community policy surfaces, a public **takedown intake** form
++ well-formedness validator, and an append-only **audit log**. Migration **0029**
+(attestations / policy_versions / complaints / moderation_log + immutability triggers
++ the attestation publish-gate + 3 SECURITY DEFINER RPCs) — **APPLIED** by founder.
+Pure `ssAttestationComplete` / `ssDmcaNoticeWellFormed` / `ssContentPubliclyVisible`
++ tests. `submit-takedown` edge fn code is pushed but **not yet deployed**. Phase 2
+(admin queue / counter-notice / repeat-infringer) is **deferred** post-raise — at 500
+clips a takedown = flip `content.status='removed'` (RLS hides it).
+
+### 23.2 beta-consent-gate (the DPDP open-beta compliance unit)
+Full spec `.kiro/specs/beta-consent-gate/` (requirements → design → tasks), executed
+task-by-task, property-tested, pushed.
+- **Consent + 18+ gate as onboarding Step 1** (`index.html`): two UNTICKED-by-default
+  checkboxes (affirmative consent + 18+), ToS/Privacy links bound to the exact version
+  recorded, advance blocked until both checked AND policies resolve, records consent
+  **before any personal-data collection**. DPDP-correct (no pre-ticked boxes).
+- **Curator Terms acceptance** at "Become a Curator" (`showshak-profile.html`): the
+  agree checkbox is now **version-stamped + recorded to the DB before the `users.role`
+  flip**; the flip is blocked if it can't be saved. Recorded **ONCE**
+  (relationship-level) — DISTINCT from the per-clip attestation, which stays per-upload
+  as the safe-harbor proof (founder asked; we keep both — once for consent, per-clip
+  for attestation).
+- **License framing corrected** (cofounder pushback): the curator KEEPS ownership and
+  GRANTS ShowShak a non-exclusive/worldwide/royalty-free/sublicensable license to
+  host/transcode/show — NOT "ShowShak has no rights" (that would make running the
+  product impossible). `legal/curator-terms.md` authored to this.
+- **Migration 0031** (APPLIED): `consents` table with a `kind` discriminator
+  (`user_consent`|`curator_terms`) + per-kind CHECK constraints + own-row RLS;
+  `ss_record_consent` + `ss_record_curator_terms` RPCs; and it **widens the 0029
+  `policy_versions.doc` CHECK to allow `curator`** (caught mid-build, would've broken
+  the seed otherwise).
+- Pure (dual-exported, fast-check): `ssConsentComplete`, `ssCuratorTermsAccepted`,
+  `ssPolicyNeedsCounselReview` (`tests/prop-consent.test.js`, 7 properties). Wrappers
+  (window-only, fail-soft): `ssRecordConsent`, `ssRecordCuratorTerms`,
+  `ssCurrentPolicyVersions` (mints an anonymous session lazily so guest consent has a
+  real `auth.uid()` under RLS — **Anonymous sign-ins enabled** by founder).
+- `showshak-legal.html` renders the CURRENT seeded version (incl. a `curator` tab),
+  honors `?v=<version>`, keeps the counsel banner while `[..]` tokens remain, degrades
+  to placeholder scaffolding when unseeded. `sw.js` v29 → **v30**.
+
+### 23.3 Founder-side remaining (only the founder can do — see HANDOFF §7)
+1. **RUN** `supabase/seed/seed_policy_versions.sql` (READY-TO-RUN — real legal/*.md
+   bodies inlined verbatim) so the legal page shows real text and the gates stop
+   failing-soft.
+2. **DEPLOY** `supabase functions deploy submit-takedown --no-verify-jwt`.
+3. **FILL** the `[PLACEHOLDER]`s in `legal/*.md` + book the IP-lawyer hour, then
+   re-seed a new version row to clear the counsel banner. Don't go wide to real users
+   until done. Decide the operating ENTITY (company vs individual).
+
+### 23.4 NEXT (the next big build)
+**FEED-FOLLOWS wiring** — the cold-start trust loop (feed is still flat newest-first;
+surface the follow-driven trust). Spec it (requirements → design → tasks), phased so
+the Feed never breaks. This is what makes the beta worth testing and what investors
+judge next. (Music stays PARKED: royalty-free only, never a copyrighted "use this
+song" library.)
