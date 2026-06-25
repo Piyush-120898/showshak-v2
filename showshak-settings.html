@@ -217,6 +217,7 @@ const ICONS = {
 /* ── Navigation stack between screens ── */
 let stack = ['home'];
 function go(screen) { stack.push(screen); render(); }
+function goExt(url) { if (typeof ssNavigate==='function') ssNavigate(url); else location.href=url; }
 function settingsBack() {
   if (stack.length > 1) { stack.pop(); render(); }
   else { if (typeof ssNavigate==='function') ssNavigate('showshak-profile.html'); else location.href='showshak-profile.html'; }
@@ -269,7 +270,7 @@ function homeScreen() {
       <div class="row row-danger" onclick="settingsSignOut()">${ic('<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>')}<div class="row-main"><div class="row-title">Log out</div></div></div>
     </div>
 
-    <div class="set-foot-note">ShowShak · v0.9.0 (prototype)<br><a onclick="ssToast('Terms')">Terms</a> · <a onclick="ssToast('Privacy Policy')">Privacy</a> · <a onclick="ssToast('DMCA / report content')">DMCA</a></div>
+    <div class="set-foot-note">ShowShak · v0.9.0 (prototype)<br><a onclick="goExt('showshak-legal.html?doc=tos')">Terms</a> · <a onclick="goExt('showshak-legal.html?doc=privacy')">Privacy</a> · <a onclick="goExt('showshak-dmca.html')">DMCA</a></div>
   `;
 }
 
@@ -380,9 +381,9 @@ function supportScreen() {
     </div>
     <div class="sec-label">Legal</div>
     <div class="group">
-      <div class="row" onclick="ssToast('Terms of Service')"><div class="row-main"><div class="row-title">Terms of Service</div></div>${ARROW}</div>
-      <div class="row" onclick="ssToast('Privacy Policy')"><div class="row-main"><div class="row-title">Privacy Policy</div></div>${ARROW}</div>
-      <div class="row" onclick="ssToast('Report copyrighted content')"><div class="row-main"><div class="row-title">DMCA / report content</div><div class="row-sub">Report a copyright concern</div></div>${ARROW}</div>
+      <div class="row" onclick="goExt('showshak-legal.html?doc=tos')"><div class="row-main"><div class="row-title">Terms of Service</div></div>${ARROW}</div>
+      <div class="row" onclick="goExt('showshak-legal.html?doc=privacy')"><div class="row-main"><div class="row-title">Privacy Policy</div></div>${ARROW}</div>
+      <div class="row" onclick="goExt('showshak-dmca.html')"><div class="row-main"><div class="row-title">DMCA / report content</div><div class="row-sub">Report a copyright concern</div></div>${ARROW}</div>
     </div>
     <div class="set-foot-note">ShowShak · v0.9.0 (prototype)</div>
   `;

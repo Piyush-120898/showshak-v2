@@ -312,6 +312,27 @@ body { background: var(--bg); }
 .up-reveal-note-text { font-size: 12.5px; color: var(--gray); line-height: 1.55; }
 .up-reveal-note-text strong { color: var(--white); font-weight: 600; }
 
+/* ── Attestation + indemnity (Req 1.1/1.2/1.6) — required before publish.
+   Placeholder copy, counsel review required; reuses the reveal-note look. ── */
+.up-attest {
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border2); border-radius: 14px;
+  padding: 14px 16px; margin-top: 14px; margin-bottom: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.up-attest-check {
+  flex-shrink: 0; width: 20px; height: 20px; margin: 1px 0 0; cursor: pointer;
+  accent-color: var(--red);
+}
+.up-attest-text { font-size: 12.5px; color: var(--gray); line-height: 1.55; }
+.up-attest-text a { color: var(--white); font-weight: 600; text-decoration: underline; }
+.up-attest-text em { color: var(--gray2); font-style: italic; }
+.up-attest-badge {
+  display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--red); background: rgba(234,59,50,0.12);
+  border: 1px solid var(--border2); border-radius: 100px; padding: 2px 8px; margin-bottom: 7px;
+}
+
 /* ════════════════════════════════════════════════
    FOOTER — back / next / publish
 ════════════════════════════════════════════════ */
@@ -539,6 +560,27 @@ body { background: var(--bg); }
         <span class="up-reveal-note-icon">🔥</span>
         <span class="up-reveal-note-text">Your clip posts with the <strong>title hidden</strong>. Viewers fire it, save it, and tap <strong>Watch It</strong> to discover what it is — and you get the credit for the find.</span>
       </div>
+
+      <!-- ATTESTATION + INDEMNITY (Req 1.1, 1.2, 1.6, 10.3) — REQUIRED before publish.
+           The curator must affirmatively accept before the clip can publish; publish()
+           is hard-gated on this checkbox and then records the attestation row via
+           ssRecordAttestation. Placeholder wording, COUNSEL REVIEW REQUIRED. Neutral-host
+           guardrail (Req 10.2): this copy names NO specific copyrighted work and offers no
+           media/song picker — it only affirms the curator's own rights + indemnity. Hidden
+           in edit-after-post mode (buildReview), where the live clip already has an
+           attestation on record. -->
+      <label class="up-attest" id="up-attest">
+        <input type="checkbox" id="up-attest-check" class="up-attest-check" onchange="syncFooter()">
+        <span class="up-attest-text">
+          <span class="up-attest-badge">Counsel review required</span>
+          I confirm I own or have the rights to the video and audio in this clip and I take
+          responsibility for it. I agree to ShowShak's
+          <a href="showshak-legal.html?doc=tos" target="_blank" rel="noopener">Terms of Service</a>
+          and <a href="showshak-legal.html?doc=copyright" target="_blank" rel="noopener">Copyright &amp; DMCA Policy</a>,
+          and I indemnify ShowShak against claims arising from this clip.
+          <em>(Placeholder wording — final attestation &amp; indemnity language to be supplied by counsel.)</em>
+        </span>
+      </label>
     </div>
 
   </div>
@@ -588,6 +630,13 @@ body { background: var(--bg); }
      1 Clip · 2 Trim · 3 Titles · 4 Pitch · 5 Vibe · 6 Cover · 7 Review      */
 const TOTAL_STEPS = 7;
 let step = 1;
+
+/* Attestation + indemnity policy versions accepted at publish (Req 1.3).
+   Placeholder identifiers — COUNSEL REVIEW REQUIRED — matching the '0.1-draft'
+   placeholders rendered in showshak-legal.html. ssRecordAttestation records
+   these as the accepted ToS/attestation versions on the attestations row. */
+const TOS_VERSION = '0.1-draft';
+const ATTESTATION_VERSION = '0.1-draft';
 
 const draft = {
   draftId: null,      // content.id once this flow has been Saved as a draft (status='draft').
@@ -729,8 +778,18 @@ function canAdvance() {
   // empty or over the cap. ssValidatePitch().ok encodes exactly that (no length minimum).
   if (step === 4) return window.ssValidatePitch(draft.pitch).ok;
   // Cover (Req 8.1/8.3): a cover is always defined (default 0 = first frame), so the
-  // Cover step is always advanceable. Steps 5 (Vibe), 6 (Cover) & 7 (Review) pass through.
+  // Cover step is always advanceable. Steps 5 (Vibe), 6 (Cover) pass through.
+  // Review (step 7): a real publish REQUIRES the curator to affirmatively accept the
+  // attestation + indemnity (Req 1.1/1.2). Edit-after-post (saveEdit) doesn't re-collect it.
+  if (step === TOTAL_STEPS && !editMode()) return upAttestationAccepted();
   return true;
+}
+
+/* Whether the curator has affirmatively accepted the attestation + indemnity
+   checkbox on the Review step (Req 1.1). The gate for publish() (Req 1.2). */
+function upAttestationAccepted() {
+  const el = document.getElementById('up-attest-check');
+  return !!(el && el.checked);
 }
 
 function syncFooter() {
@@ -767,7 +826,9 @@ function syncFooter() {
     const ct = (typeof draft.coverTime === 'number' && isFinite(draft.coverTime) && draft.coverTime > 0) ? draft.coverTime : 0;
     fb.innerHTML = ct > 0 ? `Cover at <em>${fmtTrimTime(ct)}</em>` : 'Using the first frame';
   }
-  else                 fb.innerHTML = editMode() ? 'Save your changes' : 'One tap and you\'re live';
+  else                 fb.innerHTML = editMode()
+                          ? 'Save your changes'
+                          : (upAttestationAccepted() ? 'One tap and you\'re live' : 'Accept the attestation to post');
 }
 
 /* ════════════════════════════════════════════════
@@ -1860,6 +1921,13 @@ function buildReview() {
   document.getElementById('up-review-pitch').textContent = draft.pitch || 'No pitch written';
   document.getElementById('up-review-vibes').innerHTML =
     draft.vibes.map(v => `<span class="up-review-vibe">${v}</span>`).join('');
+
+  // Attestation step (Req 1.1/1.6): collected only for a REAL publish (fresh or
+  // draft→publish). In edit-after-post mode the clip is already live with a recorded
+  // attestation, so the affirmation is not re-collected (publish() isn't called in
+  // edit mode — saveEdit() is). Toggle visibility accordingly.
+  const attestBlock = document.getElementById('up-attest');
+  if (attestBlock) attestBlock.style.display = editMode() ? 'none' : 'flex';
 }
 
 /* ════════════════════════════════════════════════
@@ -2004,6 +2072,19 @@ async function publish() {
   if (!me) { ssToast('Sign in to post your clip'); return; }
   if (!draft.file) { ssToast('Add a clip first'); return; }
   if (!window.ssCanPublish(draft)) { ssToast('Link at least one title'); return; }
+
+  // ── Attestation gate (Req 1.1/1.2) ────────────────────────────────────────
+  // The curator MUST affirmatively accept the attestation + indemnity before a clip
+  // can publish. Not accepted → reject the publish request, mint/insert NOTHING, leave
+  // the clip in its current status, and surface a clear message. (The attestation ROW
+  // is recorded below, once the content id exists — section 6.5.) This is a HARD gate,
+  // never a silent bypass; canAdvance() also disables the Post button until accepted.
+  if (!upAttestationAccepted()) {
+    ssToast('You must accept the attestation to publish');
+    const box = document.getElementById('up-attest');
+    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
 
   const postBtn = document.getElementById('up-next');
   const restoreBtn = () => { if (postBtn) { postBtn.disabled = false; postBtn.textContent = 'Post Clip 🔥'; } };
@@ -2191,6 +2272,30 @@ async function publish() {
       // worse than a partial link. So we DON'T abort — we surface the error clearly
       // so the curator can fix the remaining links via edit-after-post (task 16.x).
       ssToast('Saved your clip, but couldn’t link all titles — you can edit it');
+    }
+  }
+
+  // ── 6.5) Record the attestation BEFORE the clip can go live (Req 1.1/1.3/1.4, 10.3) ──
+  // The content row exists (id known) but is 'processing' — the client NEVER sets it
+  // 'live'; the mux-webhook flips it once encoding finishes. We record the curator's
+  // accepted attestation now so that flip is permitted.
+  //
+  // SEQUENCING NOTE (founder must apply migration 0029): ssRecordAttestation calls the
+  // ss_record_attestation RPC added in migration 0029, and the DB content_requires_attestation
+  // trigger (also 0029) hard-blocks ANY clip going *→'live' when no attestations row exists
+  // for it. So this frontend gate REQUIRES migration 0029 to be applied: with it, a record
+  // failure leaves the clip stuck in 'processing' and the webhook can never flip it live —
+  // the trigger is the real backstop, this client check is the UX surface. No silent bypass.
+  //
+  // On { ok:false } we do NOT show the success state — the clip stays in its current
+  // ('processing') status and we surface the "attestation could not be saved" error (Req 1.4).
+  if (typeof window.ssRecordAttestation === 'function') {
+    const att = await window.ssRecordAttestation(newContentId, TOS_VERSION, ATTESTATION_VERSION);
+    if (!att || att.ok !== true) {
+      console.error('[ss-publish] attestation record failed — clip left in processing', att && att.error);
+      ssToast('Attestation could not be saved — your clip was not published');
+      restoreBtn();
+      return;
     }
   }
 

@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ShowShak — Copyright Takedown Notice</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B0B0F">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; }
+
+.layout {
+  position: fixed; inset: 0; left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column; background: var(--bg); overflow: hidden;
+  transition: left 0.3s var(--ease-smooth);
+}
+@media (max-width: 700px) { .layout { left: 0; } }
+
+.dmca-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.dmca-scroll::-webkit-scrollbar { width: 3px; }
+.dmca-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+@media (max-width: 700px) { .dmca-scroll { padding-bottom: calc(var(--mobile-nav-h) + 8px); } }
+
+.wrap { max-width: 680px; margin: 0 auto; padding: 0 24px 80px; }
+@media (max-width: 700px) { .wrap { padding: 0 16px 48px; } }
+
+/* Sticky header with back */
+.dmca-head {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(11,11,15,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 14px; padding: 16px 24px;
+}
+@media (max-width: 700px) { .dmca-head { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px; } }
+.dmca-back {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--white); cursor: pointer; transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.dmca-back:hover { background: rgba(255,255,255,0.1); }
+.dmca-back:active { transform: scale(0.92); }
+.dmca-head-title { font-family: var(--font-display); font-size: 26px; letter-spacing: 1.5px; color: var(--white); }
+.dmca-head-title em { color: var(--red); font-style: normal; }
+
+.intro { animation: ss-fadeUp 0.28s ease both; padding-top: 24px; }
+@keyframes ss-fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.intro-title { font-family: var(--font-display); font-size: 34px; letter-spacing: 1px; color: var(--white); line-height: 1.05; }
+@media (max-width: 700px) { .intro-title { font-size: 28px; } }
+.intro-sub { margin-top: 12px; color: var(--gray); font-size: 14px; line-height: 1.65; }
+
+/* Non-binding placeholder note (Req 3.8) */
+.note-banner {
+  display: flex; align-items: flex-start; gap: 11px;
+  margin: 20px 0 4px; padding: 13px 15px; border-radius: 12px;
+  background: rgba(234,59,50,0.08); border: 1px solid var(--border2);
+}
+.note-banner svg { flex-shrink: 0; color: var(--red2); margin-top: 1px; }
+.note-banner-txt { font-size: 12.5px; line-height: 1.55; color: var(--white); }
+.note-banner-txt b { color: var(--red2); text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
+.note-banner-txt a { color: var(--red2); font-weight: 700; text-decoration: underline; }
+
+/* Form */
+.form { margin-top: 26px; }
+.field { margin-bottom: 22px; }
+.field-label { display: block; font-size: 13.5px; font-weight: 700; color: var(--white); margin-bottom: 6px; letter-spacing: 0.2px; }
+.field-label .req { color: var(--red2); margin-left: 3px; }
+.field-hint { font-size: 11.5px; color: var(--gray2); margin-bottom: 9px; line-height: 1.5; }
+
+.input, .textarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 11px;
+  color: var(--white); font-family: var(--font-body, inherit); font-size: 14.5px;
+  padding: 12px 14px; transition: border-color 0.14s, background 0.14s;
+  -webkit-tap-highlight-color: transparent; outline: none;
+}
+.input::placeholder, .textarea::placeholder { color: var(--gray2); }
+.input:focus, .textarea:focus { border-color: var(--red2); background: var(--bg3); }
+.textarea { resize: vertical; min-height: 96px; line-height: 1.55; }
+.input.err, .textarea.err { border-color: var(--red); background: rgba(234,59,50,0.06); }
+
+.char-count { font-size: 10.5px; color: var(--gray2); text-align: right; margin-top: 5px; }
+
+/* OR target group */
+.target-group {
+  border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--bg2);
+}
+.target-group.err { border-color: var(--red); background: rgba(234,59,50,0.05); }
+.target-or { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+.target-or::before, .target-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.target-or span { font-size: 11px; font-weight: 700; color: var(--gray2); letter-spacing: 1px; }
+
+/* Affirmation checkboxes */
+.affirm {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color 0.14s, background 0.14s;
+  -webkit-tap-highlight-color: transparent;
+}
+.affirm:hover { background: var(--bg3); }
+.affirm.err { border-color: var(--red); background: rgba(234,59,50,0.05); }
+.affirm-box {
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; margin-top: 1px;
+  border: 2px solid var(--gray2); display: flex; align-items: center; justify-content: center;
+  transition: background 0.14s, border-color 0.14s; color: #fff;
+}
+.affirm.on .affirm-box { background: var(--red); border-color: var(--red); }
+.affirm-box svg { opacity: 0; transition: opacity 0.12s; }
+.affirm.on .affirm-box svg { opacity: 1; }
+.affirm-txt { font-size: 13px; line-height: 1.55; color: var(--gray); }
+.affirm-txt b { color: var(--white); font-weight: 600; }
+
+/* Field-level error message */
+.field-err {
+  display: none; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--red2); font-weight: 600; margin-top: 7px;
+}
+.field-err.show { display: flex; }
+.field-err svg { flex-shrink: 0; }
+
+/* Submit */
+.submit-btn {
+  width: 100%; margin-top: 8px; padding: 15px; border: none; border-radius: 13px;
+  background: var(--red); color: #fff; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
+  cursor: pointer; transition: background 0.15s, transform 0.12s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent; font-family: inherit;
+}
+.submit-btn:hover { background: var(--red2); }
+.submit-btn:active { transform: scale(0.985); }
+.submit-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Top-level error summary */
+.form-error {
+  display: none; margin: 0 0 18px; padding: 13px 15px; border-radius: 12px;
+  background: rgba(234,59,50,0.1); border: 1px solid var(--red); color: var(--white);
+  font-size: 13px; line-height: 1.5;
+}
+.form-error.show { display: block; }
+.form-error b { color: var(--red2); }
+
+.foot-note { font-size: 11px; color: var(--gray2); text-align: center; margin-top: 36px; line-height: 1.6; }
+.foot-note a { color: var(--gray); text-decoration: underline; }
+
+/* Confirmation screen */
+.confirm { display: none; animation: ss-fadeUp 0.3s ease both; padding-top: 40px; text-align: center; }
+.confirm.show { display: block; }
+.confirm-ic {
+  width: 76px; height: 76px; margin: 0 auto 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(46,204,113,0.12); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3);
+}
+.confirm-title { font-family: var(--font-display); font-size: 32px; letter-spacing: 1px; color: var(--white); }
+.confirm-sub { margin-top: 12px; color: var(--gray); font-size: 14px; line-height: 1.65; }
+.confirm-ref-box {
+  margin: 26px auto 0; max-width: 360px; padding: 20px; border-radius: 16px;
+  background: var(--bg2); border: 1px solid var(--border);
+}
+.confirm-ref-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--gray2); }
+.confirm-ref {
+  margin-top: 10px; font-family: var(--font-display); font-size: 30px; letter-spacing: 2px;
+  color: var(--red); user-select: all;
+}
+.confirm-ref-hint { margin-top: 12px; font-size: 12px; color: var(--gray2); line-height: 1.5; }
+.confirm-actions { margin-top: 30px; }
+.confirm-link {
+  display: inline-block; padding: 13px 24px; border-radius: 12px;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--white);
+  font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
+  -webkit-tap-highlight-color: transparent; transition: background 0.14s;
+}
+.confirm-link:hover { background: var(--bg3); }
+</style>
+</head>
+<body>
+
+<!-- SHARED CHROME (sidebar + mobile nav) — injected by showshak-shared.js.
+     This page is a PUBLIC intake: shared.js does NOT force any login/guest gate;
+     the chrome simply shows "Log in" for anonymous visitors. -->
+<div id="ss-nav"></div>
+
+<!-- MAIN -->
+<div class="layout">
+  <div class="dmca-head">
+    <div class="dmca-back" id="back-btn" onclick="dmcaBack()" aria-label="Back">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="dmca-head-title">Copyright <em>Takedown</em></div>
+  </div>
+
+  <div class="dmca-scroll">
+    <div class="wrap">
+
+      <!-- ── INTAKE FORM ── -->
+      <div class="intro" id="intake-view">
+        <div class="intro-title">File a copyright takedown notice</div>
+        <div class="intro-sub">
+          If you believe a clip on ShowShak uses your copyrighted work without authorization, submit a
+          notice here. No ShowShak account is required. Provide every field so we can act on a complete,
+          well-formed notice.
+        </div>
+
+        <!-- Non-binding placeholder note + reciprocal link to the Copyright/DMCA policy (Req 3.8) -->
+        <div class="note-banner">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+          <div class="note-banner-txt">
+            <b>Notice &amp; takedown intake</b><br>
+            This is ShowShak's notice-and-takedown intake form. The framing on this page is placeholder
+            scaffolding, not legal advice, pending counsel review. For how complaints are handled, see the
+            <a href="showshak-legal.html?doc=copyright" id="policy-link" onclick="goPolicy(event)">Copyright &amp; DMCA Policy</a>.
+          </div>
+        </div>
+
+        <form class="form" id="dmca-form" novalidate>
+
+          <!-- top-level error summary -->
+          <div class="form-error" id="form-error"></div>
+
+          <!-- (a) work_identification — textarea 1..2000 -->
+          <div class="field">
+            <label class="field-label" for="f-work">Identify the copyrighted work<span class="req">*</span></label>
+            <div class="field-hint">Describe the work you own or represent (e.g. the song, film, or show, and where the original can be found). 1–2,000 characters.</div>
+            <textarea class="textarea" id="f-work" maxlength="2000" placeholder="Describe your copyrighted work…"></textarea>
+            <div class="char-count" id="cc-work">0 / 2000</div>
+            <div class="field-err" id="err-work_identification"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Please describe the copyrighted work (1–2,000 characters).</span></div>
+          </div>
+
+          <!-- (b) target — clip id OR url (one required). Title-blind: id/URL only, never a clip title -->
+          <div class="field">
+            <label class="field-label">Identify the allegedly infringing clip<span class="req">*</span></label>
+            <div class="field-hint">Reference the specific clip by its ShowShak clip ID <strong>or</strong> by a direct link (URL). Provide either one — you do not need both. Do not enter a clip title.</div>
+            <div class="target-group" id="target-group">
+              <div>
+                <label class="field-label" for="f-clipid" style="font-size:12px;color:var(--gray);">ShowShak clip ID</label>
+                <input class="input" id="f-clipid" type="text" maxlength="200" placeholder="e.g. 3f9a1c2e-…" autocomplete="off">
+              </div>
+              <div class="target-or"><span>OR</span></div>
+              <div>
+                <label class="field-label" for="f-clipurl" style="font-size:12px;color:var(--gray);">Direct link to the clip (URL)</label>
+                <input class="input" id="f-clipurl" type="text" maxlength="2000" placeholder="https://…" autocomplete="off" inputmode="url">
+              </div>
+            </div>
+            <div class="field-err" id="err-target"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Provide either a clip ID or a clip URL (1–2,000 characters).</span></div>
+          </div>
+
+          <!-- (c) complainant_name — text 1..200 -->
+          <div class="field">
+            <label class="field-label" for="f-name">Your full name<span class="req">*</span></label>
+            <div class="field-hint">The name of the rights holder or the authorized agent submitting this notice. 1–200 characters.</div>
+            <input class="input" id="f-name" type="text" maxlength="200" placeholder="Full name" autocomplete="name">
+            <div class="field-err" id="err-complainant_name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Please enter your name (1–200 characters).</span></div>
+          </div>
+
+          <!-- (d) complainant_email — local@domain.tld -->
+          <div class="field">
+            <label class="field-label" for="f-email">Contact email<span class="req">*</span></label>
+            <div class="field-hint">We use this only to correspond about this notice. Format: name@example.com</div>
+            <input class="input" id="f-email" type="email" maxlength="320" placeholder="you@example.com" autocomplete="email" inputmode="email">
+            <div class="field-err" id="err-complainant_email"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Please enter a valid email address (name@example.com).</span></div>
+          </div>
+
+          <!-- (e) good_faith — affirmation -->
+          <div class="field">
+            <div class="affirm" id="aff-good_faith" onclick="toggleAffirm('good_faith')" role="checkbox" aria-checked="false" tabindex="0">
+              <div class="affirm-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <div class="affirm-txt"><b>Good-faith belief.</b> I have a good-faith belief that the use of the copyrighted work described above is not authorized by the copyright owner, its agent, or the law. <span style="color:var(--gray2)">(Placeholder wording — counsel review required.)</span></div>
+            </div>
+            <div class="field-err" id="err-good_faith"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>You must affirm the good-faith-belief statement.</span></div>
+          </div>
+
+          <!-- (f) accuracy_authority — penalty-of-perjury affirmation -->
+          <div class="field">
+            <div class="affirm" id="aff-accuracy_authority" onclick="toggleAffirm('accuracy_authority')" role="checkbox" aria-checked="false" tabindex="0">
+              <div class="affirm-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <div class="affirm-txt"><b>Accuracy &amp; authority.</b> Under penalty of perjury, I affirm that the information in this notice is accurate and that I am the copyright owner or am authorized to act on the owner's behalf. <span style="color:var(--gray2)">(Placeholder wording — counsel review required.)</span></div>
+            </div>
+            <div class="field-err" id="err-accuracy_authority"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>You must affirm the accuracy-and-authority statement.</span></div>
+          </div>
+
+          <!-- (g) signature — text 1..200 -->
+          <div class="field">
+            <label class="field-label" for="f-sig">Electronic signature<span class="req">*</span></label>
+            <div class="field-hint">Type your full legal name to electronically sign this notice. 1–200 characters.</div>
+            <input class="input" id="f-sig" type="text" maxlength="200" placeholder="/s/ Your Name" autocomplete="off">
+            <div class="field-err" id="err-signature"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Please type your electronic signature (1–200 characters).</span></div>
+          </div>
+
+          <button type="submit" class="submit-btn" id="submit-btn">Submit takedown notice</button>
+
+          <div class="foot-note">
+            By submitting you confirm the affirmations above. ShowShak processes notices under its
+            <a href="showshak-legal.html?doc=copyright" onclick="goPolicy(event)">Copyright &amp; DMCA Policy</a>.
+            All wording on this page is placeholder scaffolding pending counsel review.
+          </div>
+        </form>
+      </div>
+
+      <!-- ── CONFIRMATION SCREEN (Req 3.5) ── -->
+      <div class="confirm" id="confirm-view">
+        <div class="confirm-ic">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="confirm-title">Notice received</div>
+        <div class="confirm-sub">
+          Your copyright takedown notice has been received and logged. Keep the reference below — it
+          uniquely identifies your complaint if you need to follow up.
+        </div>
+        <div class="confirm-ref-box">
+          <div class="confirm-ref-label">Confirmation reference</div>
+          <div class="confirm-ref" id="confirm-ref">—</div>
+          <div class="confirm-ref-hint">Save this reference. ShowShak will review your notice and act on it under the Copyright &amp; DMCA Policy.</div>
+        </div>
+        <div class="confirm-actions">
+          <a class="confirm-link" href="showshak-legal.html?doc=copyright" onclick="goPolicy(event)">View the Copyright &amp; DMCA Policy</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="showshak-shared.js"></script>
+<script>
+/* ════════════════════════════════════════════════
+   PUBLIC COPYRIGHT TAKEDOWN INTAKE — showshak-dmca.html
+
+   A standalone, ShowShak-branded intake form servable to ANYONE with no
+   ShowShak account and no login (Req 3.1). shared.js opts a page into the
+   nav chrome via #ss-nav but does NOT force any login/guest gate, so an
+   anonymous rights holder can complete and submit this form.
+
+   It captures every Req 3.2 element, gates client-side with the pure
+   ssDmcaNoticeWellFormed (Req 3.3/3.4), submits via ssSubmitTakedown, and on
+   success shows the unique confirmation reference (Req 3.5).
+
+   TITLE-BLIND (Req 3.7): the form never asks the complainant to provide, and
+   never renders, a pre-Watch-It clip title — the infringing clip is referenced
+   ONLY by clip ID or URL. Nothing here exposes fires/Watch-It/title data.
+
+   All affirmation/legal wording is PLACEHOLDER scaffolding marked "counsel
+   review required" (Req 3.8 framing); it is not legal advice.
+════════════════════════════════════════════════ */
+
+/* Affirmation state (the two boolean affirmations — Req 3.2e/3.2f). */
+var affirmState = { good_faith: false, accuracy_authority: false };
+
+/* The Req 3.2 element keys, mapped to the on-screen element whose field-level
+   error / highlight we toggle when ssDmcaNoticeWellFormed reports it missing
+   (Req 3.4 — name each missing/invalid element). */
+var FIELD_TARGETS = {
+  work_identification: 'f-work',
+  target:              'target-group',
+  complainant_name:    'f-name',
+  complainant_email:   'f-email',
+  good_faith:          'aff-good_faith',
+  accuracy_authority:  'aff-accuracy_authority',
+  signature:           'f-sig'
+};
+
+/* Human-readable labels for the top-level error summary. */
+var FIELD_LABELS = {
+  work_identification: 'Identification of the copyrighted work',
+  target:              'Identification of the infringing clip (clip ID or URL)',
+  complainant_name:    'Your full name',
+  complainant_email:   'Contact email',
+  good_faith:          'Good-faith-belief affirmation',
+  accuracy_authority:  'Accuracy-and-authority affirmation',
+  signature:           'Electronic signature'
+};
+
+function byId(id) { return document.getElementById(id); }
+
+function val(id) {
+  var el = byId(id);
+  return el ? String(el.value || '') : '';
+}
+
+/* Toggle an affirmation checkbox (Req 3.2e/3.2f). */
+function toggleAffirm(key) {
+  if (!(key in affirmState)) return;
+  affirmState[key] = !affirmState[key];
+  var card = byId('aff-' + key);
+  if (card) {
+    card.classList.toggle('on', affirmState[key]);
+    card.setAttribute('aria-checked', affirmState[key] ? 'true' : 'false');
+  }
+  clearFieldError(key);
+}
+
+/* Build the notice object exactly in the shape ssDmcaNoticeWellFormed /
+   ssSubmitTakedown expect. content_id and target_url are only included when
+   non-empty (the complainant supplies EITHER one — Req 3.2b). */
+function buildNotice() {
+  var notice = {
+    work_identification: val('f-work').trim(),
+    complainant_name:    val('f-name').trim(),
+    complainant_email:   val('f-email').trim(),
+    good_faith:          affirmState.good_faith === true,
+    accuracy_authority:  affirmState.accuracy_authority === true,
+    signature:           val('f-sig').trim()
+  };
+  var clipId = val('f-clipid').trim();
+  var clipUrl = val('f-clipurl').trim();
+  if (clipId) notice.content_id = clipId;
+  if (clipUrl) notice.target_url = clipUrl;
+  return notice;
+}
+
+/* ── Field-level error helpers (Req 3.4) ── */
+function showFieldError(key) {
+  var errEl = byId('err-' + key);
+  if (errEl) errEl.classList.add('show');
+  var targetId = FIELD_TARGETS[key];
+  var t = targetId && byId(targetId);
+  if (t) t.classList.add('err');
+}
+
+function clearFieldError(key) {
+  var errEl = byId('err-' + key);
+  if (errEl) errEl.classList.remove('show');
+  var targetId = FIELD_TARGETS[key];
+  var t = targetId && byId(targetId);
+  if (t) t.classList.remove('err');
+}
+
+function clearAllErrors() {
+  Object.keys(FIELD_TARGETS).forEach(clearFieldError);
+  var fe = byId('form-error');
+  if (fe) { fe.classList.remove('show'); fe.innerHTML = ''; }
+}
+
+/* Render inline, field-level errors for each missing/invalid element AND a
+   top-level summary naming them (Req 3.4). */
+function renderMissing(missing) {
+  clearAllErrors();
+  if (!Array.isArray(missing) || !missing.length) return;
+  missing.forEach(showFieldError);
+
+  var names = missing
+    .map(function (k) { return FIELD_LABELS[k] || k; })
+    .map(function (n) { return '<li>' + escapeHtml(n) + '</li>'; })
+    .join('');
+  var fe = byId('form-error');
+  if (fe) {
+    fe.innerHTML = '<b>Your notice is missing or has invalid information.</b> Please correct:' +
+      '<ul style="margin:8px 0 0;padding-left:20px;">' + names + '</ul>';
+    fe.classList.add('show');
+  }
+  // Bring the first problem into view.
+  var firstId = FIELD_TARGETS[missing[0]];
+  var firstEl = firstId && byId(firstId);
+  if (firstEl && firstEl.scrollIntoView) {
+    try { firstEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+  }
+}
+
+function showGeneralError(msg) {
+  var fe = byId('form-error');
+  if (fe) {
+    fe.innerHTML = '<b>' + escapeHtml(msg) + '</b>';
+    fe.classList.add('show');
+    try { fe.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ── Submit handler ── */
+async function handleSubmit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  clearAllErrors();
+
+  var btn = byId('submit-btn');
+  var notice = buildNotice();
+
+  // Client-side well-formedness gate FIRST (Req 3.3/3.4). ssSubmitTakedown also
+  // gates internally, but gating here lets us name fields without a network call.
+  var gate = (typeof ssDmcaNoticeWellFormed === 'function')
+    ? ssDmcaNoticeWellFormed(notice)
+    : { ok: false, missing: [] };
+  if (!gate.ok) { renderMissing(gate.missing); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  var result;
+  if (typeof ssSubmitTakedown === 'function') {
+    result = await ssSubmitTakedown(notice);
+  } else {
+    result = { ok: false, error: 'takedown could not be submitted' };
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Submit takedown notice'; }
+
+  if (result && result.ok && result.confirmation_ref) {
+    showConfirmation(result.confirmation_ref);
+    return;
+  }
+  // Server reported specific failing elements (rare — the client gate passed).
+  if (result && result.ok === false && Array.isArray(result.missing) && result.missing.length) {
+    renderMissing(result.missing);
+    return;
+  }
+  // Any other failure (network/offline/server) — keep the form intact.
+  showGeneralError((result && result.error) || 'Your notice could not be submitted. Please try again.');
+}
+
+/* Confirmation screen showing the unique confirmation reference (Req 3.5). */
+function showConfirmation(ref) {
+  var refEl = byId('confirm-ref');
+  if (refEl) refEl.textContent = String(ref);
+  var intake = byId('intake-view');
+  var confirm = byId('confirm-view');
+  if (intake) intake.style.display = 'none';
+  if (confirm) confirm.classList.add('show');
+  var scroller = document.querySelector('.dmca-scroll');
+  if (scroller) scroller.scrollTop = 0;
+}
+
+/* ── Navigation ── */
+function goPolicy(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (typeof ssNavigate === 'function') ssNavigate('showshak-legal.html?doc=copyright');
+  else location.href = 'showshak-legal.html?doc=copyright';
+}
+
+function dmcaBack() {
+  // Reciprocal context is the Copyright/DMCA policy; fall back there.
+  if (typeof ssNavigate === 'function') ssNavigate('showshak-legal.html?doc=copyright');
+  else location.href = 'showshak-legal.html?doc=copyright';
+}
+
+/* ── Wire up ── */
+function initDmca() {
+  var form = byId('dmca-form');
+  if (form) form.addEventListener('submit', handleSubmit);
+
+  // Live char counter for the work-identification textarea.
+  var work = byId('f-work');
+  var cc = byId('cc-work');
+  if (work && cc) {
+    var sync = function () { cc.textContent = (work.value || '').length + ' / 2000'; };
+    work.addEventListener('input', sync);
+    sync();
+  }
+
+  // Clear a field's error as the user fixes it.
+  [['f-work', 'work_identification'], ['f-name', 'complainant_name'],
+   ['f-email', 'complainant_email'], ['f-sig', 'signature']].forEach(function (pair) {
+    var el = byId(pair[0]);
+    if (el) el.addEventListener('input', function () { clearFieldError(pair[1]); });
+  });
+  ['f-clipid', 'f-clipurl'].forEach(function (id) {
+    var el = byId(id);
+    if (el) el.addEventListener('input', function () { clearFieldError('target'); });
+  });
+
+  // Keyboard activation for the affirmation "checkboxes".
+  ['good_faith', 'accuracy_authority'].forEach(function (key) {
+    var card = byId('aff-' + key);
+    if (card) card.addEventListener('keydown', function (ev) {
+      if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggleAffirm(key); }
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initDmca);
+if (document.readyState !== 'loading') initDmca();
+</script>
+</body>
+</html>

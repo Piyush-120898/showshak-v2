@@ -128,12 +128,352 @@
     - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
     - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
     - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
-    - SUITE: 45 files green; migrations 0001–0025 (founder applies 0022–0025)
+    - SUITE: 69 files green; migrations 0001–0028 (founder applies 0022–0028)
+    - feed-clip-load-performance ✓ (A-grade feed clip-load + caching pipeline;
+      9 prop-feed-* properties; the heavy prefetch/SW-cache pieces are OPT-IN —
+      see SESSION LOG; the iOS feed-stall root cause = unbounded player mount, fixed)
 
 
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
+  ── MOST RECENT (DMCA/MODERATION spec + Phase 1 BUILT + India legal drafts; NOT yet pushed/applied; suite 72 files green) ──
+    CONTEXT: this session scoped the DMCA / moderation feature as a full spec
+    (.kiro/specs/dmca-moderation-scaffolding/ — requirements → design → tasks, all
+    validated) and BUILT Phase 1 of it. Suite is now 72 property-test files green
+    (was 69; +3 new prop-dmca-*). NOTHING from this session is pushed to main yet,
+    and migration 0029 is NOT yet applied — see §7.
+
+    THE POSTURE WE LOCKED (founder + cofounder): launch an OPEN BETA in India to
+    prove the loop (~15-20 curators, 300-500 clips, ~1000-1500 users), then raise
+    on that traction and buy a real legal team for the heavyweight compliance. The
+    site is PUBLIC (anyone with the link); we control risk by LIMITING the curator
+    (upload) side, not by a "private"/"just testing" label (a disclaimer is NOT
+    legal protection — corrected the founder on this). Phase 1 IS the beta-safe
+    posture; ship exactly it, not less. Music feature stays PARKED (a copyrighted-
+    song library = inducement). 18+ only (DPDP children rule).
+
+    • DMCA/MODERATION — PHASE 1 BUILT (Posture & Intake). All code-complete, suite
+      green, but UNPUSHED + migration UNAPPLIED:
+        - 3 pure fns + property tests in showshak-shared.js (dual-exported):
+          ssAttestationComplete (Req1), ssDmcaNoticeWellFormed (Req3),
+          ssContentPubliclyVisible (Req4). Tests: prop-dmca-attestation/notice/
+          visibility.test.js.
+        - Migration 0029_dmca_intake_posture.sql (FOUNDER MUST APPLY): tables
+          attestations / policy_versions / complaints (closed 7-state) /
+          moderation_log (append-only); the moderation_log immutability triggers
+          (reject UPDATE/DELETE for ALL roles incl. service); the
+          content_requires_attestation trigger (blocks any *→'live' with no
+          attestation row); ss_is_admin(); and 3 SECURITY DEFINER RPCs
+          (ss_submit_complaint [anon], ss_record_attestation [authed],
+          ss_get_policy_version). Removal = RLS: the existing read_live_content
+          policy already hides status='removed'/soft-deleted from public reads.
+        - Edge Function supabase/functions/submit-takedown/ (Deno; FOUNDER MUST
+          DEPLOY --no-verify-jwt) — public anon intake, re-validates the notice,
+          calls ss_submit_complaint, returns only a confirmation_ref.
+        - Client wrappers (window-only): ssRecordAttestation, ssSubmitTakedown,
+          ssLoadPolicyVersion.
+        - Surfaces: showshak-legal.html (4 policy docs tos/privacy/copyright/
+          community, render from policy_versions w/ placeholder fallback);
+          showshak-dmca.html (public takedown intake form, title-blind);
+          attestation+indemnity gate injected into showshak-upload.html publish()
+          (hard-blocks publish until accepted, then ssRecordAttestation — REQUIRES
+          0029); wired the 4 dead legal links in showshak-settings.html.
+        - sw.js: CACHE_VERSION v28 → v29; legal/dmca pages precached.
+
+    • DMCA/MODERATION — PHASE 2 NOT BUILT (Workflow & Compliance; tasks 11-18 in
+      tasks.md): pure fns ssComplaintTransition (+SS_COMPLAINT_INVALID),
+      ssReinstatementDue, ssRepeatInfringerDecision, ssAckClockState + tests;
+      migration 0030 (termination markers) + RPCs ss_moderate_complaint /
+      ss_file_counter_notice / ss_terminate_curator; showshak-moderation.html
+      (RLS-gated admin queue); showshak-counter-notice.html; showshak-dmca-rls-
+      check.html. DECISION: DEFER Phase 2 to post-raise / when we actually receive
+      takedowns — at 500 clips the founder can action a takedown by flipping
+      content.status='removed' in the Supabase editor (RLS hides it everywhere).
+
+    • INDIA LEGAL DRAFTS written in legal/ (README + terms-of-service.md +
+      privacy-policy.md + copyright-policy.md + community-guidelines.md). Real,
+      India-correct working drafts (NOT placeholders), every doc marked "DRAFT —
+      counsel review required". Grounded in: IT Act 2000 §79 + IT Rules 2021
+      (Grievance Officer: acknowledge ≤24h, resolve ≤15 days; we are NOT an SSMI
+      <5M users so the heavy CCO/Nodal-officer/monthly-report duties don't bind);
+      Copyright Act 1957 + Copyright Rules 2013 Rule 75 (restrict ≤36h, 21-day
+      court-order window, restore if none — India has NO "DMCA", that's US);
+      DPDP Act 2023 + DPDP Rules 2025 (NOTIFIED 13 Nov 2025; phased — consent-
+      manager reg ~Nov 2026, substantive notice/consent/rights/penalties ~May
+      2027). Framing: OPEN beta, India-only, NON-COMMERCIAL (no pay/ads), neutral
+      host + creator responsibility, 18+. The .md files are the SOURCE/counsel copy
+      — the user-facing render is showshak-legal.html (which still shows its own
+      placeholder text until we sync the real text in / seed policy_versions).
+      [PLACEHOLDERS] in the docs (entity name/type, address, city, grievance +
+      copyright + support emails, officer name, effective date, version, URL) MUST
+      be filled by the founder/counsel.
+
+    • PROPOSED, NOT YET BUILT (agreed next): (1) sync the real policy text into
+      showshak-legal.html so the beta shows it; (2) add a CONSENT + 18+ GATE as
+      onboarding Step 1 — an UNTICKED-by-default mandatory checkbox with clickable
+      ToS/Privacy links, version-stamped into the DB (who/when/which versions),
+      mirroring the attestation pattern. DPDP: consent must be free/specific/
+      informed/unambiguous + affirmative (no pre-ticked boxes); record it.
+
+    • OPEN QUESTION FOR FOUNDER: the operating entity — registered company vs
+      individual/sole proprietor for the beta — needed to fill the legal docs'
+      entity/liability/grievance sections.
+
+  ── PREVIOUS (felt-quality + reliability sweep v21→v28; trim moved to Mux; profile/discover/settings polish; all pushed to main; last commit 5185c9d) ──
+    CONTEXT: suite now 69 property-test files green. A run of on-device bug fixes
+    and felt-quality passes shipped across CACHE_VERSION v21→v25. The headline:
+    client-side ffmpeg.wasm trim is GONE — trimming is now SERVER-SIDE on Mux.
+
+    • ANDROID "NaN"/"undefined" — FIXED (v21). The earlier OPEN BUG: fmtFires(n)
+      now coerces non-finite → 0; _inlineClipHTML + _inlineSyncRail default
+      fires/platLabel/platColor/platRgb/platAbbr so a missing field never prints
+      "NaN"/"undefined" on the Fire pill or Watch It label. Root = a stale Android
+      SW bundle + the un-defaulted inline render path; both addressed (defense-in-depth).
+
+    • iOS INLINE FEED STALL — tap-to-play affordance (v21). iOS/WebKit caps live
+      <video>s, so a contended active inline clip can stick on the first frame.
+      New pure ssShouldShowTapToPlay({active,isVideo,playing}) + a VideoSurface
+      play-state hook (playing/pause/waiting/stalled + timeupdate) show the centre
+      pause/play glyph when the active clip isn't actually playing; a tap already
+      opens the bounded fullscreen viewer (which always plays). Property-tested
+      (tests/prop-tap-to-play.test.js).
+
+    • CURATOR AVATAR PHOTO + felt-quality (v21/v22). The clip bottom + viewer now
+      render the curator's avatar_url PHOTO (object-fit cover, letter fallback);
+      _ssvNormalize carries avatar; _ssAvatarInner() is the shared renderer. Avatar
+      + handle sizes bumped (feed 32px/13px, viewer 36px/15px). Overlay info + rails
+      dimmed (avatar stays opaque); the Watch It breathing pulse replaced by a
+      subtle fire-orange ssTraceBorder; Watch It made more translucent (opacity 0.78).
+
+    • PROFILE COLD-START PREWARM (v22). ssPrewarmProfile() (idle + on session
+      resolve) caches the signed-in user's identity row + warms the avatar image +
+      prefetches the profile document; the Profile page paints from
+      ssReadMyProfileCache() then revalidates (applyCachedOwnProfile in boot()).
+      Cache cleared on sign-out. Feed→Profile is instant on repeat visits.
+
+    • SERVER-SIDE MUX TRIM (v23) — replaces the flaky 25 MB ffmpeg.wasm browser
+      trim (the "Preparing editor…" stall + "couldn't trim — posting full clip"
+      fallback). Now: upload the FULL source + meta.trim={in,out}; the mux-webhook
+      clips the source asset in TWO PHASES — (1) source ready → create a clip asset
+      via input mux://assets/<id> start_time/end_time, store mux_clip_asset_id +
+      mux_source_asset_id in meta, stay 'processing'; (2) clip ready (matched by
+      meta->>mux_clip_asset_id) → flip live with the CLIP + DELETE the source so
+      ONLY the trimmed part is stored. Never-stuck fallback: clip-create failure
+      publishes the full source. Plus a client-side TRIM PREVIEW (play/loop the
+      exact cut locally on the Trim step — no upload, no ffmpeg). ⚠️ FOUNDER
+      DEPLOYED mux-webhook (`supabase functions deploy mux-webhook --no-verify-jwt`)
+      — CONFIRMED WORKING on device.
+
+    • RESOLUTION 480p→720p AUTO-CLIMB (v24). SS_RES_CAP is now 720p on ALL tiers
+      (was slow:480p hard cap → clips were stuck at 480p). The low initial-bandwidth
+      seed keeps a fast ~480p start; ABR climbs to 720p when bandwidth is free
+      (ceiling, not target — stays low on a genuinely slow link). prop-network-policy
+      updated. (Mux "basic" assets top out at 720p anyway.)
+
+    • UPLOAD AVAILABILITY RACE (v24). upPickTmdb links via the edge `link` mode
+      which caches TMDB providers in the BACKGROUND, so the Confirm_Availability
+      step wrongly said "couldn't confirm where this streams." upRefreshTitleProviders()
+      now polls the title row (4×, 2s apart) and re-renders so upload-time
+      availability matches the live Watch It.
+
+    • PUBLIC-PROFILE CLIP VIEWS = 0 — FIXED (v25). hydrateCuratorProfile's content
+      select was MISSING views_count → every public clip mapped to 0 views. Added
+      it; the public card now matches owner/feed counts (ssMapContentRowsToClips →
+      ssDisplayViews).
+
+    • FOLLOWING list/count CONSISTENCY — FIXED (v25). Root: there was NO
+      ssHydrateFollowing() (stacks had ssHydrateStacks, following didn't), so the
+      local store (sessionStorage 'ss_following_v1') was empty on a fresh session →
+      the count/buttons read 0 while renderFollowing did its OWN DB fetch → mismatch
+      ("count says 0 but a profile shows under Following") + cross-session resets.
+      Added ssHydrateFollowing() (seeds the local store from DB follows on
+      session-resolve + fresh login, REPLACING stale/mock-only follows), made
+      renderFollowing render from that single DB-seeded store (no per-render DB
+      fetch → no unfollow flicker/phantom), and subscribed the profile to
+      ssOnFollowingChange to re-render list+count+tab live.
+
+    • PORTRAIT LOCK (v26). ShowShak is portrait-only. manifest orientation
+      "portrait" locks the INSTALLED PWA on Android; iOS ignores it, so shared.js
+      injects a rotate-to-portrait overlay (pure CSS media query, touch-phones-
+      only via landscape + short-height + coarse-pointer). index.html now ALSO
+      loads showshak-shared.js so the lock + shared utils cover the landing too
+      (DB/auth features there guarded → no-op).
+
+    • ANALYTICS "TOP PERFORMING CLIPS" FIXED (v27). Three causes: (1) rows drew
+      only the gradient → now render the clip poster; (2) watch-its were FABRICATED
+      (fires×0.18) + fires came from fires_count → now use REAL PROFILE.perClip
+      (0019 reader), with views shown too, ranked by performance; (3) fetchOwnAnalytics
+      populated PROFILE.perClip but only called renderPrimary() → added
+      renderAnalytics() so the list refreshes when per-clip data lands (this was
+      why the numbers didn't reconcile with the totals).
+
+    • HIGHLIGHTS reworked (v27). The old ★ feature-toggle sat at the SAME
+      coordinates as the clip count (top:9px left:9px) → taps hit the count and
+      bubbled to the card (the "unclickable star"). Removed the star. The owner
+      Highlights shelf now shows ONLY creator-selected (highlighted) stacks (not
+      all), with a "+ Add" picker in the header (lists all stacks, Feature/Featured
+      toggle; featuring makes the stack public) and a reliable ✕ remove on cards.
+
+    • DISCOVER + SETTINGS platform cleanup (v28). Discover chips trimmed to the
+      major India set (Netflix · Prime Video · JioHotstar · SonyLIV · Zee5 · Apple
+      TV+) — dropped Disney+ (duplicated JioHotstar) + HBO Max (not in India), fixed
+      in data/showshak-data.js PLATFORM_FILTER_ORDER. Settings → My Platforms now
+      split into MAJOR + REGIONAL sections (MAJOR_PLATFORMS set; toggle indices
+      preserved); offline-fallback mock cleaned.
+
+    • BRAND ASSET TOOL (committed): tools/brand-assets.html — a dependency-free
+      canvas generator that exports PNGs from the real logo + brand fonts: app icon
+      (square + rounded), Instagram "Coming Soon" splash (square + 9:16 story), and
+      CLEAN pitch-deck title cards (16:9 + square, no Coming Soon). Open in a
+      browser, click to download. Dev tool, not part of the app.
+
+    • MUSIC / DMCA STRATEGY (decision, NOT built). Founder asked about letting
+      curators add songs. Conclusion: (a) NO Spotify/Apple API — those give
+      metadata + 30s previews only, NOT a sync/usage license. (b) The only safe
+      API path is ROYALTY-FREE catalogs that bundle a license (Pixabay/Jamendo to
+      start; Uppbeat/Epidemic later). (c) "Creator takes responsibility + we run
+      DMCA takedown" IS the standard UGC posture and CAN work — BUT only while we
+      stay a NEUTRAL HOST; building a "use this song" library of copyrighted music
+      = inducement → loses safe harbor, and music is the most aggressively enforced
+      (esp. Indian labels). So: clips = creator-responsibility + takedown; music =
+      royalty-free only, deferred. CRUCIAL: real safe harbor needs the machinery —
+      ToS + creator attestation/indemnity, a registered DMCA agent (US) + an
+      India-resident Grievance Officer (IT Act 2021: 36-hour ack), expeditious
+      removal, a repeat-infringer termination policy, logging. That IS the
+      DMCA/moderation scaffolding below — it's a prerequisite, not polish. (Not
+      legal advice; needs real IP counsel before launch.)
+
+    • DEPLOY STATE: CACHE_VERSION = v28 (sw.js). All work pushed to main (last
+      commit 5185c9d). mux-webhook REDEPLOYED for server-side trim (confirmed
+      working on device). Suite 69 property-test files green. Migrations through
+      0028 applied. After any future push the founder needs on-device, BUMP
+      CACHE_VERSION + reopen the installed PWA twice.
+
+  ── PREVIOUS (FEED CLIP-LOAD PERFORMANCE build + the iOS feed-stall saga; CACHE_VERSION was v20; commit bc2064c) ──
+    CONTEXT: suite is now 68 property-test files green. watch-it-curator-
+    availability is SHIPPED (migration 0028 applied by founder). The big work
+    this stretch was the FEED CLIP-LOAD PERFORMANCE spec + chasing an iOS-only
+    feed playback bug to its real root cause.
+
+    • feed-clip-load-performance spec — BUILT & shipped (.kiro/specs/feed-clip-
+      load-performance/, + shareable architecture doc feed-cache-pipeline.md at
+      repo root). One principle: "the active clip always wins the pipe; everything
+      else is prefetched only with spare, bounded bandwidth." Phases 0-4:
+        - Pure decision core (dual-exported, property-tested, 9 prop-feed-*.test.js):
+          ssPreloadTier (preload ladder), ssShouldDeepen (progressive deepening
+          gate), ssSplashLift (cold-start splash lift truth table), ssSegmentEvictionPlan
+          (LRU+window segment eviction). Plus ssNetworkPolicy carries {preloadDepth,
+          maxResolution}. Resolution cap = 720p everywhere / 480p on slow (Option A).
+        - Impure wiring: preload tiering on the mux-players (active=auto, next few=
+          metadata, rest=none); a progressive-deepening controller; a session byte
+          budget + circuit breaker; a CORS first-segment warm rewrite; a cold-start
+          splash lane in showshak-feed.html; metadata window bumped to 30
+          (SS_FEED_CACHE_MAX 10->30 = SS_METADATA_WINDOW); a persistent range-aware
+          (HTTP 206) SW Segment_Cache in a SEPARATE 'showshak-seg' bucket in sw.js.
+      ⚠️ IMPORTANT — most of that heavy pipeline is now OPT-IN / OFF BY DEFAULT
+      (see below) because it caused regressions. What's LIVE & ON by default:
+      preload tiering, the bounded player pool, poster warming, cold-start splash
+      TIMING. What's OFF by default (opt-in via localStorage ss_ff_segcache='on'):
+      the SW Segment_Cache AND all explicit first-segment prefetch (warm/deepen/
+      cold-start), because without the SW cache those fetches just saturate the
+      stream.mux.com connection pool and starve the active clip.
+
+    • THE iOS FEED-STALL BUG — ROOT CAUSE FOUND & FIXED (commit bc2064c).
+      Symptom: in the INLINE feed only (fullscreen was always fine), after the
+      first couple of clips, a clip would clear its poster, show the first frame,
+      then FREEZE; sometimes another clip played (muted) in the background. Only
+      on iOS; Android played fine.
+      The hunt (each was a real contributor, fixed in order):
+        1. SW Segment_Cache 206 path + heavy prefetch saturating stream.mux.com
+           -> made the SW cache + ALL explicit segment prefetch OPT-IN (off by
+           default). Helpers: _ssFeatureOff(name) and _ssSegPrefetchOn() read
+           localStorage flags (ss_ff_tiering/deepen/coldstart/segcache).
+        2. play() now FORCES preload='auto' on the active clip (was racing the
+           tier assignment, leaving it stuck after the poster).
+        3. _ssMuteOthers now PAUSES + mutes every non-active surface (was only
+           muting) so a recycled player can never keep playing in the background
+           and steal a video slot (iOS allows very few simultaneous videos).
+        4. ***THE REAL ROOT CAUSE*** (confirmed in code): mountInline did
+           `_inlineClips.forEach(_inlineWireClip)` — it mounted a <mux-player>
+           for EVERY clip (up to Metadata_Window=30 after the cache bump). The
+           FULLSCREEN viewer (ssOpenClip) already mounts only a bounded band via
+           _ssvPruneSurfaces — which is EXACTLY why fullscreen never had the bug.
+           iOS/WebKit strictly limits simultaneously-loaded <video> elements, so
+           the over-mounted feed left clips stuck on the first frame; Android is
+           lenient so it looked fine. FIX: mountInline now mounts only
+           ssMountedPlayerSet(0, n, SS_MAX_LIVE_PLAYERS); appendInline no longer
+           eager-mounts appended clips. The IntersectionObserver + pruneInlineSurfaces
+           mount the rest on demand, bounded to SS_MAX_LIVE_PLAYERS=4 — the exact
+           band proven to work on iOS in the fullscreen viewer. NO platform fork.
+      DECISION (founder + cofounder agreed): do NOT fork iOS vs Android behaviour.
+      Build ONE behaviour correct for the strict platform (iOS) — it's leaner for
+      Android too. Pool size could become a small per-platform tuning knob LATER
+      if ever needed, but band=4 is proven on iOS so we did not change it.
+
+    • ✓ FIXED in v21 (see most-recent entry) — was: Android shows "NaN" under the fire icon on
+      some clips, and "undefined" on the Watch It button's platform label; the
+      SAME clip shows "0" and a normal Watch It on iPhone. So it's a per-render
+      data-default gap (c.fires undefined -> undefined+0 = NaN -> fmtFires prints
+      "NaN"; platAbbr/platColor undefined -> "undefined"). Why Android-only is
+      the key clue: most likely Android is running a STALE SW-cached older JS
+      bundle (it had not picked up the newest CACHE_VERSION yet), OR a feed clip
+      path isn't defaulting fields the way the viewer's _ssvNormalize does.
+      RECOMMENDED FIX (next session, low-risk, bulletproof regardless of cause):
+        - Harden fmtFires(n): coerce non-finite -> 0 (`if (!isFinite(n)) n = 0;`).
+        - In _inlineClipHTML + _inlineSyncRail use `Number(c.fires)||0` and default
+          platAbbr/platColor/platLabel/platRgb so a missing field never prints
+          "undefined"/"NaN".
+        - First confirm the Android device is actually on CACHE_VERSION v20
+          (reopen twice / clear site data). If it clears after update, it was the
+          stale bundle; still ship the display guards as defense-in-depth.
+
+    • DEPLOY STATE: CACHE_VERSION = v20 (sw.js). All work pushed to main; last
+      commit bc2064c. After any future push that the founder needs on-device,
+      BUMP CACHE_VERSION and reopen the installed PWA twice.
+
+  ── MOST RECENT (PWA perf + felt-quality + watch-it availability; CACHE_VERSION v14) ──
+    • PWA-BLACK-SCREEN-LOAD spec — SHIPPED Phase 1 + 2 (live on main):
+        - Phase 1 (the bug kill): removed the body{opacity:0} gate, added an
+          always-present static shell on all 6 app pages, deferred the render-
+          blocking scripts (supabase-js etc.) in-order with page-init on
+          DOMContentLoaded, and made the body-reveal fire on internal navs (not
+          just bfcache). First paint no longer waits on JS → the 5–6s black
+          screen on feed↔page↔feed is GONE. Pure helpers ssResolveFirstFrame +
+          ssShouldRevealBody (property-tested). Fixed the stale sw.js comment.
+        - Phase 2 (delight): cross-document View Transitions (@view-transition +
+          ~160ms cross-fade, reduced-motion guard, graceful instant-cut fallback);
+          ssNavStrategy reconciles ssNavigate so exactly ONE animation runs.
+        - Phase 3 (prerender + bfcache) is SPECCED but NOT built (deferred).
+    • BRANDED SPLASH: first-ever launch = ~3s brand beat (logo+tagline) that
+      doubles as a tier-aware warm-burst prefetch window (8/5/2 clips by network);
+      every later open = quick ~700ms splash; NEVER on internal navigation.
+      (showshak-feed.html splash block; localStorage 'ss_launched_v1'.)
+    • FEED AUDIO BUG FIXED (was: see clip C, hear clip B on fast scroll): root
+      cause = the .catch() in _activatePostUnlock/_ssActivateSurface blindly
+      retried play() on a scrolled-away surface (resurrected its audio). Fix:
+      gate every retry/unmute continuation on surface.intendsToPlay() (new
+      wantPlay getter), PLUS a belt-and-braces _ssMuteOthers(surfaces, active)
+      invariant on every setActive in BOTH hosts → only the visible clip is audible.
+    • WATCHLIST recommended grid now loads REAL clips (cache-then-revalidate via
+      ssReadPageCache 'watchlist'), not the old SSData mock.
+    • STACK creator shown by display NAME (not @handle); normal users show their
+      real name non-clickable, curators stay clickable; fixed the "@curator"
+      fallback. Needed migration 0026 (get_shared_stack returns owner {name,
+      username, is_curator} + member names). ssStackContributors carries name.
+    • INDIA PLATFORM CATALOG refreshed + verified (deep web research): migration
+      0027 deactivates Disney+ / HBO Max / Hulu (merged-into-JioHotstar or not in
+      India — never deleted, FKs intact) and seeds the real set: Netflix, Prime
+      Video, JioHotstar, SonyLIV, Zee5, Apple TV+, YouTube + regional (Aha, Sun
+      NXT, Hoichoi, Chaupal, KableOne, STAGE, Planet Marathi, ManoramaMax, ETV
+      Win) + Crunchyroll. ssPlatformWatchUrl: added YouTube/Crunchyroll routing,
+      Apple TV+ → /in/, HBO Max → JioHotstar; regional app-first ones fall back to
+      the Google "watch on" resolver. (Excluded on purpose: ALTBalaji/ALTT —
+      govt-BANNED 2025; Ullu/adult; Tata Play/Airtel Xstream — aggregators.)
+    • NEW ACTIVE SPEC — watch-it-curator-availability: requirements + design +
+      tasks ALL written & validated; NOT yet implemented. THIS is the next build
+      (see §6b + NEXT STEP). Migrations 0026 + 0027 are APPLIED in Supabase.
+
   ── RECENT (stacks + settings + fixes; suite 45 files green) ──
     • stack-sharing Phase 1+2 (private/unlisted/public + collaborative) —
       migrations 0022 / 0023; 6 pure rules property-tested.
@@ -232,6 +572,55 @@
 
 
 ───────────────────────────────────────────────────────────────
+  6b. ACTIVE SPEC — watch-it-curator-availability (SHIPPED ✓)
+───────────────────────────────────────────────────────────────
+  STATUS: DONE and live. Migration 0028 (content_titles.curator_platform_ids
+  uuid[]) is APPLIED by the founder. ssResolveWatchOptions now returns a de-duped
+  UNION of TMDB providers + curator-declared platforms (never dead-ends on a
+  false "not available"); upload Confirm_Availability_Step + edit-after-post let
+  curators declare/correct platforms per title; 11 fast-check properties green.
+  The detail below is kept for reference.
+
+  (historical) STATUS: requirements + design + tasks WRITTEN & validated in
+  .kiro/specs/watch-it-curator-availability/. NOT yet implemented. This is the
+  next thing to build. (The pwa-black-screen-load spec is done through Phase 2;
+  its Phase 3 — prerender + bfcache — is deferred, optional polish.)
+
+  THE PROBLEM IT FIXES: a curator linked a TMDB title, published, and Watch It
+  said "not available in your region" — but it WAS on Prime; TMDB's provider data
+  was just stale/incomplete. Watch It is the product's climax → a false
+  "not available" is a trust-breaker.
+
+  PRINCIPLE: TMDB is a HINT, the curator is the AUTHORITY. Watch It must NEVER
+  dead-end on "not available" if a curator declared where a title streams.
+
+  THE DESIGN (3 phases, all in design.md):
+    - STORAGE: migration 0028 adds content_titles.curator_platform_ids uuid[]
+      (per clip↔title; NOT on shared titles.providers, so the TMDB refresh can't
+      clobber it and one curator's claim can't change other curators' clips).
+    - RESOLVER MERGE: ssResolveWatchOptions changes from "curator-as-fallback-
+      only-when-TMDB-empty" to a de-duped UNION of TMDB providers + curator-
+      declared platforms (fixes PARTIAL/wrong TMDB, not just empty). "Not
+      available" shows only when BOTH are empty. Option shape unchanged →
+      ssPlatformWatchUrl + sheet render untouched. In-your-plan still applies.
+      Backward-compatible: a clip with no declarations resolves exactly as today.
+    - UPLOAD (Confirm_Availability_Step) + EDIT-AFTER-POST: after picking a title
+      (TMDB or manual), show resolved region availability + an always-available
+      "add/correct platform" chip control (from the platforms catalog), per title;
+      stored in curator_platform_ids; editable later.
+    - 11 fast-check correctness properties on the pure merge core (union, dedup,
+      never-dead-end, shape parity, subscription marking, ordering, region, IN
+      default, totality, BACKWARD-COMPAT (critical guard), multi-title).
+
+  EXECUTION: tasks.md has 9 tasks in 3 phases + a wave dependency graph. Phase 1
+  (priority, backward-compatible, shippable alone) = task 1 (author migration
+  0028) + task 2 (write the 11 property tests, TDD/red-first) + task 3 (implement
+  the merge + _ssFetchSheetTitles declaredPlatforms plumbing + _ssPlatformCatalogMap)
+  + task 4 (suite green) + task 5 (FOUNDER-RUN: apply 0028). Then Phase 2 (upload
+  UI) + Phase 3 (edit). The session was queued to START Phase 1 — resume there.
+
+
+───────────────────────────────────────────────────────────────
   6. STACKS — SHIPPED (sharing + collaboration + folder view)
 ───────────────────────────────────────────────────────────────
   STATUS: DONE and live on main. stack-sharing (Phase 1 + 2) and
@@ -283,40 +672,49 @@
 ───────────────────────────────────────────────────────────────
   7. FOUNDER-RUN ITEMS PENDING (only YOU can do these)
 ───────────────────────────────────────────────────────────────
-  CONFIRMED DONE this session: tmdb-providers function deployed + secrets set +
-  batch ran (8 titles cached); migration 0021 (views sync) applied; migration
-  0016 (find_or_create_title) applied; all migrations 0001–0021 verified present.
+  CONFIRMED DONE: tmdb-providers function deployed + secrets set + batch ran;
+  migrations 0001–0028 ALL applied (incl. 0028 content_titles.curator_platform_ids).
 
-  STILL PENDING:
-  - ⚠️ REDEPLOY the tmdb-providers function. It was deployed BEFORE the
-    search/link/manual + instant-link modes were added, so the upload's live
-    TMDB search won't work until you run:
-        supabase functions deploy tmdb-providers --no-verify-jwt
-    (PowerShell, in the project folder. Secrets already set: TMDB_API_KEY,
-    INGEST_SECRET = showshak-ingest-key-9f3k2p or whatever you set.)
-  - SCHEDULE the TMDB refresh cron (if not already): SQL editor → enable
-    pg_cron + pg_net → cron.schedule(...) POSTing to the function URL with the
-    x-ingest-secret header, body {"mode":"batch"}, every 6h. (See chat for SQL.)
-  - iOS WHITE FLASH on cold launch is STILL unresolved (deferred). Startup
-    images are in place but not reliably honored; needs more investigation —
-    do NOT trade the bottom-nav layout for it again.
-  - APPLY MIGRATIONS in the SQL editor (I write them, you run them): 0022 (stack
-    visibility + get_shared_stack RPC), 0023 (collaboration: members + cap), 0024
-    (views self-collapse), 0025 (account deactivate/delete + 30-day retention RPCs).
-    Apply any not yet applied.
+  STILL PENDING — ⚠️ THE DMCA PHASE-1 SHIP (this session's work; do these together):
+  - APPLY migration 0029_dmca_intake_posture.sql in the Supabase SQL editor.
+    ⚠️ ORDERING MATTERS: apply 0029 BEFORE (or with) the push — the upload
+    attestation gate calls ss_record_attestation (in 0029); without it, publishing
+    a clip fails the "attestation could not be saved" path and uploads are blocked.
+    So this one is migration-FIRST, not migration-after.
+  - DEPLOY the new Edge Function: supabase functions deploy submit-takedown
+    --no-verify-jwt  (public anon takedown intake).
+  - PUSH to main + BUMP is already done in code (CACHE_VERSION is now v29);
+    after pushing, reopen the installed PWA twice to pick up v29.
+  - FILL the [PLACEHOLDERS] in legal/*.md (entity name/type, registered address,
+    [CITY] for jurisdiction, grievance/copyright/support emails, Grievance Officer
+    name, effective date, version, website URL). Use REAL monitored inboxes for the
+    grievance + copyright emails from day one (an unreachable Grievance Officer is
+    the classic IT-Rules failure). Then book ONE IP/tech-lawyer hour to bless the
+    filled-in docs before going wide. (Decide the operating ENTITY first — company
+    vs individual — it drives the entity/liability/grievance text.)
+
+  STILL PENDING (older, not blocking the DMCA ship):
   - SET UP the 30-day account-purge cron (service role) for 0025 — skeleton is in
-    the migration's footer. Until then, deleted accounts stay hidden + recoverable
-    (safe; nothing is lost early).
-  - PHASE 6 (still pending from the player build): a real mid-range Android / 4G
-    session in Mux Data vs targets (TTFF <800ms wifi / <1.5s 4G, scroll-to-play
-    ~150ms, rebuffer <1%). Only if it falls short → reconsider the 360p MP4.
-  - PWA testing: reinstall the app (remove → re-add) to pick up a new
-    CACHE_VERSION; the SW serves cached HTML for one launch then updates.
+    the migration's footer. Until then, deleted accounts stay hidden + recoverable.
+  - REDEPLOY tmdb-providers ONLY if its live upload TMDB search ever stops working:
+    supabase functions deploy tmdb-providers --no-verify-jwt
+  - iOS WHITE FLASH on cold launch — still deferred (re-check on device).
+  - PHASE 6 (player build): a real mid-range Android / 4G Mux Data session vs
+    targets (TTFF <800ms wifi / <1.5s 4G, scroll-to-play ~150ms, rebuffer <1%).
 
 
 ───────────────────────────────────────────────────────────────
   8. OPEN / DEFERRED (not blocking)
 ───────────────────────────────────────────────────────────────
+  - ✓ ANDROID "NaN" / "undefined" on the feed action rail + Watch It label —
+    FIXED in v21 (see SESSION LOG). fmtFires hardened (non-finite → 0) + defaulted
+    fires/platAbbr/platColor/platLabel/platRgb in _inlineClipHTML + _inlineSyncRail;
+    CACHE_VERSION bump cleared the stale Android SW bundle. No longer open.
+  - FEED prefetch / SW Segment_Cache are OFF by default (opt-in via localStorage
+    ss_ff_segcache='on'). If/when we want true scroll-back persistence, VALIDATE
+    the SW 206 range path on-device first (DevTools Network + Cache Storage),
+    then consider flipping default-on. The pure ssSegmentEvictionPlan is tested;
+    the impure SW path is not device-verified yet.
   - Update the `overview` brief to record the "views on clips"
     decision (it currently says "no view counts on clips" — that
     rule was deliberately changed this session).
@@ -420,51 +818,66 @@ so the Feed never breaks; small contained fixes you just do directly
 and verify. Always run the test suite after touching shared.js. Only
 commit/push to main when I ask.
 
-CURRENT FOCUS / WHERE WE ARE: Stacks are now a full sharable, collaborative,
-browsable surface — these are DONE and live on main:
-  - STACK-SHARING (Phase 1 + 2): visibility private/unlisted/public, view vs
-    collaborative (members co-add, cap 6, attributed), unlisted is non-enumerable
-    (read only via the get_shared_stack RPC), all RLS/RPC-enforced. Migrations
-    0022 (+0023 collab) applied.
-  - STACK-FOLDER-VIEW: a real route showshak-stack.html?stack=<id> — title-blind
-    grid + creator/contributor header; tap a clip → universal viewer with the
-    whole stack as the swipe playlist; shared ?stack= links open the FOLDER (the
-    old feed handler now redirects); a Share visibility-chooser → native share;
-    Watchlist preview capped at 12 + "View All"; curator "Feature in Highlights".
-  - SETTINGS overhauled + DB-wired: removed the per-page "Welcome to ShowShak"
-    toast; Region loads/persists; creator block reflects real role; working
-    Curator-handle change with live cross-user uniqueness (shared with signup);
-    Payouts = coming-soon; Analytics screen removed; Account = real connected
-    logins, no change-email, working Deactivate + Delete with 30-day retention
-    (migration 0025, reversible, auto-reactivate on sign-in).
-  - FIXES: views now self-collapse (a curator's own re-watches count ONCE, other
-    users each count) consistently everywhere (migration 0024); feed audio carries
-    the unmute across clips on scroll (iOS-safe muted-first-then-unmute).
+MY SETUP (important): I have the project's LIVE PAGE via GitHub Pages on the
+`main` branch — every push auto-rebuilds it and I watch all changes there. I also
+have the PWA INSTALLED on my phone, so I test on a real device. Because the PWA
+caches via the service worker, BUMP CACHE_VERSION in sw.js whenever you push code
+I need to see (it's currently v14); I close+reopen the app (or remove → re-add) to
+pick up the new version. I also run the SQL migrations myself in the Supabase SQL
+editor (you write them, I apply them) and do the on-device verification checks.
 
-CONTEXT — also already shipped earlier: the A-grade clip player; PWA layer (SW now
-v10); server-side TMDB ingest (tmdb-providers edge function: search/link/manual/
-batch); live upload TMDB search; Watch It opens the platform; clip + profile
-title-blind deep-link shares; fast feed (sync cache key, async mux, skeleton). Pure
-logic is in showshak-shared.js dual-exported and property-tested — SUITE IS 45 FILES
-GREEN (run: node tests/run-all.js).
+CURRENT FOCUS / WHERE WE ARE: We are building DMCA / MODERATION SCAFFOLDING and
+preparing an OPEN BETA in India. The plan: prove the loop (~15-20 curators, 300-500
+clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
+The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
+"private/testing" label. Music feature stays PARKED. 18+ only.
 
-⚠️ FOUNDER-RUN (apply in the Supabase SQL editor — I write them, you run them):
-migrations 0022, 0023, 0024, 0025 (apply any not yet applied). 0025 also needs a
-30-day permanent-purge cron (service role) — skeleton is in the migration footer;
-until then deleted accounts just stay hidden + recoverable, which is safe. Reinstall
-the PWA (remove → re-add) to pick up SW v10. Redeploy tmdb-providers if its live
-search ever stops working. iOS cold-launch WHITE FLASH still unresolved (deferred).
+LIVE ON MAIN (CACHE_VERSION v28; last commit 5185c9d; migrations 0001-0028 applied):
+the felt-quality + reliability sweep, watch-it-curator-availability, feed-clip-load-
+performance, server-side Mux trim, portrait lock, analytics/highlights/discover
+polish. Pure logic in showshak-shared.js, dual-exported + property-tested
+(node tests/run-all.js → now 72 files green).
 
-NEXT STEP (your call to recommend): the launch-critical gaps are now (a) FEED-FOLLOWS
-wiring — the feed is still flat newest-first and does NOT surface clips from curators
-you follow, so the core trust loop isn't visible (this is the cold-start unlock); and
-(b) DMCA / moderation scaffolding — the #1 existential risk, still just a toast. I
-lean feed-follows first. Do NOT relitigate the locked player decisions (no MP4 yet,
-no CDN swap, no player swap, no unbounded memory cache).
+BUILT THIS SESSION BUT NOT YET PUSHED / NOT YET APPLIED — DMCA Phase 1 (Posture &
+Intake), spec at .kiro/specs/dmca-moderation-scaffolding/:
+  - 3 pure fns + tests (ssAttestationComplete, ssDmcaNoticeWellFormed,
+    ssContentPubliclyVisible); migration 0029 (attestations/policy_versions/
+    complaints/moderation_log + immutability + attestation-gate triggers + RLS +
+    3 SECURITY DEFINER RPCs); submit-takedown Edge Function; client wrappers;
+    surfaces showshak-legal.html + showshak-dmca.html; attestation gate in
+    showshak-upload.html publish(); wired settings legal links; sw.js → v29.
+  - India legal DRAFTS in legal/*.md (ToS, Privacy, Copyright, Community + README),
+    counsel-review-required, grounded in IT Act §79 + IT Rules 2021 (grievance
+    24h/15d), Copyright Rules 2013 Rule 75 (36h/21d), DPDP Act 2023 + Rules 2025.
 
-Start by reading the files above, give me a tight confirmation that
-you've got the full picture and the current state, then tell me your
-recommended first move and let's go. Bring your A-game.
+⚠️ FOUNDER MUST, TO SHIP PHASE 1 (see §7): apply migration 0029 FIRST (the upload
+attestation gate depends on it), deploy submit-takedown (--no-verify-jwt), push to
+main (v29, reopen PWA twice), and fill the [PLACEHOLDERS] in legal/*.md + book one
+IP-lawyer hour. Open question: the operating ENTITY (company vs individual).
+
+DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is
+DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
+content.status='removed' in Supabase (RLS hides it everywhere).
+
+NEXT STEP (resume here) — pick up the agreed, not-yet-built items:
+  1. Sync the real legal/*.md text into showshak-legal.html (or seed policy_versions)
+     so the beta actually displays the policies (today the page still shows
+     placeholder text).
+  2. Add a CONSENT + 18+ GATE as onboarding Step 1: an UNTICKED-by-default mandatory
+     checkbox with clickable ToS/Privacy links, recorded in the DB (who/when/which
+     policy versions) — mirrors the attestation pattern. DPDP: consent must be
+     affirmative (no pre-ticked boxes).
+  3. THEN the real cold-start lever: FEED-FOLLOWS wiring (the feed is still flat
+     newest-first; surface the follow-driven trust loop) — this is what makes the
+     beta worth testing and what investors judge next.
+  PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
+  Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
+
+Do NOT relitigate locked player decisions (no MP4, no CDN swap, no player swap,
+no unbounded memory cache; ONE behaviour for iOS+Android, recycled player pool).
+
+Start by reading the files above, give me a tight confirmation that you've got the
+full picture and current state, then continue from NEXT STEP. Bring your A-game.
 
 ═══════════════════════════════════════════════════════════════
   END OF KICKOFF PROMPT

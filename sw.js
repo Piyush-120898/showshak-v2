@@ -15,7 +15,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v28';
+var CACHE_VERSION = 'v30';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -188,6 +188,8 @@ var PRECACHE = [
   'showshak-profile.html',
   'showshak-settings.html',
   'showshak-stack.html',
+  'showshak-legal.html',
+  'showshak-dmca.html',
   'showshak-tokens.css',
   'showshak-sidebar.css',
   'showshak-mobile-nav.css',

@@ -984,6 +984,8 @@ html, body { overflow: hidden; }
           <div class="bc-check" id="bc-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3"/></svg></div>
           <div class="bc-agree-text">I'll post <strong>my own content</strong>, respect creators' rights, and follow ShowShak's <strong>Community &amp; Content Guidelines</strong>. I understand I'm responsible for what I upload.</div>
         </div>
+        <a id="bc-terms-link" href="showshak-legal.html?doc=curator" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--red);font-size:12px;font-weight:600;text-decoration:none">Read the Curator Terms ↗</a>
+        <div id="bc-terms-notice" style="display:none;margin-top:10px;color:var(--red);font-size:12px;font-weight:600">Curator Terms unavailable — please try again later.</div>
         <p class="bc-sub" style="margin-bottom:4px;font-size:12px">You can switch back to a viewer account anytime in Settings.</p>
       </div>
     </div>
@@ -2116,11 +2118,15 @@ let bcStep = 1;
 let bcAgreed = false;
 let bcPhoto = null;            // data URL of chosen photo (session)
 let bcGenres = [];             // selected specialty genres
+let boundCurator = null;       // resolved current Curator Terms version, bound ONCE (Req 9.3)
 
 function openBecomeCurator() {
-  bcStep = 1; bcAgreed = false; bcPhoto = null; bcGenres = [];
+  bcStep = 1; bcAgreed = false; bcPhoto = null; bcGenres = []; boundCurator = null;
   document.getElementById('bc-agree').classList.remove('on');
   document.getElementById('bc-bio').value = '';
+  // Reset the Curator Terms notice + link to their default (pre-resolution) state.
+  const tn = document.getElementById('bc-terms-notice'); if (tn) tn.style.display = 'none';
+  const tl = document.getElementById('bc-terms-link'); if (tl) tl.setAttribute('href', 'showshak-legal.html?doc=curator');
   // Prefill handle from the existing profile handle (minus the @)
   const h = document.getElementById('bc-handle');
   if (h) h.value = (PROFILE.handle || '').replace(/^@/, '');
@@ -2128,6 +2134,37 @@ function openBecomeCurator() {
   bcRenderGenres();
   bcRender();
   document.getElementById('bc-overlay').classList.add('open');
+  // Resolve + bind the current Curator Terms version ONCE for this flow (Req 9.3/9.4).
+  bcBindCuratorTerms();
+}
+
+// Resolve the single current Curator Terms version ONCE and bind it for the link,
+// the Legal_Surface display, and the persisted acceptance (Req 9.3). On a miss,
+// surface a "Curator Terms unavailable" notice and keep activation disabled (Req 9.4).
+async function bcBindCuratorTerms() {
+  const notice = document.getElementById('bc-terms-notice');
+  const link = document.getElementById('bc-terms-link');
+  try {
+    const res = (typeof window.ssCurrentPolicyVersions === 'function')
+      ? await window.ssCurrentPolicyVersions({ curator: true })
+      : { ok: false };
+    if (res && res.ok && res.curator && res.curator.version) {
+      boundCurator = res.curator.version;                 // bind ONCE (Req 9.3)
+      if (link) link.setAttribute('href', 'showshak-legal.html?doc=curator&v=' + encodeURIComponent(boundCurator));
+      if (notice) notice.style.display = 'none';
+    } else {
+      boundCurator = null;                                // unresolved — no bind (Req 9.4)
+      if (notice) notice.style.display = '';
+    }
+  } catch (e) {
+    boundCurator = null;
+    if (notice) notice.style.display = '';
+  }
+  // Refresh the activate control gating now that the binding has resolved.
+  if (bcStep === 3) {
+    const next = document.getElementById('bc-next');
+    if (next) next.disabled = !(bcAgreed && boundCurator);
+  }
 }
 function closeBecomeCurator() {
   document.getElementById('bc-overlay').classList.remove('open');
@@ -2163,7 +2200,7 @@ function bcRender() {
   const next = document.getElementById('bc-next');
   if (bcStep === 1) { next.textContent = 'Get Started'; next.disabled = false; }
   else if (bcStep === 2) { next.textContent = 'Continue'; next.disabled = !bcHandleValid(); }
-  else { next.textContent = 'Activate Curator Mode 🔥'; next.disabled = !bcAgreed; }
+  else { next.textContent = 'Activate Curator Mode 🔥'; next.disabled = !(bcAgreed && boundCurator); }
 }
 function bcHandleValid() {
   const v = (document.getElementById('bc-handle').value || '').trim();
@@ -2184,13 +2221,13 @@ function bcCheckHandle() {
 function bcToggleAgree() {
   bcAgreed = !bcAgreed;
   document.getElementById('bc-agree').classList.toggle('on', bcAgreed);
-  if (bcStep === 3) document.getElementById('bc-next').disabled = !bcAgreed;
+  if (bcStep === 3) document.getElementById('bc-next').disabled = !(bcAgreed && boundCurator);
 }
 function bcBack() { if (bcStep > 1) { bcStep--; bcRender(); } }
 function bcNext() {
   if (bcStep === 2 && !bcHandleValid()) return;
   if (bcStep === 3) {
-    if (!bcAgreed) return;
+    if (!(bcAgreed && boundCurator)) return;
     bcActivate();
     return;
   }
@@ -2223,6 +2260,22 @@ async function bcActivate() {
           // Leave avatarUrl undefined — do NOT block role persistence (R1.6).
           console.error('ShowShak: curator avatar upload failed', e);
         }
+      }
+
+      // ── Curator Terms acceptance is a HARD precondition for the role flip ──
+      // Bind a recorded, version-stamped acceptance BEFORE users.role → curator.
+      const acceptance = { affirmative: true, curator_version: boundCurator };
+      // Req 9.14 — invalid acceptance: persist nothing and do NOT flip the role.
+      if (typeof window.ssCuratorTermsAccepted !== 'function' || !window.ssCuratorTermsAccepted(acceptance)) {
+        ssToast('Please accept the Curator Terms to continue');
+        return;
+      }
+      // Req 9.5 — record the acceptance FIRST; only proceed to the role flip on success.
+      const r = await window.ssRecordCuratorTerms(acceptance);
+      if (!r || r.ok !== true) {
+        // Req 9.8 — acceptance could not be saved: do NOT flip the role.
+        ssToast('Couldn’t save your acceptance — please try again');
+        return;
       }
 
       const patch = ssBuildOnboardingPatch({ handle, bio, genres: bcGenres, avatarUrl });

@@ -8147,6 +8147,405 @@ function ssNavStrategy(env) {
   return (supportsViewTransition && !reducedMotion) ? 'view-transition' : 'instant';
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   DMCA / MODERATION SCAFFOLDING — Phase 1 pure correctness helpers
+   (no DOM, no network, never throw, dual-exported; Node-testable).
+   Mirror the ssStackCanView pattern: these decide UI/UX and feed the
+   server-side re-validation — they are NEVER the security boundary
+   (the database — RLS + SECURITY DEFINER RPCs + triggers — is).
+   See .kiro/specs/dmca-moderation-scaffolding.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Parse a value into a finite epoch-ms timestamp, or null when it is not a
+   valid/parseable finite timestamp. Accepts a finite number (epoch ms), a Date,
+   or a Date-parseable string. Tolerant: anything else → null (never throws). */
+function _ssParseTimestamp(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  if (v instanceof Date) { var dt = v.getTime(); return isFinite(dt) ? dt : null; }
+  if (typeof v === 'string') { var t = Date.parse(v); return isNaN(t) ? null : t; }
+  return null;
+}
+
+/* Numeric/semantic-tolerant version compare → -1 | 0 | 1 (a vs b). Strips a
+   leading 'v'/'V', splits on '.', pads the shorter with '0' segments, compares
+   purely-numeric segments numerically and any other segment lexically. So
+   '1' === '1.0', '1.2' < '1.10', and date labels ('2024-01-01') still order
+   sensibly. Tolerant of null/number/string; never throws. */
+function _ssCompareVersion(a, b) {
+  function segs(v) {
+    return String(v == null ? '' : v).trim().replace(/^[vV]/, '').split('.');
+  }
+  var pa = segs(a), pb = segs(b);
+  var n = Math.max(pa.length, pb.length);
+  for (var i = 0; i < n; i++) {
+    var sa = pa[i] !== undefined ? pa[i] : '0';
+    var sb = pb[i] !== undefined ? pb[i] : '0';
+    var aNum = /^\d+$/.test(sa.trim());
+    var bNum = /^\d+$/.test(sb.trim());
+    if (aNum && bNum) {
+      var na = parseInt(sa, 10), nb = parseInt(sb, 10);
+      if (na !== nb) return na < nb ? -1 : 1;
+    } else {
+      if (sa < sb) return -1;
+      if (sa > sb) return 1;
+    }
+  }
+  return 0;
+}
+
+/* True iff `v` is a string whose trimmed length is within [min, max] inclusive.
+   Whitespace-only strings have trimmed length 0 → fail a min of 1. */
+function _ssTrimmedLenInBounds(v, min, max) {
+  if (typeof v !== 'string') return false;
+  var len = v.trim().length;
+  return len >= min && len <= max;
+}
+
+/* Req 1.8 — Upload attestation completeness. Returns true IFF the attestation
+   records a non-empty accepting user id, a valid acceptance timestamp, a
+   non-empty ToS version, a non-empty attestation version, AND both recorded
+   versions are >= requiredVersion. Null/undefined attestation → false. A
+   missing requiredVersion (null/undefined/blank) is the lowest possible bound,
+   so any recorded version satisfies it. Tolerant of malformed input; never
+   throws. (Validates Req 1.8 — Property 1.) */
+function ssAttestationComplete(attestation, requiredVersion) {
+  if (!attestation || typeof attestation !== 'object') return false;
+  var userId = attestation.curator_id || attestation.accepting_user_id;
+  if (typeof userId !== 'string' || userId.trim() === '') return false;
+  if (_ssParseTimestamp(attestation.accepted_at) === null) return false;
+  var tos = attestation.tos_version;
+  var att = attestation.attestation_version;
+  if (typeof tos !== 'string' || tos.trim() === '') return false;
+  if (typeof att !== 'string' || att.trim() === '') return false;
+  var reqMissing = requiredVersion == null ||
+    (typeof requiredVersion === 'string' && requiredVersion.trim() === '');
+  if (reqMissing) return true;
+  return _ssCompareVersion(tos, requiredVersion) >= 0 &&
+         _ssCompareVersion(att, requiredVersion) >= 0;
+}
+
+/* Req 3.2/3.4/3.6 — DMCA takedown-notice well-formedness. PURE: no side effects,
+   does NOT mutate `notice`. Returns { ok, missing } where `missing` lists the
+   stable key of each failing element (work_identification | target |
+   complainant_name | complainant_email | good_faith | accuracy_authority |
+   signature) and ok === (missing.length === 0). Null/undefined notice → every
+   key missing. Whitespace-only strings count as empty; over-bound strings fail.
+   (Validates Req 3.2, 3.4, 3.6 — Property 2.) */
+function ssDmcaNoticeWellFormed(notice) {
+  var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  var missing = [];
+  var n = (notice && typeof notice === 'object') ? notice : null;
+
+  // work_identification: string, trimmed length 1..2000
+  if (!n || !_ssTrimmedLenInBounds(n.work_identification, 1, 2000)) missing.push('work_identification');
+
+  // target: a non-empty content_id OR a target_url string trimmed length 1..2000
+  var contentIdOk = !!n && typeof n.content_id === 'string' && n.content_id.trim().length >= 1;
+  var targetUrlOk = !!n && _ssTrimmedLenInBounds(n.target_url, 1, 2000);
+  if (!(contentIdOk || targetUrlOk)) missing.push('target');
+
+  // complainant_name: string, trimmed length 1..200
+  if (!n || !_ssTrimmedLenInBounds(n.complainant_name, 1, 200)) missing.push('complainant_name');
+
+  // complainant_email: matches local@domain.tld
+  if (!n || typeof n.complainant_email !== 'string' || !EMAIL_RE.test(n.complainant_email)) missing.push('complainant_email');
+
+  // good_faith / accuracy_authority: strict boolean true
+  if (!n || n.good_faith !== true) missing.push('good_faith');
+  if (!n || n.accuracy_authority !== true) missing.push('accuracy_authority');
+
+  // signature: string, trimmed length 1..200
+  if (!n || !_ssTrimmedLenInBounds(n.signature, 1, 200)) missing.push('signature');
+
+  return { ok: missing.length === 0, missing: missing };
+}
+
+/* Req 4.9 — Public-surface visibility predicate, mirroring the read_live_content
+   RLS policy. Returns true IFF content.status === 'live' AND content.deleted_at
+   is unset (null/undefined); false otherwise (explicitly false when status is
+   'removed' or deleted_at is set). Null/undefined content → false. `viewerId` is
+   accepted for signature symmetry; visibility does not depend on it. (Validates
+   Req 4.9 — Property 4.) */
+function ssContentPubliclyVisible(content, viewerId) {
+  if (!content || typeof content !== 'object') return false;
+  return content.status === 'live' && content.deleted_at == null;
+}
+
+/* Req 5.1–5.8 — Onboarding consent completeness (beta-consent-gate Property 1-4).
+   PURE: no side effects, does NOT mutate `consent`, deterministic, never throws.
+   Returns the strict boolean `true` IFF `consent` is a non-null object AND
+   consent.affirmative === true (strict) AND consent.age18plus === true (strict)
+   AND consent.tos_version is a string with trimmed length >= 1 AND
+   consent.privacy_version is a string with trimmed length >= 1; else strict
+   `false`. Truthy non-booleans (1, 'true') are rejected via strict === true.
+   null/undefined/non-object → false. This is the gate's enable condition and the
+   spec the ss_record_consent RPC re-validation honors — never the security
+   boundary. (Validates Req 5.1–5.8 — Properties 1-4.) */
+function ssConsentComplete(consent) {
+  if (!consent || typeof consent !== 'object') return false;
+  if (consent.affirmative !== true) return false;
+  if (consent.age18plus !== true) return false;
+  if (typeof consent.tos_version !== 'string' || consent.tos_version.trim().length < 1) return false;
+  if (typeof consent.privacy_version !== 'string' || consent.privacy_version.trim().length < 1) return false;
+  return true;
+}
+
+/* Req 9.11 — Curator Terms acceptance validity (beta-consent-gate Property 6-7).
+   PURE: no side effects, does NOT mutate `acceptance`, deterministic, never
+   throws. Returns the strict boolean `true` IFF `acceptance` is a non-null object
+   AND acceptance.affirmative === true (strict) AND acceptance.curator_version is a
+   string with trimmed length >= 1; else strict `false`. Truthy non-booleans are
+   rejected via strict === true. null/undefined/non-object → false. Sibling to
+   ssConsentComplete; the spec the ss_record_curator_terms RPC re-validation
+   honors — never the security boundary. (Validates Req 9.11 — Properties 6-7.) */
+function ssCuratorTermsAccepted(acceptance) {
+  if (!acceptance || typeof acceptance !== 'object') return false;
+  if (acceptance.affirmative !== true) return false;
+  if (typeof acceptance.curator_version !== 'string' || acceptance.curator_version.trim().length < 1) return false;
+  return true;
+}
+
+/* Req 1.4 / 8.3 — Counsel-review marker decision (beta-consent-gate Property 5).
+   PURE: no side effects, does NOT mutate `body`, deterministic, never throws.
+   Returns the strict boolean `true` IFF `body` is NOT a non-empty string (i.e.
+   not a string, or an empty string) OR `body` contains a bracketed [..]
+   placeholder token (matches /\[[^\]]+\]/); otherwise `false`. The fail-safe on
+   non-strings keeps the visible "counsel review required" banner up whenever the
+   body cannot be confirmed bracket-free. (Validates Req 1.4, 8.3 — Property 5.) */
+function ssPolicyNeedsCounselReview(body) {
+  if (typeof body !== 'string' || body.length === 0) return true;
+  return /\[[^\]]+\]/.test(body);
+}
+
+if (typeof window !== 'undefined') {
+  window.ssAttestationComplete    = ssAttestationComplete;
+  window.ssDmcaNoticeWellFormed   = ssDmcaNoticeWellFormed;
+  window.ssContentPubliclyVisible = ssContentPubliclyVisible;
+  window.ssConsentComplete         = ssConsentComplete;
+  window.ssCuratorTermsAccepted    = ssCuratorTermsAccepted;
+  window.ssPolicyNeedsCounselReview = ssPolicyNeedsCounselReview;
+}
+
+/* ── DMCA / Moderation Scaffolding — Phase 1 impure RPC-wrapper helpers ──
+   IMPURE (touch the network) → window-only, NOT added to module.exports. They
+   mirror the established RPC-wrapper shape (ssLoadSharedStackById / ssJoinStack /
+   ssCheckUsernameAvailable): guard window.ssDB / window.ssCurrentUser, fail soft
+   (no-op + return a safe value the caller can branch on), and NEVER throw. The
+   database (SECURITY DEFINER RPCs + RLS + triggers) is the security boundary —
+   these wrappers drive UI/UX only and feed the server's own re-validation. */
+
+/* Record a curator's accepted attestation for a clip via the ss_record_attestation
+   SECURITY DEFINER RPC (curator_id = auth.uid(), accepted_at = now() server-side).
+   Returns { ok:true } on success, or { ok:false, error } on guest/invalid-id/RPC
+   failure — the caller surfaces "attestation could not be saved" and leaves the
+   clip in its current status (Req 1.4). Never throws. */
+async function ssRecordAttestation(clipId, tosVersion, attestationVersion) {
+  var fail = { ok: false, error: 'attestation could not be saved' };
+  if (!window.ssDB || !window.ssCurrentUser) return fail;
+  try {
+    var me = window.ssCurrentUser();
+    if (!me || !_ssIsUuid(clipId)) return fail;
+    var res = await window.ssDB.rpc('ss_record_attestation', {
+      p_clip_id: clipId,
+      p_tos_version: tosVersion,
+      p_attestation_version: attestationVersion
+    });
+    if (res.error) { console.warn('SS ss_record_attestation:', res.error.message); return fail; }
+    return { ok: true };
+  } catch (e) { return fail; }
+}
+
+/* Submit a copyright takedown notice. Gates FIRST with the pure
+   ssDmcaNoticeWellFormed (UX only — the Edge Function and the RPC re-validate
+   server-side); if not well-formed, returns { ok:false, missing } WITHOUT any
+   network call. Otherwise POSTs the notice to the public submit-takedown Edge
+   Function via the established functions.invoke channel (same call style as
+   tmdb-providers / mux-upload-url). Returns { ok:true, confirmation_ref } on
+   success, { ok:false, missing } when the server reports failing elements, or
+   { ok:false, error } on any other failure. Never throws. */
+async function ssSubmitTakedown(notice) {
+  // Client-side well-formedness gate (no network call when it fails) — Req 3.4.
+  var gate = (typeof ssDmcaNoticeWellFormed === 'function')
+    ? ssDmcaNoticeWellFormed(notice)
+    : { ok: false, missing: [] };
+  if (!gate.ok) return { ok: false, missing: gate.missing || [] };
+
+  var fail = { ok: false, error: 'takedown could not be submitted' };
+  if (!window.ssDB || !window.ssDB.functions) return fail;
+  try {
+    var res = await window.ssDB.functions.invoke('submit-takedown', { body: notice });
+    var data = res && res.data;
+    // A server-side re-validation failure (rare — the client gate already passed)
+    // surfaces the failing element keys so the caller can name them.
+    if (data && data.ok === false && Array.isArray(data.missing)) {
+      return { ok: false, missing: data.missing };
+    }
+    if (res && res.error) { console.warn('SS submit-takedown:', res.error.message); return fail; }
+    if (data && data.confirmation_ref) return { ok: true, confirmation_ref: data.confirmation_ref };
+    return fail;
+  } catch (e) { return fail; }
+}
+
+/* Load an immutable, addressable policy version via the ss_get_policy_version
+   RPC (returns the EXACT stored body/version/effective_date — never a
+   substitute). Returns { ok:true, policy:{ doc, version, effective_date, body } }
+   on success, or { ok:false, error } when the (doc, version) is unavailable
+   (Req 2.8). Never throws. */
+async function ssLoadPolicyVersion(doc, ver) {
+  var fail = { ok: false, error: 'policy version unavailable' };
+  if (!window.ssDB) return fail;
+  try {
+    var res = await window.ssDB.rpc('ss_get_policy_version', { p_doc: doc, p_version: ver });
+    if (res.error || !res.data) {
+      if (res.error) console.warn('SS ss_get_policy_version:', res.error.message);
+      return fail;
+    }
+    // The RPC may return a single jsonb object or a single-row array; normalize.
+    var row = Array.isArray(res.data) ? res.data[0] : res.data;
+    if (!row) return fail;
+    return {
+      ok: true,
+      policy: {
+        doc: row.doc,
+        version: row.version,
+        effective_date: row.effective_date,
+        body: row.body
+      }
+    };
+  } catch (e) { return fail; }
+}
+
+/* ── beta-consent-gate (Req 6 / 9.5–9.8 / 4.1 / 9.3) ──────────────────────────
+   Three IMPURE, window-only client wrappers. Like ssRecordAttestation /
+   ssLoadPolicyVersion they drive UI/UX only — the database (SECURITY DEFINER
+   RPCs + own-row RLS + per-kind check constraints in 0031) is the security
+   boundary and re-validates every write. All three are fail-soft and NEVER
+   throw, and are exposed on window.* ONLY (NOT in module.exports — impure). */
+
+/* Record the onboarding DPDP affirmative consent + 18+ acknowledgement via the
+   ss_record_consent SECURITY DEFINER RPC (subject_id = auth.uid(),
+   accepted_at = now() server-side). Gates FIRST with the pure ssConsentComplete
+   so a malformed consent makes NO network call (Req 6.5/6.6). Lazily mints an
+   anonymous session when none exists (Design Decision 1 — only here, at
+   advance). Returns { ok:true, id } on success (Req 6.2) or { ok:false, error }
+   on a missing client / unresolved identity / RPC error (Req 6.3/6.4). Never
+   throws (Req 6.7). */
+async function ssRecordConsent(consent) {
+  var fail = { ok: false, error: 'consent could not be saved' };
+  // 1. Gate FIRST — no RPC when the consent is incomplete (Req 6.5/6.6).
+  if (typeof ssConsentComplete !== 'function' || !ssConsentComplete(consent)) return fail;
+  // 2. Require the client (Req 6.3).
+  if (!window.ssDB || !window.ssCurrentUser) return fail;
+  try {
+    // 3. Resolve identity; lazily mint an anonymous session when none exists,
+    //    then re-read. Still none ? fail with NO RPC (Req 6.3/3.6).
+    var me = window.ssCurrentUser();
+    if (!me) {
+      try { await window.ssDB.auth.signInAnonymously(); } catch (e) { return fail; }
+      me = window.ssCurrentUser();
+    }
+    if (!me) return fail;
+    // 4. Record via the RPC (server re-validates + sets subject_id/accepted_at).
+    var res = await window.ssDB.rpc('ss_record_consent', {
+      p_affirmative: true,
+      p_age18plus: true,
+      p_tos_version: consent.tos_version,
+      p_privacy_version: consent.privacy_version
+    });
+    // 5. RPC error ? fail (Req 6.4) ; else parse the jsonb result for the id.
+    if (res.error) { console.warn('SS ss_record_consent:', res.error.message); return fail; }
+    var row = Array.isArray(res.data) ? res.data[0] : res.data;
+    return { ok: true, id: row && row.id };
+  } catch (e) { return fail; }
+}
+
+/* Record the one-time Become-a-Curator Terms acceptance via the
+   ss_record_curator_terms SECURITY DEFINER RPC. Mirrors ssRecordConsent: gates
+   FIRST with the pure ssCuratorTermsAccepted (no RPC when invalid — Req 9.14),
+   requires the client, and resolves identity via the SAME lazy
+   ssCurrentUser() ? signInAnonymously() path (the curator step normally already
+   has a permanent session; still null ? no RPC — Req 9.6/9.8). Returns
+   { ok:true, id } on success (Req 9.5) or { ok:false, error } on RPC error
+   (Req 9.8). Never throws — the caller (bcActivate) flips users.role ONLY on
+   { ok:true }. */
+async function ssRecordCuratorTerms(acceptance) {
+  var fail = { ok: false, error: 'acceptance could not be saved' };
+  // 1. Gate FIRST — no RPC when the acceptance is invalid (Req 9.14).
+  if (typeof ssCuratorTermsAccepted !== 'function' || !ssCuratorTermsAccepted(acceptance)) return fail;
+  // 2. Require the client.
+  if (!window.ssDB || !window.ssCurrentUser) return fail;
+  try {
+    // 3. Resolve identity via the SAME lazy path ssRecordConsent uses (Req 9.6/9.8).
+    var me = window.ssCurrentUser();
+    if (!me) {
+      try { await window.ssDB.auth.signInAnonymously(); } catch (e) { return fail; }
+      me = window.ssCurrentUser();
+    }
+    if (!me) return fail;
+    // 4. Record via the RPC (the RPC IS the affirmative act; server re-validates).
+    var res = await window.ssDB.rpc('ss_record_curator_terms', {
+      p_curator_version: acceptance.curator_version
+    });
+    // 5. RPC error ? fail (Req 9.8) ; else parse the jsonb result for the id.
+    if (res.error) { console.warn('SS ss_record_curator_terms:', res.error.message); return fail; }
+    var row = Array.isArray(res.data) ? res.data[0] : res.data;
+    return { ok: true, id: row && row.id };
+  } catch (e) { return fail; }
+}
+
+/* Resolve the SINGLE current policy versions ONCE for the version contract —
+   a direct read of the world-readable policy_versions table (is_current = true,
+   deleted_at is null). Default (no opts / opts.curator falsy) resolves
+   ('tos','privacy') and returns { ok:true, tos, privacy } ONLY when BOTH resolve,
+   else { ok:false } (Req 4.1). With { curator:true } it ALSO resolves 'curator'
+   and returns ok:true only when the curator row resolves (including tos/privacy
+   when present), else { ok:false } (Req 9.3/9.4). Fail-soft, never throws. */
+async function ssCurrentPolicyVersions(opts) {
+  var fail = { ok: false };
+  if (!window.ssDB) return fail;
+  var wantCurator = !!(opts && opts.curator === true);
+  var docs = wantCurator ? ['tos', 'privacy', 'curator'] : ['tos', 'privacy'];
+  try {
+    var res = await window.ssDB
+      .from('policy_versions')
+      .select('doc, version, effective_date')
+      .eq('is_current', true)
+      .is('deleted_at', null)
+      .in('doc', docs);
+    if (res.error || !Array.isArray(res.data)) {
+      if (res.error) console.warn('SS policy_versions:', res.error.message);
+      return fail;
+    }
+    var byDoc = {};
+    res.data.forEach(function (r) {
+      if (r && r.doc) byDoc[r.doc] = { version: r.version, effective_date: r.effective_date };
+    });
+    var out = { ok: true };
+    if (byDoc.tos) out.tos = byDoc.tos;
+    if (byDoc.privacy) out.privacy = byDoc.privacy;
+    if (byDoc.curator) out.curator = byDoc.curator;
+    if (wantCurator) {
+      // Curator step: ok only when the curator row resolves (Req 9.3/9.4).
+      if (!byDoc.curator) return fail;
+    } else {
+      // Gate: ok only when BOTH tos and privacy resolve (Req 4.1).
+      if (!byDoc.tos || !byDoc.privacy) return fail;
+    }
+    return out;
+  } catch (e) { return fail; }
+}
+
+if (typeof window !== 'undefined') {
+  window.ssRecordAttestation = ssRecordAttestation;
+  window.ssSubmitTakedown    = ssSubmitTakedown;
+  window.ssLoadPolicyVersion = ssLoadPolicyVersion;
+  // beta-consent-gate impure wrappers — window-only (NOT in module.exports).
+  window.ssRecordConsent        = ssRecordConsent;
+  window.ssRecordCuratorTerms   = ssRecordCuratorTerms;
+  window.ssCurrentPolicyVersions = ssCurrentPolicyVersions;
+}
+
 /* Expose consistently with the other ss* helpers (window in the browser),
    plus a guarded CommonJS export so the Node property tests can require these
    pure primitives — mirrors the data/showshak-data.js dual-export precedent. */
@@ -8256,6 +8655,16 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssFilterOwnClips = ssFilterOwnClips;
   module.exports.ssWeeklyTrend = ssWeeklyTrend;
   module.exports.ssEventInsertAccepted = ssEventInsertAccepted;
+
+  // DMCA / Moderation Scaffolding — Phase 1 pure correctness helpers
+  module.exports.ssAttestationComplete    = ssAttestationComplete;
+  module.exports.ssDmcaNoticeWellFormed   = ssDmcaNoticeWellFormed;
+  module.exports.ssContentPubliclyVisible = ssContentPubliclyVisible;
+
+  // beta-consent-gate — pure consent + curator-terms + counsel-review helpers
+  module.exports.ssConsentComplete          = ssConsentComplete;
+  module.exports.ssCuratorTermsAccepted     = ssCuratorTermsAccepted;
+  module.exports.ssPolicyNeedsCounselReview = ssPolicyNeedsCounselReview;
 }
 
 /* ── Mute_Preference ─────────────────────────────

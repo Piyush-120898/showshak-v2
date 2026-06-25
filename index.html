@@ -792,18 +792,23 @@ body {
   <!-- Step progress -->
   <div class="ob-progress">
     <div class="ob-steps-row">
-      <div class="ob-step-node active" id="ob-node-1">
-        <div class="ob-step-num" id="ob-num-1">1</div>
+      <div class="ob-step-node active" id="ob-node-0">
+        <div class="ob-step-num" id="ob-num-0">1</div>
+        <span class="ob-step-label">Consent</span>
+      </div>
+      <div class="ob-connector"><div class="ob-connector-fill" id="ob-conn-0"></div></div>
+      <div class="ob-step-node" id="ob-node-1">
+        <div class="ob-step-num" id="ob-num-1">2</div>
         <span class="ob-step-label">Genres</span>
       </div>
       <div class="ob-connector"><div class="ob-connector-fill" id="ob-conn-1"></div></div>
       <div class="ob-step-node" id="ob-node-2">
-        <div class="ob-step-num" id="ob-num-2">2</div>
+        <div class="ob-step-num" id="ob-num-2">3</div>
         <span class="ob-step-label">Platforms</span>
       </div>
       <div class="ob-connector"><div class="ob-connector-fill" id="ob-conn-2"></div></div>
       <div class="ob-step-node" id="ob-node-3">
-        <div class="ob-step-num" id="ob-num-3">3</div>
+        <div class="ob-step-num" id="ob-num-3">4</div>
         <span class="ob-step-label">Sign In</span>
       </div>
     </div>
@@ -812,27 +817,60 @@ body {
   <!-- Panels container -->
   <div class="ob-panels">
 
-    <!-- STEP 1 — GENRES -->
-    <div class="ob-panel active" id="ob-panel-1">
+    <!-- STEP 1 — CONSENT + 18+ GATE (self-contained, inline styles — Req 2.9) -->
+    <div class="ob-panel active" id="ob-panel-0">
       <div class="ob-panel-inner">
-        <div class="ob-step-eyebrow">Step 1 of 3</div>
+        <div class="ob-step-eyebrow">Step 1 of 4</div>
+        <div class="ob-heading">Before we <em>begin.</em></div>
+        <div class="ob-sub">ShowShak's open beta is for adults in India. Review and accept to continue — nothing is collected until you do.</div>
+
+        <div style="max-width:580px;margin-top:30px;display:flex;flex-direction:column;gap:16px;">
+          <!-- Affirmative consent acceptance — UNTICKED by default (Req 2.2) -->
+          <label for="consent-accept" style="display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:1.5px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);cursor:pointer;transition:border-color .2s;">
+            <input type="checkbox" id="consent-accept" onchange="obUpdateConsentGate()" style="margin-top:1px;width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer;">
+            <span style="font-size:14px;line-height:1.55;color:var(--white);">
+              I have read and accept ShowShak's
+              <a id="consent-tos-link" href="showshak-legal.html?doc=tos" target="_blank" rel="noopener" style="color:var(--red);font-weight:700;text-decoration:underline;">Terms of Service</a>
+              and
+              <a id="consent-privacy-link" href="showshak-legal.html?doc=privacy" target="_blank" rel="noopener" style="color:var(--red);font-weight:700;text-decoration:underline;">Privacy Policy</a>.
+            </span>
+          </label>
+
+          <!-- 18+ affirmation — UNTICKED by default (Req 2.3) -->
+          <label for="consent-age18" style="display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:1.5px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);cursor:pointer;transition:border-color .2s;">
+            <input type="checkbox" id="consent-age18" onchange="obUpdateConsentGate()" style="margin-top:1px;width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer;">
+            <span style="font-size:14px;line-height:1.55;color:var(--white);">
+              I confirm that I am <strong>18 years of age or older</strong>.
+            </span>
+          </label>
+
+          <!-- Policy-unavailable / save-error notice (Req 4.6 / 2.11) -->
+          <div id="consent-policy-status" role="alert" style="display:none;font-size:13px;font-weight:600;color:var(--red);padding:12px 16px;border:1px solid var(--red);border-radius:10px;background:rgba(234,59,50,0.08);"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 — GENRES -->
+    <div class="ob-panel" id="ob-panel-1">
+      <div class="ob-panel-inner">
+        <div class="ob-step-eyebrow">Step 2 of 4</div>
         <div class="ob-heading">What do you love <em>watching?</em></div>
         <div class="ob-sub">Pick at least 2 genres — we'll use these to build your personal feed from day one.</div>
         <div class="genre-wrap" id="genre-grid"></div>
       </div>
     </div>
 
-    <!-- STEP 2 — PLATFORMS -->
+    <!-- STEP 3 — PLATFORMS -->
     <div class="ob-panel" id="ob-panel-2">
       <div class="ob-panel-inner">
-        <div class="ob-step-eyebrow">Step 2 of 3</div>
+        <div class="ob-step-eyebrow">Step 3 of 4</div>
         <div class="ob-heading">Which platforms <em>are you on?</em></div>
         <div class="ob-sub">Select the streaming services you subscribe to — their content gets priority in your feed. You can skip this.</div>
         <div class="ob-plat-grid" id="plat-grid-ob"></div>
       </div>
     </div>
 
-    <!-- STEP 3 — SIGN IN -->
+    <!-- STEP 4 — SIGN IN -->
     <div class="ob-panel" id="ob-panel-3">
       <div class="ob-panel-inner">
         <div class="signin-center">
@@ -930,14 +968,29 @@ const PLATFORMS = [
 
 const selG = new Set();
 const selP = new Set();
-let curStep = 1;
+let curStep = 0;
+
+/* ── CONSENT GATE STATE (onboarding Step 1) ───── */
+let obPoliciesResolved = false;   // both current policy versions resolved?
+let obBoundTos     = null;        // version bound ONCE on open (version contract)
+let obBoundPrivacy = null;
 
 /* ── OVERLAY OPEN / CLOSE ─────────────────────── */
 function openOnboarding() {
   document.getElementById('ob-overlay').classList.add('open');
   document.body.style.overflow = 'hidden';
-  // always land on step 1
-  showStep(1);
+  // Reset the consent gate to its unticked default on every fresh open (Req 2.2/2.3).
+  const acc = document.getElementById('consent-accept');
+  const age = document.getElementById('consent-age18');
+  if (acc) acc.checked = false;
+  if (age) age.checked = false;
+  obPoliciesResolved = false;
+  obBoundTos = null;
+  obBoundPrivacy = null;
+  // always land on the consent gate (Step 1)
+  showStep(0);
+  // Resolve the current policy versions for the gate (async, Req 4.1/4.2).
+  obResolvePolicies();
 }
 function closeOnboarding() {
   document.getElementById('ob-overlay').classList.remove('open');
@@ -949,7 +1002,7 @@ function showStep(n) {
   curStep = n;
 
   // panels
-  [1,2,3].forEach(i => {
+  [0,1,2,3].forEach(i => {
     const p = document.getElementById(`ob-panel-${i}`);
     p.classList.remove('active','exit');
     if (i === n) {
@@ -958,33 +1011,38 @@ function showStep(n) {
     }
   });
 
-  // progress nodes
-  [1,2,3].forEach(i => {
+  // progress nodes (node id i → displayed step number i+1)
+  [0,1,2,3].forEach(i => {
     const node = document.getElementById(`ob-node-${i}`);
     const num  = document.getElementById(`ob-num-${i}`);
     node.classList.remove('active','done');
     if (i === n) {
       node.classList.add('active');
-      num.textContent = i;
+      num.textContent = i + 1;
     } else if (i < n) {
       node.classList.add('done');
       num.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 6,11 13,5"/></svg>`;
     } else {
-      num.textContent = i;
+      num.textContent = i + 1;
     }
   });
 
   // connectors
+  document.getElementById('ob-conn-0').style.width = n > 0 ? '100%' : '0%';
   document.getElementById('ob-conn-1').style.width = n > 1 ? '100%' : '0%';
   document.getElementById('ob-conn-2').style.width = n > 2 ? '100%' : '0%';
 
-  // back button visibility
-  document.getElementById('ob-back-btn').style.visibility = n === 1 ? 'hidden' : 'visible';
+  // back button visibility — hidden on the first step (the gate)
+  document.getElementById('ob-back-btn').style.visibility = n === 0 ? 'hidden' : 'visible';
 
   // next button label + state
   const nx = document.getElementById('ob-next-btn');
   const fb = document.getElementById('ob-feedback');
-  if (n === 1) {
+  if (n === 0) {
+    nx.innerHTML = `Continue <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+    nx.disabled = !obConsentReady();
+    fb.innerHTML = `Accept the policies and confirm you're <em>18+</em> to continue`;
+  } else if (n === 1) {
     nx.innerHTML = `Continue to Platforms <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
     nx.disabled = selG.size < 2;
     updateGenreFB();
@@ -1002,10 +1060,91 @@ function showStep(n) {
 }
 
 function obNext() {
+  // The gate records consent before advancing; everything else just slides forward.
+  if (curStep === 0) { obConsentAdvance(); return; }
   if (curStep < 3) showStep(curStep + 1);
 }
 function obBack() {
-  if (curStep > 1) showStep(curStep - 1);
+  if (curStep > 0) showStep(curStep - 1);
+}
+
+/* ── CONSENT GATE LOGIC (inline, no external-script dependency — Req 2.9) ── */
+// Enabled IFF both boxes checked AND the policy versions resolved (Req 2.5/2.6/4.6).
+function obConsentReady() {
+  const a = document.getElementById('consent-accept');
+  const b = document.getElementById('consent-age18');
+  return !!(a && a.checked && b && b.checked && obPoliciesResolved);
+}
+
+// Drive the advance control's disabled state while the gate is showing.
+function obUpdateConsentGate() {
+  if (curStep !== 0) return;
+  const nx = document.getElementById('ob-next-btn');
+  if (nx) nx.disabled = !obConsentReady();
+}
+
+// Resolve the current ToS + Privacy versions ONCE per open; bind them and set
+// the policy link hrefs. On miss, surface "unavailable" and keep advance off.
+async function obResolvePolicies() {
+  const status   = document.getElementById('consent-policy-status');
+  const tosLink   = document.getElementById('consent-tos-link');
+  const privLink  = document.getElementById('consent-privacy-link');
+  obPoliciesResolved = false;
+  obBoundTos = null;
+  obBoundPrivacy = null;
+  obUpdateConsentGate();
+
+  let r = null;
+  try {
+    if (typeof window.ssCurrentPolicyVersions === 'function') {
+      r = await window.ssCurrentPolicyVersions();
+    }
+  } catch (e) { r = null; }
+
+  if (r && r.ok === true && r.tos && r.privacy) {
+    obBoundTos     = r.tos.version;
+    obBoundPrivacy = r.privacy.version;
+    obPoliciesResolved = true;
+    if (tosLink)  tosLink.href  = 'showshak-legal.html?doc=tos&v='     + encodeURIComponent(obBoundTos);
+    if (privLink) privLink.href = 'showshak-legal.html?doc=privacy&v=' + encodeURIComponent(obBoundPrivacy);
+    if (status) { status.style.display = 'none'; status.textContent = ''; }
+  } else {
+    if (status) {
+      status.style.display = 'block';
+      status.textContent = 'Policies currently unavailable. Please try again later.';
+    }
+  }
+  obUpdateConsentGate();
+}
+
+// Advance from the gate: record the consent, only proceed to genres on ok:true.
+async function obConsentAdvance() {
+  if (!obConsentReady()) return;   // disabled state must not respond (Req 2.5/2.11)
+  const nx     = document.getElementById('ob-next-btn');
+  const status = document.getElementById('consent-policy-status');
+  const consent = {
+    affirmative: true,
+    age18plus: true,
+    tos_version: obBoundTos,
+    privacy_version: obBoundPrivacy,
+  };
+  if (typeof window.ssRecordConsent !== 'function') {
+    if (status) { status.style.display = 'block'; status.textContent = 'Consent could not be saved. Please try again.'; }
+    return;
+  }
+  if (nx) nx.disabled = true;   // guard against double-submit while the RPC runs
+  let r = null;
+  try { r = await window.ssRecordConsent(consent); } catch (e) { r = null; }
+  if (r && r.ok === true) {
+    if (status) { status.style.display = 'none'; status.textContent = ''; }
+    showStep(1);                // consent recorded → proceed to Genres
+  } else {
+    if (status) {
+      status.style.display = 'block';
+      status.textContent = 'Consent could not be saved. Please try again.';
+    }
+    obUpdateConsentGate();      // stay on the gate; re-enable if still ready
+  }
 }
 
 /* ── GENRE PILLS ─────────────────────────────── */
