@@ -128,7 +128,10 @@ html, body { overflow: hidden; }
 
 .clip-vignette {
   position: absolute; inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 28%, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.2) 100%);
+  /* Lighter scrim so the clip reads as the FOREGROUND, not a dimmed backdrop:
+     a bottom legibility gradient for the caption/creator/Watch It, clearing by
+     ~46%, and NO top tint (the upper clip plays at full brightness). */
+  background: linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.34) 22%, rgba(0,0,0,0.0) 46%, rgba(0,0,0,0.0) 100%);
   pointer-events: none;
 }
 

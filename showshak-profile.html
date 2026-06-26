@@ -1543,7 +1543,7 @@ function renderCreds() {
     switch (k) {
       case 'following':   return (typeof ssGetFollowing === 'function') ? ssGetFollowing().length : 0;
       case 'stacks':      return (typeof ssGetStacks === 'function') ? ssGetStacks().length : 0;
-      case 'clipsPosted': return getMyClips().length;
+      case 'clipsPosted': return getMyClips().length || _cachedClipsCount || 0;   // real once loaded; cached count for the instant first paint
       case 'followers':   return PROFILE.followers || 0;   // real count cached by fetchOwnFollowers(); 0 for a new user
       default:            return PROFILE[k] || 0;
     }
@@ -1801,6 +1801,11 @@ function switchTab(t) {
    resolves (and for logged-out/public demo) we fall back to the
    sessionStorage mirror written at upload time. */
 let _myClipsCache = null;
+/* Cached clip count from the prewarm cache (ssPrewarmProfile), applied by
+   applyCachedOwnProfile() so the creds strip shows the real count INSTANTLY on
+   cold start — before the authoritative _myClipsCache (hydrateMyClipsFromDB)
+   loads. renderCreds falls back to this when the clip list hasn't loaded yet. */
+let _cachedClipsCount = 0;
 
 /* ── VIEWED-CURATOR STATE (public ?curator= path) ───────────────
    Filled by hydrateCuratorProfile() from the REAL backend for the curator
@@ -2537,6 +2542,11 @@ function applyCachedOwnProfile() {
   PROFILE.photo  = c.avatar_url || null;
   if (c.bio) PROFILE.bio = c.bio;
   if (Array.isArray(c.genres) && c.genres.length) PROFILE.genres = c.genres;
+  // Instant stats: seed followers + clip count from the prewarm cache so the
+  // creds strip paints real numbers on the first frame (fetchOwnFollowers /
+  // hydrateMyClipsFromDB revalidate them right after).
+  if (typeof c.followers_count === 'number') PROFILE.followers = c.followers_count;
+  if (typeof c.clips_count === 'number') _cachedClipsCount = c.clips_count;
   if (c.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
     face = 'owner'; activeTab = defaultTabFor(face);
   }
@@ -2734,6 +2744,7 @@ async function fetchOwnFollowers() {
       .is('deleted_at', null);
     if (!error && typeof count === 'number') {
       PROFILE.followers = count;
+      if (typeof ssWriteMyProfileCache === 'function') ssWriteMyProfileCache({ followers_count: count });   // keep instant-paint cache fresh
       renderCreds();
       renderCockpit();
       renderAnalytics();
@@ -2827,6 +2838,8 @@ async function hydrateMyClipsFromDB() {
   try {
     const rows = await window.ssLoadMyClips();
     _myClipsCache = rows || [];
+    _cachedClipsCount = _myClipsCache.length;   // keep the cold-start fallback in sync
+    if (typeof ssWriteMyProfileCache === 'function') ssWriteMyProfileCache({ clips_count: _myClipsCache.length });   // refresh instant-paint cache
     // Re-render every surface that reads getMyClips() so the real status,
     // count, and grid replace the stale session mirror.
     renderWall();

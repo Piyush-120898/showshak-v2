@@ -4233,7 +4233,9 @@ function _ssvBuildList(clicked, list) {
     }
     .ssv-vig {
       position: absolute; inset: 0; pointer-events: none;
-      background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.35) 100%);
+      /* Lighter scrim (matches the inline feed): bottom legibility gradient only,
+         clearing by ~50%, no top tint — the clip plays at full brightness. */
+      background: linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.34) 24%, rgba(0,0,0,0) 50%, rgba(0,0,0,0) 100%);
     }
 
     /* Double-tap-to-fire: a full-area tap zone that sits ABOVE the bg/vig
@@ -5495,8 +5497,14 @@ function ssReadMyProfileCache() {
 function ssWriteMyProfileCache(profile) {
   try {
     if (!profile) return;
+    // MERGE onto the existing cache so a partial write (e.g. hydrateOwnProfile
+    // writing just the identity row, or fetchOwnFollowers writing just a count)
+    // never erases other cached fields (identity ↔ counts). The page revalidates
+    // every field after load, so the cache is only ever the instant-paint seed.
+    var prev = (typeof ssReadMyProfileCache === 'function') ? (ssReadMyProfileCache() || {}) : {};
+    var merged = Object.assign({}, prev, profile);
     window.localStorage.setItem(_ssProfileCacheKey(), JSON.stringify({
-      v: SS_FEED_CACHE_VERSION, ts: Date.now(), profile: profile,
+      v: SS_FEED_CACHE_VERSION, ts: Date.now(), profile: merged,
     }));
   } catch (e) { /* best-effort */ }
 }
@@ -5527,21 +5535,37 @@ function ssPrewarmProfile() {
     var cached = ssReadMyProfileCache();
     if (cached && cached.avatar_url) _ssWarmImage(cached.avatar_url);
     if (!window.ssDB) return;
-    // Resolve uid, refresh the cached identity row, warm the fresh avatar.
+    // Resolve uid, refresh the cached identity row + the follower/clip COUNTS
+    // (so the profile creds strip paints instantly on cold start, not after the
+    // async counts land), and warm the fresh avatar.
     Promise.resolve()
       .then(function () { return (window.ssDB.auth && window.ssDB.auth.getSession) ? window.ssDB.auth.getSession() : null; })
       .then(function (s) {
         var user = (s && s.data && s.data.session) ? s.data.session.user : null;
         if (!user && typeof window.ssCurrentUser === 'function') user = window.ssCurrentUser();
         if (!user) return null;
-        return window.ssDB.from('users')
+        var uid = user.id;
+        // Identity row + two cheap head-only COUNT queries, in parallel.
+        var identityP  = window.ssDB.from('users')
           .select('username, name, bio, avatar_url, genres, verified, role')
-          .eq('id', user.id).single();
+          .eq('id', uid).single();
+        var followersP = window.ssDB.from('follows')
+          .select('creator_id', { count: 'exact', head: true })
+          .eq('creator_id', uid).is('deleted_at', null);
+        var clipsP     = window.ssDB.from('content')
+          .select('id', { count: 'exact', head: true })
+          .eq('creator_id', uid).in('status', ['processing', 'live']).is('deleted_at', null);
+        return Promise.all([identityP, followersP, clipsP]);
       })
-      .then(function (res) {
-        if (!res || res.error || !res.data) return;
-        ssWriteMyProfileCache(res.data);
-        if (res.data.avatar_url) _ssWarmImage(res.data.avatar_url);
+      .then(function (arr) {
+        if (!arr) return;
+        var idRes = arr[0], folRes = arr[1], clipRes = arr[2];
+        if (!idRes || idRes.error || !idRes.data) return;
+        var toCache = Object.assign({}, idRes.data);
+        if (folRes && !folRes.error && typeof folRes.count === 'number') toCache.followers_count = folRes.count;
+        if (clipRes && !clipRes.error && typeof clipRes.count === 'number') toCache.clips_count = clipRes.count;
+        ssWriteMyProfileCache(toCache);
+        if (idRes.data.avatar_url) _ssWarmImage(idRes.data.avatar_url);
       })
       .catch(function () { /* best-effort */ });
   } catch (e) { /* never block the app */ }
