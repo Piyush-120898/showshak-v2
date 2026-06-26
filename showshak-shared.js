@@ -1872,7 +1872,13 @@ function ssMapContentRowsToClips(rows){
   });
 }
 
-async function ssLoadClips(limit, offset){
+/* IMPURE — today's flat newest-first feed, extracted verbatim so it is the single
+   safe degradation path used by the Phase 2 ssLoadClips orchestration. Live,
+   non-deleted rows, created_at desc, .range() page slice, mapped via the pure
+   ssMapContentRowsToClips. Any query error / no data / throw → empty page ([]),
+   never propagated (Req 8.6, 8.7). Window-only impure helper (touches window.ssDB)
+   — intentionally NOT added to module.exports. */
+async function _ssFeedFallbackPage(limit, offset){
   if(!window.ssDB) return [];
   var n = limit||50, off = offset||0;
   try{
@@ -1884,6 +1890,43 @@ async function ssLoadClips(limit, offset){
     // remains an efficient DB-side pre-filter; the helper re-enforces it).
     return ssMapContentRowsToClips(res.data);
   }catch(e){ return []; }
+}
+/* ssLoadClips(limit, offset) — IMPURE, CHANGED (feed-follows Phase 2, task 6).
+   Orchestrates the pure tiered ranker behind the candidate fetch + hydrate, with
+   the on-device kill switch and automatic flat-feed fallback. Signature and the
+   returned clip shape are unchanged (Req 7.3); every failure path degrades to
+   today's flat feed (Req 8.1, 8.2). See .kiro/specs/feed-follows
+   (design.md §"ssLoadClips(limit, offset) — IMPURE, CHANGED"). */
+async function ssLoadClips(limit, offset){
+  var n = limit||50, off = offset||0;
+  // Kill switch (on-device, no redeploy): ss_ff_ranker === 'off' → today's flat feed.
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage && localStorage.getItem('ss_ff_ranker') === 'off') {
+      return _ssFeedFallbackPage(n, off);
+    }
+  } catch (e) { /* ignore storage errors; continue to ranker */ }
+  try {
+    if (!window.ssDB) return [];                         // preserve today's guest/offline behavior
+    var session = await _ssEnsureFeedSession();          // builds + caches Ranked_List once per session
+    if (!session) return _ssFeedFallbackPage(n, off);    // candidate fetch failed (Req 8.1)
+    var pageIds = ssSliceRankedPage(session.rankedIds, n, off);   // PURE page slice (Req 6)
+    if (!pageIds.length) return [];                      // past the end / empty page
+    // Hydrate the page's full rows with the EXISTING rich select (scoreboard-safe,
+    // unchanged projection), re-enforcing live/non-deleted; .in() does NOT preserve order.
+    var res = await window.ssDB.from("content")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .in("id", pageIds).eq("status","live").is("deleted_at",null);
+    if (res.error || !res.data) return _ssFeedFallbackPage(n, off);   // hydration error (Req 8.2)
+    // Reorder hydrated rows to match pageIds order (since .in() is unordered),
+    // dropping any id that didn't hydrate (e.g. unpublished between fetch + hydrate).
+    var byId = {};
+    res.data.forEach(function (row) { byId[row.id] = row; });
+    var ordered = [];
+    pageIds.forEach(function (id) { if (byId[id]) ordered.push(byId[id]); });
+    return ssMapContentRowsToClips(ordered);             // unchanged clip shape (Req 7.3)
+  } catch (e) {
+    return _ssFeedFallbackPage(n, off);                  // ranker/hydration throw (Req 8.2)
+  }
 }
 /* FEED shape: titles shown, raw cache carried for the Watch It sheet resolver. */
 function ssClipsForFeed(base){ return base.map(function(c){ return {
@@ -1899,6 +1942,114 @@ function ssClipsForDiscover(base){ return base.map(function(c){ return {
   muxPlaybackId:c.muxPlaybackId, poster:c.poster,
   providers:c.providers, curatorPlat:c.curatorPlat }; }); }
 window.ssLoadClips=ssLoadClips; window.ssClipsForFeed=ssClipsForFeed; window.ssClipsForDiscover=ssClipsForDiscover; window.ssMapContentRowsToClips=ssMapContentRowsToClips;
+
+/* ── Phase 2 impure shell for the tiered ranker (feed-follows) ──────────────
+   These IMPURE helpers source the inputs the pure ssRankFeed needs (seen-state,
+   follow graph, a per-session seed) and cache the ranked list once per feed
+   session. They are window-only (touch window.ssDB / window.ssCurrentUser /
+   localStorage), fail-soft, and NEVER throw — every path degrades to a safe
+   empty/null so ssLoadClips can fall back. Intentionally NOT in module.exports.
+   NOTE: not yet wired into ssLoadClips (that is task 6); ssLoadClips still
+   returns _ssFeedFallbackPage today. */
+
+// Beta-scale candidate ceiling for the public-signals-only candidate query
+// (design: ≥ expected ~500 live clips). A safety cap, not a product knob.
+var SS_FEED_CANDIDATE_CAP = 1000;
+
+// Module-level feed session cache: { key, seed, rankedIds, builtAt }. Computed
+// once per feed session and reused across pages so pagination is stable and
+// Tier 5 never reshuffles mid-scroll (Req 6.3, 6.4). null = not built yet.
+var _ssFeedSession = null;
+
+// Per-session nonce created ONCE at module load. Combined with the viewer key it
+// yields a seed that is stable within a session but varies across sessions
+// (fresh page load / module re-eval → new nonce → new Tier 5 shuffle).
+var _ssFeedSessionNonce = (Date.now() + '_' + Math.random());
+
+// Reuse window (ms) before a same-viewer session is considered stale and rebuilt.
+var SS_FEED_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/* IMPURE — client seen-state read (Req 4.5, 8.4, 5.2). Returns
+   { available:boolean, seen:string[] }. Guests, missing/empty/non-array/empty
+   array, JSON-parse errors, or any throw → { available:false, seen:[] }. A
+   non-empty id array → { available:true, seen:ids }. Never throws. Window-only;
+   NOT in module.exports. */
+function _ssReadSeenState(key){
+  try{
+    if(key === 'guest') return { available:false, seen:[] };
+    var raw = (typeof window !== 'undefined' && window.localStorage)
+      ? window.localStorage.getItem('ss_seen_v1_' + key) : null;
+    if(!raw) return { available:false, seen:[] };
+    var ids = JSON.parse(raw);
+    if(!Array.isArray(ids) || !ids.length) return { available:false, seen:[] };
+    return { available:true, seen:ids };
+  }catch(e){ return { available:false, seen:[] }; }
+}
+
+/* IMPURE — followed creator ids (Req 5.2, 8.3). One cheap indexed query for the
+   viewer's followed creator_ids (real UUIDs, to match candidate.creator_id —
+   independent of the username-keyed ssGetFollowing() UI store). Guest / no
+   ssDB / no ssCurrentUser / any error → []. Never throws. Window-only; NOT in
+   module.exports. */
+async function _ssFollowedCreatorIds(){
+  try{
+    if(!window.ssDB || !window.ssCurrentUser) return [];
+    var me = window.ssCurrentUser();
+    if(!me) return [];
+    var res = await window.ssDB.from('follows')
+      .select('creator_id').eq('follower_id', me.id).is('deleted_at', null);
+    if(!res || res.error || !res.data) return [];
+    return res.data.map(function(r){ return r.creator_id; }).filter(Boolean);
+  }catch(e){ return []; }
+}
+
+/* IMPURE-ish — per-session feed seed (Req 6.4). Stable within a feed session,
+   varies across sessions: key + the module-load nonce. ssRankFeed hashes the
+   string via _ssXmur3, so any stable string is a valid seed. Total; never
+   throws. Window-only; NOT in module.exports. */
+function _ssFeedSeed(key){
+  return String(key) + ':' + _ssFeedSessionNonce;
+}
+
+/* IMPURE — build/reuse the feed session (Req 3.3, 6.3, 6.4, 8.1). Issues the
+   public-signals-ONLY candidate query, sources follow graph + seen-state +
+   seed, ranks ONCE via the pure ssRankFeed, and caches the ranked list. Reuses
+   a fresh same-viewer session. Returns the session object, or null on
+   missing ssDB / candidate-query error / no data / any throw (caller serves the
+   flat fallback). Window-only; NOT in module.exports. */
+async function _ssEnsureFeedSession(){
+  var viewerKey = (window.ssCurrentUser && window.ssCurrentUser() && window.ssCurrentUser().id) || 'guest';
+  // Reuse a fresh same-viewer session so pagination stays stable (Req 6.3, 6.4).
+  if(_ssFeedSession && _ssFeedSession.key === viewerKey
+     && (Date.now() - _ssFeedSession.builtAt) < SS_FEED_SESSION_TTL_MS){
+    return _ssFeedSession;
+  }
+  try{
+    if(!window.ssDB) return null;
+    // Candidate query: ONLY the 5 public-signal columns (Req 3.3 — scoreboard
+    // safety). No private columns are ever requested here.
+    var candRes = await window.ssDB.from('content')
+      .select('id, creator_id, created_at, fires_count, views_count')
+      .eq('status','live').is('deleted_at', null)
+      .order('created_at',{ascending:false}).limit(SS_FEED_CANDIDATE_CAP);
+    if(!candRes || candRes.error || !candRes.data) return null;   // → fallback (Req 8.1)
+    var followGraph = { creatorIds: await _ssFollowedCreatorIds() };
+    var seenState = _ssReadSeenState(viewerKey);
+    var seed = _ssFeedSeed(viewerKey);
+    var rankedIds = ssRankFeed({ candidateSet: candRes.data, followGraph: followGraph, seenState: seenState, seed: seed, now: Date.now() });
+    _ssFeedSession = { key: viewerKey, seed: seed, rankedIds: rankedIds, builtAt: Date.now() };
+    return _ssFeedSession;
+  }catch(e){ return null; }   // any throw → caller falls back (Req 8.1)
+}
+
+// Window-only exposure for later wiring / testing (matches the file's impure
+// helper pattern). Intentionally NOT added to module.exports.
+if(typeof window !== 'undefined'){
+  window._ssReadSeenState = _ssReadSeenState;
+  window._ssFollowedCreatorIds = _ssFollowedCreatorIds;
+  window._ssFeedSeed = _ssFeedSeed;
+  window._ssEnsureFeedSession = _ssEnsureFeedSession;
+}
 
 /* Load ONE live clip by id (for shared ?clip= deep links), independent of the
    feed window. Returns a feed-shaped clip or null. */
@@ -2114,6 +2265,39 @@ function ssBuildWatchEvent(clipId, userId, opts) {
    actually recorded, so a repeat view of the same clip is a clean no-op. */
 var _ssViewedThisSession = new Set();
 
+/* Cap on the persisted per-viewer seen-list so it stays bounded (keeps the most
+   recent ids). The feed ranker only needs a recent window to de-prioritise
+   already-seen clips, so an unbounded list would be wasteful. */
+var SS_SEEN_MAX = 500;
+
+/* IMPURE — additively append a clip id to the per-viewer seen-list in
+   localStorage 'ss_seen_v1_<uid>' (the POPULATE side of _ssReadSeenState; Req
+   4.6). Fully fail-soft: storage disabled / quota / parse errors → silent no-op.
+   Never throws and never affects playback or view recording. Guards:
+     • GUEST (no uid / 'guest') → skip; we never write an anonymous seen-list.
+     • Only records real clip ids (ssIsRecordableClipId) so mock/prototype ids
+       are skipped — matching what ssRecordView itself records.
+     • De-dupes (skips if already present) and caps to the most-recent
+       SS_SEEN_MAX ids. Window-only; NOT in module.exports. */
+function _ssMarkSeen(clipId) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;  // no storage → no-op
+    if (!ssIsRecordableClipId(clipId)) return;                          // mock/prototype id → skip
+    var uid = (typeof window.ssCurrentUser === 'function'
+      && window.ssCurrentUser() && window.ssCurrentUser().id) || null;
+    if (!uid || uid === 'guest') return;                                // guest → no anonymous list
+    var key = 'ss_seen_v1_' + uid;
+    var ids;
+    try { ids = JSON.parse(window.localStorage.getItem(key)); }
+    catch (e) { ids = null; }
+    if (!Array.isArray(ids)) ids = [];                                  // parse-error / non-array → []
+    if (ids.indexOf(clipId) !== -1) return;                            // already seen → dedupe no-op
+    ids.push(clipId);
+    if (ids.length > SS_SEEN_MAX) ids = ids.slice(ids.length - SS_SEEN_MAX); // keep most-recent
+    window.localStorage.setItem(key, JSON.stringify(ids));
+  } catch (e) { /* fail-soft: never affect playback or view recording */ }
+}
+
 /* Record a View_Event fire-and-forget (Req 1.1, 1.4, 1.5, 1.6, 13.1, 13.2).
    Resolves the viewer (null for a guest), no-ops when ssDB is missing or the
    clip id isn't a persisted content row, and de-dups per session. */
@@ -2124,6 +2308,7 @@ function ssRecordView(clipId) {
     var userId = ssResolveEventUserId(me);
     if (!ssShouldRecordView(_ssViewedThisSession, clipId)) return;       // already viewed this session
     _ssViewedThisSession.add(clipId);
+    _ssMarkSeen(clipId);   // additive seen-state write (Req 4.6) — guarded, fail-soft, guests skipped
     var payload = ssBuildViewEvent(clipId, userId);
     // Fire-and-forget: do NOT await on the caller's path; swallow rejections.
     Promise.resolve(window.ssDB.from('view_events').insert(payload))
@@ -2167,6 +2352,7 @@ if (typeof window !== 'undefined') {
   window.ssRecordView  = ssRecordView;
   window.ssRecordWatch = ssRecordWatch;
   window.ssRecordShare = ssRecordShare;
+  window._ssMarkSeen   = _ssMarkSeen;
 }
 
 /* ── VIEW dwell (Reach = genuine attention, not a scroll-by) ──────────────────
@@ -8063,6 +8249,305 @@ function ssSegmentEvictionPlan(input) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   feed-follows ranker — pure helpers (no DOM, no network, no globals,
+   never throw, Node-testable). Dual-exported (window.* + module.exports)
+   below so the fast-check property tests can require them.
+   See .kiro/specs/feed-follows (design.md).
+   ═══════════════════════════════════════════════════════════════ */
+
+// feed-follows ranker: a Fire (the like) is a stronger trust signal than a view.
+var SS_FEED_FIRE_WEIGHT = 3;
+var SS_FEED_VIEW_WEIGHT = 1;
+
+/**
+ * ssPopularityScore(clip) — popularity score from public signals only
+ * (feed-follows ranker; Req 3.1, 1.4). Reads ONLY `fires_count` and
+ * `views_count` (Public_Signals — scoreboard-safe), never any private metric.
+ * Integer-valued (`f·3 + v·1`) so popularity comparison is exact; non-finite or
+ * negative inputs clamp to 0. Pure, total, deterministic; never throws.
+ */
+function ssPopularityScore(clip) {
+  var f = (clip && Number.isFinite(+clip.fires_count)) ? Math.max(0, +clip.fires_count) : 0;
+  var v = (clip && Number.isFinite(+clip.views_count)) ? Math.max(0, +clip.views_count) : 0;
+  return f * SS_FEED_FIRE_WEIGHT + v * SS_FEED_VIEW_WEIGHT;
+}
+
+/* Seeded PRNG (feed-follows ranker; Req 1.5, 6.4, 10.2) — a tiny, dependency-free
+   pure PRNG that keeps Tier 5 deterministic and stable across pages for a fixed
+   seed. Internal (underscore-prefixed) helpers; ssRankFeed calls them in-module. */
+
+// xmur3: hash an arbitrary string seed → 32-bit unsigned integer (returns a generator).
+function _ssXmur3(str) {
+  var h = 1779033703 ^ String(str).length;
+  for (var i = 0; i < String(str).length; i++) {
+    h = Math.imul(h ^ String(str).charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function () { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^= h >>> 16) >>> 0; };
+}
+// mulberry32: 32-bit seed → deterministic [0,1) generator.
+function _ssMulberry32(seed) {
+  var a = (typeof seed === 'number') ? (seed >>> 0) : _ssXmur3(seed)();
+  return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// Fisher–Yates over a COPY, driven by the seeded generator (NO input mutation).
+function _ssSeededShuffle(arr, rng) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+// feed-follows ranker: Recency_Window — a clip is "recent" if its created_at is
+// within the last 14 days relative to `now` (Glossary Recency_Window; Req 1.6).
+var SS_FEED_RECENCY_MS = 1209600000; // 14 * 24 * 60 * 60 * 1000
+
+// _ssFeedCreatedAtMs(clip) — coerce a clip's created_at to ms-epoch, total &
+// never-throwing. Number → use if finite; string → Date.parse (NaN on garbage);
+// anything else → NaN. NaN is treated as "not recent" by callers.
+function _ssFeedCreatedAtMs(clip) {
+  var ca = clip && clip.created_at;
+  if (typeof ca === 'number') return isFinite(ca) ? ca : NaN;
+  if (typeof ca === 'string') return Date.parse(ca); // NaN if unparseable
+  return NaN;
+}
+
+/**
+ * ssFeedTier(clip, { followIds, now }) — assign a single ELIGIBLE clip to exactly
+ * one of 5 mutually-exclusive, exhaustive tiers (feed-follows ranker; Req 1.1,
+ * 1.6, 2.2, 5.3). Assumes eligibility (status/deleted_at filtering + dedupe) is
+ * handled by ssRankFeed — it does not re-check eligibility here.
+ *
+ *   followed = followIds has clip.creator_id
+ *   recent   = createdAtMs is finite AND >= now - SS_FEED_RECENCY_MS
+ *   popular  = ssPopularityScore(clip) > 0   (has any public engagement)
+ *
+ *   Tier 1: recent && followed                       (recent from followed)
+ *   Tier 2: recent && !followed                      (recent from non-followed)
+ *   Tier 3: !recent && followed                      (older from followed)
+ *   Tier 4: !recent && !followed && popular          (older global popular)
+ *   Tier 5: otherwise (!recent && !followed && !popular)  (long tail)
+ *
+ * Pure, total, deterministic; never throws (a null/garbage clip → followed=false,
+ * createdAtMs=NaN→recent=false, popular=0 → Tier 5). Returns an integer 1..5.
+ */
+function ssFeedTier(clip, opts) {
+  opts = opts || {};
+  var followIds = opts.followIds;
+  var now = _ssFeedSafeNum(opts.now); // crash-proof: hostile `now` can't throw (totality)
+  if (!isFinite(now)) now = 0; // keep total: non-finite now ⇒ recent=false for positive timestamps
+
+  var followed = !!(followIds && typeof followIds.has === 'function' && followIds.has(clip && clip.creator_id));
+  var createdAtMs = _ssFeedCreatedAtMs(clip);
+  var recent = isFinite(createdAtMs) && createdAtMs >= (now - SS_FEED_RECENCY_MS);
+  var popular = ssPopularityScore(clip) > 0;
+
+  if (recent && followed) return 1;
+  if (recent && !followed) return 2;
+  if (!recent && followed) return 3;
+  if (!recent && !followed && popular) return 4;
+  return 5; // !recent && !followed && !popular
+}
+
+/* ── ssRankFeed internal helpers (feed-follows ranker) ──────────────
+   All pure, total, never-throwing. Used only by ssRankFeed. */
+
+// Crash-proof numeric coercion (totality; Req 8.3/8.4/8.5). Number()/+v invokes
+// ToPrimitive, which THROWS for hostile objects (e.g. { toString: 0 } — a
+// non-callable toString poisons the conversion). Guard it so a malformed `now`
+// (or any value) can never throw: returns a finite number when coercible, else NaN.
+function _ssFeedSafeNum(v) {
+  try { var n = Number(v); return isFinite(n) ? n : NaN; } catch (e) { return NaN; }
+}
+
+// Collect non-empty string ids from an Array or a Set into a Set<string>.
+function _ssCollectStringIds(x) {
+  var out = new Set();
+  if (!x) return out;
+  if (Array.isArray(x)) {
+    for (var i = 0; i < x.length; i++) {
+      var v = x[i];
+      if (typeof v === 'string' && v.length > 0) out.add(v);
+    }
+    return out;
+  }
+  if (typeof Set !== 'undefined' && x instanceof Set) {
+    x.forEach(function (v) { if (typeof v === 'string' && v.length > 0) out.add(v); });
+    return out;
+  }
+  return out;
+}
+
+// Normalise any accepted Follow_Graph shape → Set<string> of creator ids
+// (Req 5.2, 8.3). Accepts { creatorIds: [...]|Set }, a bare array, a bare Set,
+// or null/garbage → empty Set.
+function _ssNormalizeFollowIds(followGraph) {
+  if (Array.isArray(followGraph) || (typeof Set !== 'undefined' && followGraph instanceof Set)) {
+    return _ssCollectStringIds(followGraph);
+  }
+  if (followGraph && typeof followGraph === 'object') {
+    var ci = followGraph.creatorIds;
+    if (Array.isArray(ci) || (typeof Set !== 'undefined' && ci instanceof Set)) {
+      return _ssCollectStringIds(ci);
+    }
+  }
+  return new Set();
+}
+
+// Normalise any accepted Seen_State shape → { available:boolean, set:Set<string> }
+// (Req 4.1, 4.5, 8.4). A bare array → available. { available:true, seen:[...]|Set }
+// → available. null / { available:false } / malformed → unavailable.
+function _ssNormalizeSeen(seenState) {
+  var raw = null;
+  var available = false;
+  if (Array.isArray(seenState)) {
+    raw = seenState; available = true;
+  } else if (seenState && typeof seenState === 'object'
+      && seenState.available === true
+      && (Array.isArray(seenState.seen) || (typeof Set !== 'undefined' && seenState.seen instanceof Set))) {
+    raw = seenState.seen; available = true;
+  }
+  return { available: available, set: available ? _ssCollectStringIds(raw) : new Set() };
+}
+
+// Ascending id comparator (string compare) — the universal tie-break.
+function _ssCmpIdAsc(a, b) {
+  return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+}
+// Tiers 1 & 2: created_at DESC, id ASC tie-break. NaN created_at → -Infinity
+// (sorts last) so the comparator stays total (recent tiers should never have NaN).
+function _ssCmpRecencyDesc(a, b) {
+  var am = _ssFeedCreatedAtMs(a); if (!isFinite(am)) am = -Infinity;
+  var bm = _ssFeedCreatedAtMs(b); if (!isFinite(bm)) bm = -Infinity;
+  if (am !== bm) return bm - am;
+  return _ssCmpIdAsc(a, b);
+}
+// Tiers 3 & 4: ssPopularityScore DESC, id ASC tie-break.
+function _ssCmpPopularityDesc(a, b) {
+  var as = ssPopularityScore(a), bs = ssPopularityScore(b);
+  if (as !== bs) return bs - as;
+  return _ssCmpIdAsc(a, b);
+}
+
+/**
+ * ssRankFeed(input) — the tiered, trust-weighted feed ranker (feed-follows core).
+ *
+ * @param {object} input
+ *   candidateSet : Array<CandidateEntry>  — live clip candidates (may contain junk)
+ *   followGraph  : { creatorIds:string[]|Set } | string[] | Set | null
+ *   seenState    : { available:boolean, seen:string[]|Set } | string[] | Set | null
+ *   seed         : number | string        — explicit randomization source (Req 10.2)
+ *   now          : number                  — ranking reference time, ms epoch (Req 1.6)
+ * @returns {string[]} Ranked_List — ordered, de-duplicated clip ids.
+ *
+ * PURE, TOTAL, DETERMINISTIC. Never mutates inputs (works on copies), performs no
+ * DOM/network/global access, and never throws. Reads ONLY id, creator_id,
+ * created_at, fires_count, views_count (+ status/deleted_at for eligibility) — never
+ * any private metric (Req 3 scoreboard safety); foreign fields are inert (Req 3.5).
+ * See .kiro/specs/feed-follows (design.md §"ssRankFeed(input)").
+ */
+function ssRankFeed(input) {
+  input = (input && typeof input === 'object') ? input : {};
+
+  // ── STEP 1: defensively normalise inputs (totality; Req 8.3/8.4/8.5) ──
+  var now = _ssFeedSafeNum(input && input.now);
+  if (!isFinite(now)) now = 0;                 // deterministic fallback
+  var followIds = _ssNormalizeFollowIds(input.followGraph);
+  var seen = _ssNormalizeSeen(input.seenState);
+  var seed = (input.seed === undefined || input.seed === null) ? 0 : input.seed;
+  if (typeof seed !== 'number' && typeof seed !== 'string') {
+    // Coerce exotic seed values to a deterministic safe primitive; String() can
+    // itself throw (e.g. an object with toString:false) so guard it (totality).
+    try { seed = String(seed); } catch (_seedErr) { seed = 0; }
+  }
+
+  // ── STEP 2: filter to eligible + de-dup by id, first occurrence wins
+  //    (Req 2.1, 9.2, 9.4, 8.5). Preserve input order for pre-sort stability. ──
+  var candidateSet = Array.isArray(input.candidateSet) ? input.candidateSet : [];
+  var eligible = [];
+  var seenIds = new Set();
+  for (var i = 0; i < candidateSet.length; i++) {
+    var e = candidateSet[i];
+    if (e === null || typeof e !== 'object') continue;
+    // Eligibility honours status/deleted_at ONLY WHEN PRESENT (design §"CandidateEntry"):
+    // the candidate query already filters to status='live' / deleted_at IS NULL and
+    // selects neither column (Req 3.3 — public-signals-only), so a real candidate row
+    // carries no `status` field. An ABSENT status (undefined) is therefore eligible;
+    // a PRESENT status must equal 'live' exactly (case-sensitive) or the row is dropped.
+    if (e.status !== undefined && e.status !== 'live') continue;         // present ⇒ must be exactly 'live'
+    if (!(e.deleted_at === null || e.deleted_at === undefined)) continue; // present ⇒ must be null
+    if (typeof e.id !== 'string' || e.id.length === 0) continue;
+    if (seenIds.has(e.id)) continue;                                     // dedupe: keep first
+    seenIds.add(e.id);
+    eligible.push(e);
+  }
+
+  // ── STEP 3: assign each eligible clip to exactly one tier (Req 1.1, 2.2) ──
+  var buckets = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  var tierOpts = { followIds: followIds, now: now };
+  for (var j = 0; j < eligible.length; j++) {
+    var clip = eligible[j];
+    buckets[ssFeedTier(clip, tierOpts)].push(clip);
+  }
+
+  // Build the seeded RNG once; Tier 5 consumes its stream (deterministic per seed).
+  var rng = _ssMulberry32(seed);
+
+  // ── STEP 4: order WITHIN each tier, then optionally seen-partition ──
+  // Produce a seen-INDEPENDENT base order per tier, then stable-partition it into
+  // unseen-then-seen sub-blocks when seen-state is available. Because the base
+  // order does not depend on seen-state, a newly-seen clip can only move from the
+  // unseen block down into the seen block — never up (monotonicity, Req 4.6).
+  function orderTier(tier) {
+    var members = buckets[tier];
+    var base;
+    if (tier === 1 || tier === 2) {
+      base = members.slice().sort(_ssCmpRecencyDesc);                    // created_at desc, id asc
+    } else if (tier === 3 || tier === 4) {
+      base = members.slice().sort(_ssCmpPopularityDesc);                 // score desc, id asc
+    } else {
+      // Tier 5: canonical id-sorted base, then deterministic seeded shuffle.
+      var canonical = members.slice().sort(_ssCmpIdAsc);
+      base = _ssSeededShuffle(canonical, rng);
+    }
+    if (!seen.available) return base;
+    var unseenBlock = [];
+    var seenBlock = [];
+    for (var k = 0; k < base.length; k++) {
+      if (seen.set.has(base[k].id)) seenBlock.push(base[k]);
+      else unseenBlock.push(base[k]);
+    }
+    return unseenBlock.concat(seenBlock);
+  }
+
+  // ── STEP 5: concatenate tiers 1..5 and return the id array (Req 1.2, 2.3) ──
+  var result = [];
+  for (var t = 1; t <= 5; t++) {
+    var ordered = orderTier(t);
+    for (var m = 0; m < ordered.length; m++) result.push(ordered[m].id);
+  }
+  return result;
+}
+
+/**
+ * ssSliceRankedPage(rankedIds, limit, offset) — turn a Ranked_List plus a
+ * (limit, offset) into a contiguous page of ids (feed-follows; Req 6). Pure,
+ * total, never throws: non-array input, non-positive/garbage limit,
+ * negative/garbage offset, or an offset past the end all yield an empty page.
+ * Because every page is a slice of the SAME cached rankedIds, consecutive pages
+ * are contiguous, non-overlapping, and skip nothing (Req 6.2), and never
+ * re-order or re-shuffle (Req 6.3). See .kiro/specs/feed-follows
+ * (design.md §"ssSliceRankedPage").
+ */
+function ssSliceRankedPage(rankedIds, limit, offset) {
+  if (!Array.isArray(rankedIds)) return [];
+  var n = Number(limit), off = Number(offset);
+  if (!Number.isInteger(n) || n <= 0) return [];          // non-positive/garbage limit
+  if (!Number.isInteger(off) || off < 0) return [];        // negative/garbage offset
+  if (off >= rankedIds.length) return [];                  // past the end
+  return rankedIds.slice(off, off + n);
+}
+
+/* ═══════════════════════════════════════════════════════════════
    PWA Black Screen Load — Phase 1 pure helpers (no DOM, no network,
    never throw, Node-testable). They reconcile the three first-frame
    "stories" into exactly one coherent, non-black layer, and decide when
@@ -8569,6 +9054,14 @@ if (typeof window !== 'undefined') {
   window.ssShouldDeepen = ssShouldDeepen;
   window.ssSplashLift = ssSplashLift;
   window.ssSegmentEvictionPlan = ssSegmentEvictionPlan;
+  // feed-follows ranker — pure helpers
+  window.ssPopularityScore = ssPopularityScore;
+  window.SS_FEED_FIRE_WEIGHT = SS_FEED_FIRE_WEIGHT;
+  window.SS_FEED_VIEW_WEIGHT = SS_FEED_VIEW_WEIGHT;
+  window.ssFeedTier = ssFeedTier;
+  window.SS_FEED_RECENCY_MS = SS_FEED_RECENCY_MS;
+  window.ssRankFeed = ssRankFeed;
+  window.ssSliceRankedPage = ssSliceRankedPage;
 }
 if (typeof module !== 'undefined' && module.exports) {
   // PWA Black Screen Load — Phase 1 pure helpers
@@ -8595,6 +9088,14 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssShouldDeepen = ssShouldDeepen;
   module.exports.ssSplashLift = ssSplashLift;
   module.exports.ssSegmentEvictionPlan = ssSegmentEvictionPlan;
+  // feed-follows ranker — pure helpers
+  module.exports.ssPopularityScore = ssPopularityScore;
+  module.exports.SS_FEED_FIRE_WEIGHT = SS_FEED_FIRE_WEIGHT;
+  module.exports.SS_FEED_VIEW_WEIGHT = SS_FEED_VIEW_WEIGHT;
+  module.exports.ssFeedTier = ssFeedTier;
+  module.exports.SS_FEED_RECENCY_MS = SS_FEED_RECENCY_MS;
+  module.exports.ssRankFeed = ssRankFeed;
+  module.exports.ssSliceRankedPage = ssSliceRankedPage;
   module.exports.SS_CLIP_WINDOW = SS_CLIP_WINDOW;
   module.exports.SS_PRELOAD_AHEAD = SS_PRELOAD_AHEAD;
   module.exports.SS_MAX_LIVE_PLAYERS = SS_MAX_LIVE_PLAYERS;
