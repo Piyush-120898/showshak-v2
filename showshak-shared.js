@@ -4233,9 +4233,9 @@ function _ssvBuildList(clicked, list) {
     }
     .ssv-vig {
       position: absolute; inset: 0; pointer-events: none;
-      /* Lighter scrim (matches the inline feed): bottom legibility gradient only,
-         clearing by ~50%, no top tint — the clip plays at full brightness. */
-      background: linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.34) 24%, rgba(0,0,0,0) 50%, rgba(0,0,0,0) 100%);
+      /* Brighter scrim: a light bottom legibility gradient that clears by ~40%,
+         no top tint — the clip reads as the foreground, not a dimmed backdrop. */
+      background: linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.22) 18%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 100%);
     }
 
     /* Double-tap-to-fire: a full-area tap zone that sits ABOVE the bg/vig
@@ -4350,7 +4350,7 @@ function _ssvBuildList(clicked, list) {
       transition: background 0.15s;
     }
     .ssv-follow:hover { background: rgba(234,59,50,0.15); }
-    .ssv-follow.is-following { background: var(--red); color: #fff; border-color: var(--red); }
+    .ssv-follow.is-following { background: rgba(234,59,50,0.14); color: var(--red); border-color: rgba(234,59,50,0.55); }
     .ssv-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
     .ssv-caption {
       font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45;

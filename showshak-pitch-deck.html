@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShowShak — Investor Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B0B0F; --bg2:#13131A; --bg3:#1A1A24; --bg4:#22222F;
+  --red:#EA3B32; --red2:#FF4D42;
+  --white:#fff; --gray:#A0A0B8; --gray2:#5A5A72;
+  --border:rgba(255,255,255,0.08); --border2:rgba(234,59,50,0.30);
+  --maxw:1060px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#000;color:var(--white);font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{overflow-x:hidden}
+.deck{scroll-snap-type:y mandatory;height:100vh;overflow-y:scroll;scroll-behavior:smooth}
+.slide{
+  scroll-snap-align:start;min-height:100vh;width:100%;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:7vh 8vw;position:relative;
+  background:
+    radial-gradient(130% 100% at 82% -8%,rgba(234,59,50,0.10),transparent 52%),
+    radial-gradient(90% 80% at 0% 110%,rgba(234,59,50,0.05),transparent 50%),
+    var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.slide-inner{width:100%;max-width:var(--maxw);margin:0 auto}
+.kicker{font-size:12.5px;letter-spacing:.30em;text-transform:uppercase;color:var(--red);font-weight:600;margin-bottom:22px}
+h2{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:clamp(40px,6.2vw,80px);line-height:.97;letter-spacing:.01em;margin-bottom:26px}
+.lead{font-size:clamp(18px,2.1vw,26px);color:var(--gray);line-height:1.5;max-width:780px;font-weight:300}
+.em{color:var(--white);font-weight:500}
+.red{color:var(--red)}
+
+.slide-num{position:absolute;bottom:26px;right:34px;font-size:12px;color:var(--gray2);letter-spacing:.1em}
+.foot{position:absolute;bottom:24px;left:8vw;font-size:11px;color:var(--gray2);letter-spacing:.03em;max-width:80vw;font-weight:300}
+
+/* COVER (matches launch splash) */
+.cover{align-items:center;text-align:center;justify-content:center}
+.cover .slide-inner{display:flex;flex-direction:column;align-items:center}
+.cover-mark{width:118px;height:118px;border-radius:26px;background:#000;border:1px solid var(--border);object-fit:contain;box-shadow:0 20px 70px rgba(234,59,50,0.18);margin-bottom:40px}
+.cover-word{font-family:'Bebas Neue',sans-serif;font-size:clamp(64px,12vw,136px);line-height:.9;letter-spacing:.04em}
+.cover-word .a{color:#fff}.cover-word .b{color:var(--red)}
+.cover-beat{margin-top:22px;font-size:clamp(13px,1.7vw,17px);letter-spacing:.42em;text-transform:uppercase;color:var(--gray);font-weight:400}
+.cover-val{margin-top:30px;font-size:clamp(16px,2vw,21px);color:var(--gray);font-weight:300;max-width:620px;line-height:1.5}
+.cover-val b{color:#fff;font-weight:500}
+.variant-tag{position:absolute;top:30px;right:34px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gray2);border:1px solid var(--border);border-radius:100px;padding:6px 13px}
+.cover-foot{position:absolute;bottom:30px;left:0;right:0;text-align:center;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gray2)}
+
+/* layout helpers */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:14px}
+.card{background:linear-gradient(180deg,var(--bg2),rgba(19,19,26,0.6));border:1px solid var(--border);border-radius:18px;padding:26px 24px}
+.card .big{font-family:'Bebas Neue',sans-serif;font-size:48px;line-height:1;color:var(--red);margin-bottom:8px;letter-spacing:.01em}
+.card h3{font-size:16.5px;font-weight:600;margin-bottom:8px}
+.card p{font-size:14.5px;color:var(--gray);line-height:1.5;font-weight:300}
+ul.clean{list-style:none;margin-top:18px}
+ul.clean li{font-size:clamp(16px,1.9vw,21px);color:var(--gray);line-height:1.45;padding-left:30px;position:relative;margin-bottom:16px;font-weight:300}
+ul.clean li:before{content:"";position:absolute;left:0;top:11px;width:9px;height:9px;border-radius:50%;background:var(--red)}
+ul.clean li .em{font-weight:500}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:30px}
+.stat .n{font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6vw,74px);line-height:.9;color:var(--white)}
+.stat .l{font-size:14px;color:var(--gray);margin-top:8px;font-weight:300;line-height:1.4}
+
+/* funnel */
+.funnel{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:6px}
+.frow{border-radius:14px;padding:16px 22px;text-align:center;border:1px solid var(--border2);width:100%}
+.frow .ft{font-family:'Bebas Neue',sans-serif;font-size:25px;letter-spacing:.03em}
+.frow .fv{font-size:13px;color:var(--gray);margin-top:3px;font-weight:300}
+.f1{background:rgba(234,59,50,0.06)}
+.f2{width:76%;background:rgba(234,59,50,0.13)}
+.f3{width:50%;background:rgba(234,59,50,0.24)}
+
+/* positioning map */
+.map{position:relative;margin-top:16px;height:340px;border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--bg2),rgba(19,19,26,0.4))}
+.axis-x{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11.5px;color:var(--gray2);letter-spacing:.12em;text-transform:uppercase}
+.axis-y{position:absolute;top:50%;left:16px;transform:translateY(-50%) rotate(-90deg);transform-origin:left;font-size:11.5px;color:var(--gray2);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.dot{position:absolute;transform:translate(-50%,-50%);text-align:center;width:130px}
+.dot .pp{width:13px;height:13px;border-radius:50%;background:var(--gray2);margin:0 auto 7px}
+.dot .pl{font-size:12.5px;color:var(--gray);font-weight:400;line-height:1.3}
+.dot.us .pp{background:var(--red);width:20px;height:20px;box-shadow:0 0 26px rgba(234,59,50,.75)}
+.dot.us .pl{color:var(--white);font-weight:700}
+
+/* ladder */
+.ladder{display:flex;flex-direction:column;gap:11px;margin-top:14px}
+.rung{display:flex;align-items:center;gap:18px;background:linear-gradient(180deg,var(--bg2),rgba(19,19,26,0.6));border:1px solid var(--border);border-radius:14px;padding:15px 20px}
+.rung .idx{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--red);min-width:26px}
+.rung .rt{font-size:16.5px;font-weight:600}
+.rung .rd{font-size:13.5px;color:var(--gray);font-weight:300;margin-top:2px}
+.rung .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--gray2);border:1px solid var(--border);border-radius:100px;padding:6px 12px;white-space:nowrap}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:38px;align-items:center}
+.ask-line{font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.4vw,58px);line-height:1.02;margin-bottom:10px}
+
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--red);width:0;z-index:50;transition:width .2s}
+.hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:10.5px;color:var(--gray2);letter-spacing:.16em;text-transform:uppercase;z-index:40;opacity:.7}
+@media(max-width:760px){
+  .grid2,.grid3,.grid4,.two-col{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr;gap:18px}
+  .slide{padding:8vh 7vw}
+  .map{height:420px}
+  .foot{position:static;margin-top:24px}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="deck" id="deck">
+
+<!-- 1. COVER A — current splash -->
+<section class="slide cover">
+  <span class="variant-tag">Cover · current</span>
+  <div class="slide-inner">
+    <img class="cover-mark" src="icon.svg" alt="ShowShak">
+    <div class="cover-word"><span class="a">SHOW</span><span class="b">SHAK</span></div>
+    <div class="cover-beat">Swipe · Discover · Watch</div>
+  </div>
+  <div class="cover-foot">Seed deck · India 2026</div>
+</section>
+
+<!-- 2. COVER B — improved (recommended) -->
+<section class="slide cover">
+  <span class="variant-tag">Cover · recommended</span>
+  <div class="slide-inner">
+    <img class="cover-mark" src="icon.svg" alt="ShowShak">
+    <div class="cover-word"><span class="a">SHOW</span><span class="b">SHAK</span></div>
+    <div class="cover-beat">Discover · <span style="color:var(--red)">Trust</span> · Watch It</div>
+    <p class="cover-val">The streaming discovery layer built on <b>trust</b> — curators clip what's worth watching, you tap <b>Watch It</b>.</p>
+  </div>
+  <div class="cover-foot">Seed deck · India 2026</div>
+</section>
+
+<!-- 3. PROBLEM -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">The Problem</div>
+    <h2>Infinite content.<br>Zero conviction.</h2>
+    <div class="stats">
+      <div class="stat"><div class="n">110 hrs</div><div class="l">lost per viewer every year, just <span class="em">deciding</span> what to watch</div></div>
+      <div class="stat"><div class="n">72%</div><div class="l">spend more time <span class="em">browsing</span> than watching</div></div>
+      <div class="stat"><div class="n">1 in 4</div><div class="l">cancel a service the moment they <span class="em">finish a show</span> and don't know what's next</div></div>
+    </div>
+    <p class="lead" style="margin-top:30px">Algorithms guess. Search needs a title you don't have. The decision falls back to the oldest instinct there is — <span class="em">asking someone whose taste you trust.</span></p>
+  </div>
+  <div class="foot">Sources: UserTesting/Talker 2025; Deloitte Digital Media Trends; Parks Associates 2026.</div>
+  <div class="slide-num">03</div>
+</section>
+
+<!-- 4. SOLUTION -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">The Solution</div>
+    <h2>The person you trust,<br>at the scale of a feed.</h2>
+    <p class="lead">A curator clips a show. You feel it. You trust them. You tap <span class="red em">Watch It</span> — and land on the right platform in one move.</p>
+    <ul class="clean">
+      <li><span class="em">Creator first.</span> You connect with a curator's taste before the title — so trust leads the decision.</li>
+      <li><span class="em">One action.</span> Every clip builds to a single tap, at the emotional peak.</li>
+      <li><span class="em">The bridge.</span> We carry people to Netflix, Prime, JioHotstar — the trusted top of the funnel for all of them.</li>
+    </ul>
+  </div>
+  <div class="slide-num">04</div>
+</section>
+
+<!-- 5. WHY NOW -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Why Now</div>
+    <h2>The moment is here.</h2>
+    <div class="grid3">
+      <div class="card"><div class="big">148M</div><h3>Choice broke</h3><p>India: 148M paying streaming subscriptions across 15+ platforms and 13+ languages. Deciding what to watch is genuinely overwhelming.</p></div>
+      <div class="card"><div class="big">67%</div><h3>Trust shifted to people</h3><p>Trust in creators hit a high in 2026 — viewers 18–34 now rank a person they follow as their most trusted source, ahead of search.</p></div>
+      <div class="card"><div class="big">AI race</div><h3>The giant confirmed it</h3><p>JioHotstar + OpenAI launched ChatGPT discovery to fix "what to watch." The #1 player is paying to solve our exact problem — with search, where we bring trust.</p></div>
+    </div>
+    <p class="lead" style="margin-top:26px">India drove nearly <span class="em">half of the world's subscription-app install growth</span> in 2026. The demand is here, now.</p>
+  </div>
+  <div class="foot">Sources: Ormax Media 2025; Nielsen 2026; Variety/Financial Express 2026; AppsFlyer 2026.</div>
+  <div class="slide-num">05</div>
+</section>
+
+<!-- 6. MARKET -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Market</div>
+    <h2>The budget behind<br>every "Watch It."</h2>
+    <div class="two-col">
+      <div class="funnel">
+        <div class="frow f1"><div class="ft">India entertainment promotion</div><div class="fv">streaming marketing + subscriber acquisition + film P&amp;A + influencer · ~$0.7–1.2B/yr</div></div>
+        <div class="frow f2"><div class="ft">Serviceable · ~$240–480M</div><div class="fv">the trust-discovery slice we can serve</div></div>
+        <div class="frow f3"><div class="ft">Target · ₹200–400 cr</div><div class="fv">10% capture at maturity</div></div>
+      </div>
+      <div>
+        <p class="lead">Studios and platforms spend relentlessly to make people watch. One tentpole now spends <span class="em">$100M+ on marketing alone.</span></p>
+        <p class="lead" style="margin-top:18px;font-size:19px"><span class="em">Same buckets, worldwide → ~$50B+/yr.</span> India is the beachhead; the playground is global.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot">Triangulated from FICCI-EY 2026, WPP Media 2026, Kofluence 2026, Netflix &amp; studio marketing disclosures. Ranges, not point estimates.</div>
+  <div class="slide-num">06</div>
+</section>
+
+<!-- 7. CATEGORY -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">The Category</div>
+    <h2>The trust network<br>for what to watch.</h2>
+    <div class="map">
+      <div class="axis-y">Human taste &amp; trust →</div>
+      <div class="axis-x">Cross-platform neutrality →</div>
+      <div class="dot" style="left:26%;top:76%"><div class="pp"></div><div class="pl">Netflix · Prime<br>(walled gardens)</div></div>
+      <div class="dot" style="left:72%;top:72%"><div class="pp"></div><div class="pl">JustWatch · Reelgood<br>(where-to-watch data)</div></div>
+      <div class="dot" style="left:34%;top:52%"><div class="pp"></div><div class="pl">OTTplay · aggregators<br>(bundles + search)</div></div>
+      <div class="dot" style="left:44%;top:33%"><div class="pp"></div><div class="pl">TikTok · Reels<br>(taste, no intent)</div></div>
+      <div class="dot us" style="left:80%;top:19%"><div class="pp"></div><div class="pl">ShowShak</div></div>
+    </div>
+    <p class="lead" style="margin-top:20px">JustWatch turned where-to-watch data into a profitable, studio-funded business. Letterboxd turned film taste into a 29M-strong culture. We sit where they meet — <span class="em">taste plus action, across every platform.</span></p>
+  </div>
+  <div class="foot">JustWatch: 60M+ users/mo, profitable since 2016 (JustWatch). Letterboxd: ~29M users, 2026 (TIME / Tiny).</div>
+  <div class="slide-num">07</div>
+</section>
+
+<!-- 8. PRODUCT -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Product</div>
+    <h2>Familiar to use.<br>Impossible to fake.</h2>
+    <div class="grid4">
+      <div class="card"><h3>🔥 Fire</h3><p>The like, reimagined — "this is lit." A reflex, never a scoreboard.</p></div>
+      <div class="card"><h3>The clip</h3><p>Curator's pitch leads; the title reveals at the moment of decision.</p></div>
+      <div class="card"><h3>Watch It</h3><p>One tap to the right platform, in your region. Private. Instant.</p></div>
+      <div class="card"><h3>Follow &amp; Stacks</h3><p>Build a roster of curators whose taste you trust, and collect what's next.</p></div>
+    </div>
+    <p class="lead" style="margin-top:28px">Live today as an installable app — real curators, real clips, real Watch-It taps. <span class="em">Vertical, fast, and built to feel like nothing else.</span></p>
+  </div>
+  <div class="slide-num">08</div>
+</section>
+
+<!-- 9. BUSINESS MODEL -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Business Model</div>
+    <h2>We sell intent —<br>at the moment of taste.</h2>
+    <div class="ladder">
+      <div class="rung"><div class="idx">1</div><div><div class="rt">Promoted clips · native title marketing</div><div class="rd">Studios fund curators to clip new titles. Looks organic, demand-independent, recurring with every release.</div></div><span class="tag">Core</span></div>
+      <div class="rung"><div class="idx">2</div><div><div class="rt">Performance acquisition for streamers</div><div class="rd">Pre-sold subscribers at peak desire. Streamers pay ~$89 to acquire one — we deliver warmer, cheaper.</div></div><span class="tag">Headline</span></div>
+      <div class="rung"><div class="idx">3</div><div><div class="rt">Cross-platform taste intelligence</div><div class="rd">Each platform's mirror of the open market. High-margin, compounding, and ours alone to hold.</div></div><span class="tag">Moat</span></div>
+      <div class="rung"><div class="idx">4</div><div><div class="rt">Premium + curator monetization</div><div class="rd">Power-user tools and creator revenue — diversified, recurring, first-party.</div></div><span class="tag">Later</span></div>
+    </div>
+  </div>
+  <div class="foot">Netflix subscriber acquisition cost ~$89 (Spyro-Soft, 2026). Healthy LTV:CAC ≥ 3:1 (a16z).</div>
+  <div class="slide-num">09</div>
+</section>
+
+<!-- 10. MOAT -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Defensibility</div>
+    <h2>Built to compound.</h2>
+    <div class="grid2">
+      <div class="card"><h3>Neutrality is the moat</h3><p>Only a layer above every platform can hold cross-platform taste. A streamer that promotes rivals stops being itself — so this stays ours.</p></div>
+      <div class="card"><h3>The taste graph deepens</h3><p>Every fire, follow and Watch-It widens a dataset no single platform can see. Time makes the lead bigger.</p></div>
+      <div class="card"><h3>Trust is earned, not bought</h3><p>Our wedge is a behaviour — connect with the curator, then the title. That bond compounds with every honest recommendation.</p></div>
+      <div class="card"><h3>We start with zero permission</h3><p>Watch It runs on public links and open availability data. We launch, grow, and prove conversion on our own.</p></div>
+    </div>
+  </div>
+  <div class="slide-num">10</div>
+</section>
+
+<!-- 11. GO-TO-MARKET -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Go-to-Market</div>
+    <h2>Win the hardest<br>market first.</h2>
+    <ul class="clean">
+      <li><span class="em">India is the beachhead.</span> The most fragmented streaming market on earth — the sharpest pain, the hungriest curators, the fastest proof.</li>
+      <li><span class="em">Seed the loop.</span> 15–20 hand-picked curators → 300–500 clips → users returning because they trust real people, not a feed.</li>
+      <li><span class="em">Curators clip what's trending.</span> We hand tastemakers titles worth talking about — and that same rail becomes paid promoted placement as conversion is proven.</li>
+      <li><span class="em">First revenue: regional platforms + film launches.</span> The regional services and constant slate of releases that need discovery most — and spend on it daily.</li>
+    </ul>
+  </div>
+  <div class="slide-num">11</div>
+</section>
+
+<!-- 12. TRACTION -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Where We Are</div>
+    <h2>The product is built.<br>The loop is live.</h2>
+    <div class="grid3">
+      <div class="card"><div class="big">Live</div><h3>Full product, shipped</h3><p>Installable app — feed, curator upload, video pipeline, Watch It, trust-weighted ranking, profiles. Real, not a mockup.</p></div>
+      <div class="card"><div class="big">Ready</div><h3>Legal foundation in place</h3><p>Safe-harbour posture, takedown intake, consent and 18+ gating — built for an India-correct launch.</p></div>
+      <div class="card"><div class="big">Now</div><h3>Open beta in India</h3><p>Onboarding the first curator cohort to prove the one thing that matters: people coming back.</p></div>
+    </div>
+    <p class="lead" style="margin-top:28px">Engineering risk is behind us. The next milestone is <span class="em">trust, proven.</span></p>
+  </div>
+  <div class="slide-num">12</div>
+</section>
+
+<!-- 13. TEAM -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">Team</div>
+    <h2>Built by the buyer.</h2>
+    <div class="grid2">
+      <div class="card"><h3>Piyush Gupta — Founder</h3><p>B.Tech (IT) and a performance marketer who spent years generating leads and sales for businesses — then built the entire live, property-tested product solo.</p></div>
+      <div class="card"><h3>Bringing on</h3><p>Streaming-industry partnerships to turn Watch-It proof into platform revenue, and senior engineering for multi-region scale.</p></div>
+    </div>
+    <p class="lead" style="margin-top:26px">ShowShak's customer is a performance marketer buying attention. <span class="em">I've done that job — I know what converts and what they'll pay for.</span></p>
+  </div>
+  <div class="slide-num">13</div>
+</section>
+
+<!-- 14. THE ASK -->
+<section class="slide">
+  <div class="slide-inner">
+    <div class="kicker">The Ask</div>
+    <div class="ask-line">Raising a pre-seed round<br>to prove the loop.</div>
+    <div class="grid3" style="margin-top:28px">
+      <div class="card"><h3>Curators &amp; content</h3><p>Recruit and support the first 15–20 curators; spark the first 300–500 clips.</p></div>
+      <div class="card"><h3>Legal &amp; entity</h3><p>Counsel, entity, safe-harbour hardening — clear the path to go wide.</p></div>
+      <div class="card"><h3>Key hires</h3><p>Partnerships + senior engineering to take the beta to a measurable, fundable loop.</p></div>
+    </div>
+    <p class="lead" style="margin-top:28px">The milestone we deliver: <span class="em">curators posting, users returning, and the first Watch-It conversion data.</span></p>
+  </div>
+  <div class="slide-num">14</div>
+</section>
+
+<!-- 15. CLOSE -->
+<section class="slide cover">
+  <div class="slide-inner">
+    <img class="cover-mark" src="icon.svg" alt="ShowShak">
+    <div class="cover-word"><span class="a">SHOW</span><span class="b">SHAK</span></div>
+    <p class="cover-val" style="margin-top:30px;font-size:clamp(20px,2.6vw,30px);color:#fff;font-weight:400;max-width:18ch">The trusted bridge to everything you watch.</p>
+  </div>
+  <div class="cover-foot">hello@showshak.com</div>
+</section>
+
+</div><!-- /deck -->
+<div class="hint">↑ ↓ / space to navigate</div>
+<script>
+(function(){
+  var deck=document.getElementById('deck');
+  var prog=document.getElementById('prog');
+  var slides=Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  function update(){
+    var sc=deck.scrollTop, h=deck.scrollHeight-deck.clientHeight;
+    prog.style.width=(h>0?(sc/h*100):0)+'%';
+  }
+  deck.addEventListener('scroll',update);update();
+  function go(dir){
+    var idx=Math.round(deck.scrollTop/window.innerHeight);
+    var next=Math.max(0,Math.min(slides.length-1,idx+dir));
+    slides[next].scrollIntoView({behavior:'smooth'});
+  }
+  document.addEventListener('keydown',function(e){
+    if(['ArrowDown','PageDown',' '].indexOf(e.key)>=0){e.preventDefault();go(1);}
+    else if(['ArrowUp','PageUp'].indexOf(e.key)>=0){e.preventDefault();go(-1);}
+    else if(e.key==='Home'){slides[0].scrollIntoView({behavior:'smooth'});}
+    else if(e.key==='End'){slides[slides.length-1].scrollIntoView({behavior:'smooth'});}
+  });
+})();
+</script>
+</body>
+</html>

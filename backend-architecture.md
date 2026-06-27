@@ -293,6 +293,18 @@ Sign up      → upgrade the anonymous user to a real account
 
 ## 8. The feed (start simple, scale later)
 
+> **IMPLEMENTED (feed-follows, shipped commit 05afc86).** The pull-on-read
+> design below is now live as a TIERED ranker in `showshak-shared.js`
+> (`ssRankFeed`, behind the unchanged `ssLoadClips`): one cheap candidate query
+> (public signals only — `id, creator_id, created_at, fires_count, views_count`)
+> feeds a pure, seeded, property-tested ranker that orders clips into 5 tiers —
+> followed-recent → other-recent → followed-popular → global-popular →
+> randomized rest — de-duped, with already-seen clips sunk within their tier
+> (seen-state in `localStorage`, no migration). It caches the ranked list once
+> per feed session (stable pagination), falls back to the flat newest-first feed
+> on any error, and has an `ss_ff_ranker='off'` kill switch. The "later (scale)"
+> hybrid fan-out + ranking service below remains the future upgrade path.
+
 **Now (launch / low scale): fan-out on READ (pull).** Simplest, correct,
 cheap to build:
 ```

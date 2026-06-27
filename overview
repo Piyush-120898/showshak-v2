@@ -145,9 +145,12 @@ Closest references for mental model:
       their migrations (0029 + 0031) APPLIED. We are prepping an OPEN BETA in India
       (18+, non-commercial, curator-limited). Founder-side remaining: run the
       policy-text seed + deploy the submit-takedown fn + fill legal placeholders.
-      Phase 2 (admin/workflow) is deferred post-raise. The remaining cold-start gap
-      is FEED-FOLLOWS wiring (the feed is still flat newest-first — surface the
-      follow-driven trust loop), which is the next big build.
+      Phase 2 (admin/workflow) is deferred post-raise. FEED-FOLLOWS is now SHIPPED
+      (commit 05afc86): the feed is no longer flat newest-first — a tiered,
+      trust-weighted ranker (ssRankFeed, behind the unchanged ssLoadClips, with a
+      flat-feed fallback + ss_ff_ranker kill switch) surfaces followed curators first.
+      The next levers are filling + surfacing the follow graph (curator discovery,
+      "new from curators you follow") so the trust loop actually fires in the beta.
   ────────────────────────────────────────────────────────────────
 
   PLANNED BACKEND (historical — now BUILT, see status update above):

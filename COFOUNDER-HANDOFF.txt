@@ -128,7 +128,7 @@
     - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
     - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
     - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
-    - SUITE: 73 files green; migrations 0001–0031 applied (0030 reserved for DMCA Phase 2)
+    - SUITE: 89 files green; migrations 0001–0031 applied (0030 reserved for DMCA Phase 2)
     - feed-clip-load-performance ✓ (A-grade feed clip-load + caching pipeline;
       9 prop-feed-* properties; the heavy prefetch/SW-cache pieces are OPT-IN —
       see SESSION LOG; the iOS feed-stall root cause = unbounded player mount, fixed)
@@ -137,12 +137,81 @@
     - beta-consent-gate ✓ (DPDP consent + 18+ onboarding gate; one-time Curator Terms
       acceptance at Become-a-Curator; migration 0031 applied; legal-text seed READY,
       founder to run — see §7)
+    - feed-follows ✓ (tiered trust-weighted feed ranker behind ssLoadClips: followed-new →
+      other-new → followed-popular → global-popular → randomized rest; pure ssRankFeed +
+      ssSliceRankedPage + ssFeedTier + ssPopularityScore, 13 fast-check properties + 3
+      unit-feed-* shell tests; client-side localStorage seen-state — NO migration;
+      ss_ff_ranker kill switch + automatic flat-feed fallback; SHIPPED to main, commit
+      05afc86, CACHE_VERSION v31)
+    - felt-quality follow-ups ✓ (clip vignette lightened — clip now reads as the foreground,
+      not a dimmed backdrop; profile follower/clip-count stats prefetched into the prewarm
+      cache so they paint INSTANTLY on landing; CACHE_VERSION v32 — see SESSION LOG)
 
 
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (beta-consent-gate SHIPPED + DMCA Phase 1 SHIPPED & APPLIED; pushed to main, commit 99e004a, CACHE_VERSION v30; suite 73 files green) ──
+  ── MOST RECENT (feed-follows SHIPPED + felt-quality follow-ups; suite 73 → 89 files green) ──
+    CONTEXT: this session built and SHIPPED feed-follows — the cold-start lever that
+    finally wires the follow graph into feed ordering — as a full spec
+    (.kiro/specs/feed-follows/, requirements → design → tasks, executed task-by-task,
+    phased so the Feed never breaks). Then two felt-quality follow-ups (clip brightness
+    + instant profile stats). Suite 73 → 89 files green (+13 prop-feed-* ranker
+    properties, +3 unit-feed-* shell tests). NO migration this session.
+
+    • feed-follows — the flat newest-first feed is now a TIERED, TRUST-WEIGHTED feed:
+        1) new clips from curators you follow → 2) other new clips → 3) followed
+        curators' older popular clips → 4) global popular → 5) randomized rest.
+        - PURE CORE (dual-exported, fast-check, 13 properties): ssRankFeed (the tiered
+          ranker), ssSliceRankedPage (stable pagination), ssFeedTier (Recency_Window =
+          14 days), ssPopularityScore (fires*3 + views*1 — public signals only), plus a
+          seeded PRNG (_ssXmur3/_ssMulberry32/_ssSeededShuffle) so Tier 5 is deterministic
+          and pages never reshuffle. Exactly-once de-dup (highest tier wins), seen clips
+          sink WITHIN their tier, empty-follow/guest degrades to ~today's feed.
+        - HIDE THE SCOREBOARD enforced at the data layer: the candidate query selects
+          ONLY id, creator_id, created_at, fires_count, views_count — never a private
+          metric (watch-it taps / fires-received / analytics). Ranking can't leak the
+          scoreboard. (unit-feed-projection.test.js asserts this structurally.)
+        - IMPURE SHELL: ssLoadClips now orchestrates candidate fetch → ssRankFeed (cached
+          once per feed session) → ssSliceRankedPage → hydrate the page via the existing
+          rich select → ssMapContentRowsToClips. Signature + clip shape UNCHANGED.
+          Automatic flat-feed fallback on ANY error (Req 8) + an on-device kill switch
+          localStorage ss_ff_ranker='off'. _ssEnsureFeedSession caches the ranked list
+          (stable pagination); _ssFollowedCreatorIds reads real follow rows;
+          _ssReadSeenState reads localStorage 'ss_seen_v1_<uid>'.
+        - SEEN-STATE = NO MIGRATION: written client-side next to ssRecordView
+          (_ssMarkSeen → localStorage 'ss_seen_v1_<uid>', capped 500, guests skipped),
+          because view_events has no client SELECT grant (0019). A server-side seen
+          policy is an OPTIONAL future nicety; the feature is correct without it.
+        - BUG CAUGHT BY THE TESTS (would have shipped a BLANK FEED): the candidate query
+          selects no `status` column (scoreboard-safe), but ssRankFeed's eligibility
+          filter rejected rows with absent status → ranker returned [] whenever clips
+          existed; only the kill switch worked. Fixed: absent status/deleted_at = eligible
+          (the SQL already guarantees liveness), present must be exactly 'live'/null;
+          reconciled Property 11 + requirements (the latent Req 3.3 vs 9.4 conflict).
+        - SHIPPED: pushed to main, commit 05afc86, CACHE_VERSION v31. Frontend-only —
+          no migration, no Edge Function. The follow loop is now live in code; the feed
+          rewards trust the moment curators have followers.
+
+    • felt-quality follow-ups (on-device feedback): CACHE_VERSION v31 → v32.
+        - CLIP BRIGHTNESS: the playing clip felt "dull / in the background." Root cause =
+          the .clip-vignette (and the fullscreen .ssv-vig) scrim: 0.92 black at the bottom
+          PLUS a dark tint across the whole TOP. Lightened both — bottom legibility
+          gradient kept (0.80, clears by ~46–50%) but the TOP tint removed → the clip now
+          reads as the foreground. Did NOT add a brightness() filter on the video (would
+          blow out highlights / over-process); the scrim was the real cause.
+        - INSTANT PROFILE STATS: followers/clips counts lagged on landing because
+          ssPrewarmProfile cached identity but NOT the counts (they waited on async
+          queries). Now the prewarm ALSO fetches the follower count + clip count (cheap
+          head-only count queries) into the profile cache; applyCachedOwnProfile seeds
+          PROFILE.followers + a cached clip count so the creds strip paints REAL numbers
+          on the first frame, then revalidates. ssWriteMyProfileCache made merge-safe so
+          identity ↔ counts never clobber each other; fetchOwnFollowers +
+          hydrateMyClipsFromDB refresh the cached counts so repeat visits stay accurate.
+        - ⚠ v32 (clip brightness + instant profile stats) is CODE-COMPLETE + suite green
+          but PUSH-PENDING at the time of writing — confirm it's on main.
+
+  ── PREVIOUS (beta-consent-gate SHIPPED + DMCA Phase 1 SHIPPED & APPLIED; pushed to main, commit 99e004a, CACHE_VERSION v30; suite 73 files green) ──
     CONTEXT: this session SHIPPED the beta-consent-gate feature (full spec
     .kiro/specs/beta-consent-gate/, requirements → design → tasks, executed task-by-
     task) and PUSHED both it and the previously-built DMCA Phase 1 to main. Founder
@@ -889,60 +958,60 @@ clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
 The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
 "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v30; last commit 99e004a; migrations 0001-0031 applied —
-0030 is RESERVED for DMCA Phase 2, so consent uses 0031): the felt-quality +
-reliability sweep, watch-it-curator-availability, feed-clip-load-performance,
-server-side Mux trim, portrait lock, analytics/highlights/discover polish, PLUS this
-session's DMCA Phase 1 + beta-consent-gate (below). Pure logic in showshak-shared.js,
-dual-exported + property-tested (node tests/run-all.js → now 73 files green).
+LIVE ON MAIN (CACHE_VERSION v31 = feed-follows, commit 05afc86; v32 = felt-quality follow-ups
+[clip brightness + instant profile stats], PUSH-PENDING — confirm it's on main; migrations
+0001-0031 applied — 0030 is RESERVED for DMCA Phase 2, so consent uses 0031): the felt-quality +
+reliability sweep, watch-it-curator-availability, feed-clip-load-performance, server-side Mux trim,
+portrait lock, analytics/highlights/discover polish, DMCA Phase 1 + beta-consent-gate, PLUS this
+session's FEED-FOLLOWS ranker (below). Pure logic in showshak-shared.js, dual-exported +
+property-tested (node tests/run-all.js → now 89 files green).
 
-SHIPPED THIS SESSION (pushed to main; founder-side ops noted in §7):
-  - DMCA Phase 1 (Posture & Intake), spec .kiro/specs/dmca-moderation-scaffolding/:
-    3 pure fns (ssAttestationComplete/ssDmcaNoticeWellFormed/ssContentPubliclyVisible)
-    + tests; migration 0029 (attestations/policy_versions/complaints/moderation_log +
-    immutability + attestation-gate triggers + RLS + 3 SECURITY DEFINER RPCs);
-    submit-takedown Edge Function; client wrappers; showshak-legal.html +
-    showshak-dmca.html; per-clip attestation gate in showshak-upload.html publish();
-    settings legal links. ⚠️ migration 0029 APPLIED ✓ by founder.
-  - beta-consent-gate, spec .kiro/specs/beta-consent-gate/ — the DPDP open-beta
-    compliance unit: (1) affirmative CONSENT + 18+ GATE as onboarding Step 1 in
-    index.html (both boxes UNTICKED by default; nothing collected before consent is
-    recorded); (2) one-time CURATOR TERMS acceptance at "Become a Curator"
-    (showshak-profile.html) recorded BEFORE the users.role flip; (3) showshak-legal.html
-    renders the real seeded policy text (placeholder fallback + counsel banner). Pure
-    ssConsentComplete/ssCuratorTermsAccepted/ssPolicyNeedsCounselReview + wrappers
-    ssRecordConsent/ssRecordCuratorTerms/ssCurrentPolicyVersions. Migration 0031
-    (consents table w/ kind discriminator 'user_consent'|'curator_terms' +
-    ss_record_consent/ss_record_curator_terms RPCs + own-row RLS; widens
-    policy_versions.doc to allow 'curator'). ⚠️ migration 0031 APPLIED ✓ + Anonymous
-    sign-ins ENABLED ✓ by founder.
-  - CONSENT vs ATTESTATION (decided this session): the Curator Terms CONSENT is
-    recorded ONCE (relationship-level: ownership retained + license-to-ShowShak +
-    indemnity). The per-clip ATTESTATION (DMCA Phase 1) stays per-upload — it's the
-    safe-harbor proof-per-clip. The license framing was corrected: curator KEEPS
-    ownership and GRANTS ShowShak a license (NOT "ShowShak has no rights").
-  - LEGAL DRAFTS in legal/*.md (ToS, Privacy, Copyright, Community, Curator Terms +
-    README), counsel-review-required, grounded in IT Act §79 + IT Rules 2021
-    (grievance 24h/15d), Copyright Rules 2013 Rule 75 (36h/21d), DPDP Act 2023 + Rules
-    2025. The READY-TO-RUN seed supabase/seed/seed_policy_versions.sql has the real
-    bodies inlined verbatim (drafts still carry [PLACEHOLDER] tokens → counsel banner
-    stays until filled + re-seeded).
+SHIPPED THIS SESSION (founder-side ops noted in §7):
+  - feed-follows, spec .kiro/specs/feed-follows/ — THE COLD-START LEVER: the flat
+    newest-first feed is now a TIERED, TRUST-WEIGHTED feed: 1) new clips from curators
+    you follow → 2) other new clips → 3) followed curators' older popular clips →
+    4) global popular → 5) randomized rest. Pure ssRankFeed / ssSliceRankedPage /
+    ssFeedTier (Recency_Window 14d) / ssPopularityScore (fires*3 + views*1) + a seeded
+    PRNG (deterministic Tier 5 + stable pagination), 13 fast-check properties. Wired
+    behind the UNCHANGED ssLoadClips: candidate fetch → rank (cached once per feed
+    session) → slice → hydrate via the existing rich select. HIDE THE SCOREBOARD enforced
+    at the data layer (candidate query selects ONLY id/creator_id/created_at/fires_count/
+    views_count — never a private metric). Seen clips sink within their tier; empty-follow/
+    guest degrades to ~today's feed. ss_ff_ranker='off' kill switch + automatic flat-feed
+    fallback on ANY error. Seen-state in localStorage 'ss_seen_v1_<uid>' next to ssRecordView
+    — NO migration. 3 unit-feed-* shell tests. The TDD tests caught a BLANK-FEED bug (ranker
+    rejected the status-less candidate rows) before it shipped. SHIPPED to main, commit
+    05afc86, CACHE_VERSION v31. Frontend-only.
+  - felt-quality follow-ups (on-device feedback) → CACHE_VERSION v32 (PUSH-PENDING — confirm
+    on main): (1) clip vignette lightened (inline .clip-vignette + fullscreen .ssv-vig) so the
+    clip reads as the FOREGROUND, not a dimmed backdrop — bottom legibility scrim kept, top
+    tint removed; (2) profile follower/clip-count stats prefetched into the ssPrewarmProfile
+    cache so the creds strip paints REAL numbers INSTANTLY on landing (merge-safe cache,
+    revalidated by fetchOwnFollowers + hydrateMyClipsFromDB).
+  - PREVIOUSLY SHIPPED (now LIVE on main — full detail in SESSION LOG §5): DMCA Phase 1
+    (migration 0029 APPLIED) + beta-consent-gate (migration 0031 APPLIED + Anonymous sign-ins
+    ENABLED). The founder-side beta-compliance ops are STILL PENDING — see NEXT STEP + §7.
 
 DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is
 DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
 content.status='removed' in Supabase (RLS hides it everywhere).
 
 NEXT STEP (resume here):
-  FOUNDER-SIDE (only YOU can do — see §7): (a) RUN supabase/seed/seed_policy_versions.sql
-  in the Supabase SQL editor so the beta shows the real policy text; (b) DEPLOY the
-  DMCA intake fn: supabase functions deploy submit-takedown --no-verify-jwt; (c) fill
-  the [PLACEHOLDERS] in legal/*.md (entity/emails/Grievance Officer) + book the IP-lawyer
-  hour, then re-seed a new version row to clear the counsel banner. Open question: the
-  operating ENTITY (company vs individual).
-  BUILD (the real cold-start lever, the next big spec): FEED-FOLLOWS wiring — the feed
-  is still flat newest-first; surface the follow-driven trust loop. This is what makes
-  the beta worth testing and what investors judge next. Spec it (requirements → design →
-  tasks), phase it so the Feed never breaks.
+  FOUNDER-SIDE (only YOU can do — see §7; STILL PENDING from the DMCA/consent work, these
+  gate going WIDE to real users): (a) RUN supabase/seed/seed_policy_versions.sql in the
+  Supabase SQL editor so the beta shows the real policy text; (b) DEPLOY the DMCA intake fn:
+  supabase functions deploy submit-takedown --no-verify-jwt; (c) fill the [PLACEHOLDERS] in
+  legal/*.md (entity/emails/Grievance Officer) + book the IP-lawyer hour, then re-seed a new
+  version row to clear the counsel banner. Open question: the operating ENTITY (company vs
+  individual).
+  CONFIRM: push v32 (clip brightness + instant profile stats) to main if not already, and
+  reopen the installed PWA twice to pick it up.
+  BUILD (feed-follows is SHIPPED — watch it on-device with real follows). The feed only rewards
+  trust once users actually follow curators, so the next levers are about FILLING + SURFACING
+  the follow graph: (i) curator discovery / suggested-curators so users build follows;
+  (ii) a "new from curators you follow" surfacing/notification; (iii) tune the ranker
+  (Recency_Window 14d, popularity 3:1 weight, seen-state) once real beta data exists. Spec the
+  big ones (requirements → design → tasks), phase so the Feed never breaks.
   PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
   Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
 
