@@ -7900,7 +7900,12 @@ function ssMuteRoundTrip(media, m) {
 /* Feed paging knobs. */
 var SS_CLIP_WINDOW = 10;       // clips fetched per window (Req 9.1/9.3)
 var SS_PRELOAD_AHEAD = 2;      // look-ahead band set to preload="auto" (Req 9.2)
-var SS_MAX_LIVE_PLAYERS = 4;   // cap on concurrently mounted players (Req 9.5)
+var SS_MAX_LIVE_PLAYERS = 2;   // cap on concurrently mounted players (Req 9.5).
+                               // iOS uses native HLS (AVPlayer) with a hard limit on
+                               // simultaneous decode pipelines; 4 concurrent <mux-player>
+                               // sources exceeded it and the active clip stalled on its
+                               // first frame. 2 (active + 1 neighbor) keeps the recycled
+                               // pool but reliably leaves a decoder for the active clip.
 
 /**
  * ssShouldFetchNextWindow(activeIdx, windowStart, totalLoaded, inFlight) —
