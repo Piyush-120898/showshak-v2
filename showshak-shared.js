@@ -4974,10 +4974,8 @@ function _inlineClipHTML(c, i) {
         style="background:rgba(234,59,50,0.16); --btn-rgb:234,59,50"
         onclick="event.stopPropagation(); ssOpenSheet(_inlineClips[${i}])">
         <div class="mobile-watch-btn-inner">
-          <div class="mobile-watch-plat-logo">${platAbbr}</div>
           <div class="mobile-watch-text">
             <span class="mobile-watch-text-main">Watch It</span>
-            <span class="mobile-watch-text-sub">on ${platLabel}</span>
           </div>
           <div class="mobile-watch-arrow">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -6130,10 +6128,8 @@ function _ssvClipHTML(c, i, mode) {
 
       <button class="ssv-watch" style="background:rgba(234,59,50,0.16); --ssv-rgb:234,59,50" onclick="ssOpenSheet(_ssvClips[${i}])">
         <div class="ssv-watch-inner">
-          <div class="ssv-watch-logo">${c.platAbbr}</div>
           <div class="ssv-watch-text">
             <span class="ssv-watch-main">Watch It</span>
-            <span class="ssv-watch-sub">on ${c.platLabel}</span>
           </div>
           <div class="ssv-watch-arrow">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
