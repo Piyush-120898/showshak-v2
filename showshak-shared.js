@@ -4364,7 +4364,7 @@ function _ssvBuildList(clicked, list) {
       position: absolute; left: 14px; right: 72px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30;
       display: flex; align-items: center; justify-content: center;
       height: 52px; border-radius: 16px; overflow: hidden; opacity: 0.92;
-      background: rgba(234,59,50,0.16);
+      background: rgba(255,99,45,0.26);
       backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       font-family: var(--font-body); color: #fff; border: none; cursor: pointer;
       -webkit-tap-highlight-color: transparent;
@@ -4971,7 +4971,7 @@ function _inlineClipHTML(c, i) {
         </div>
       </div>
       <button class="mobile-watch-btn" id="m-watch-${i}"
-        style="background:rgba(234,59,50,0.16); --btn-rgb:234,59,50"
+        style="background:rgba(255,99,45,0.26); --btn-rgb:234,59,50"
         onclick="event.stopPropagation(); ssOpenSheet(_inlineClips[${i}])">
         <div class="mobile-watch-btn-inner">
           <div class="mobile-watch-text">
@@ -5195,7 +5195,7 @@ function _inlineSyncRail(idx) {
 
   const pill = document.getElementById('rail-watch-pill');
   const plat = document.getElementById('rail-watch-pill-plat');
-  if (pill) { pill.style.background = 'rgba(234,59,50,0.16)'; pill.style.setProperty('--pill-rgb', '234,59,50'); }
+  if (pill) { pill.style.background = 'rgba(255,99,45,0.26)'; pill.style.setProperty('--pill-rgb', '234,59,50'); }
   if (plat) plat.textContent = clip.platLabel || 'Streaming';
 
   ssSyncAllSaveBtns();   // keep mobile per-clip save buttons in sync too
@@ -6126,7 +6126,7 @@ function _ssvClipHTML(c, i, mode) {
         <div class="ssv-caption">${caption}</div>
       </div>
 
-      <button class="ssv-watch" style="background:rgba(234,59,50,0.16); --ssv-rgb:234,59,50" onclick="ssOpenSheet(_ssvClips[${i}])">
+      <button class="ssv-watch" style="background:rgba(255,99,45,0.26); --ssv-rgb:234,59,50" onclick="ssOpenSheet(_ssvClips[${i}])">
         <div class="ssv-watch-inner">
           <div class="ssv-watch-text">
             <span class="ssv-watch-main">Watch It</span>
