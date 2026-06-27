@@ -282,6 +282,15 @@ body { background: var(--bg); }
 .up-vibe-emoji { font-size: 18px; flex-shrink: 0; }
 .up-vibe-label { font-size: 13px; font-weight: 600; color: var(--white); }
 .up-vibe-note { font-size: 12px; color: var(--gray2); margin-top: 16px; text-align: center; }
+.up-section-label { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--gray); margin-bottom: 10px; }
+.up-chip-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.up-chip {
+  font-size: 13px; font-weight: 600; color: var(--white); cursor: pointer;
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 100px;
+  padding: 8px 14px; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.up-chip:hover { border-color: rgba(255,255,255,0.18); }
+.up-chip.on { border-color: var(--red); background: rgba(234,59,50,0.10); color: var(--red); }
 
 /* ════════════════════════════════════════════════
    STEP 7 — Review & publish  (STEP 6 Cover reuses the .up-trim-* styles)
@@ -503,9 +512,12 @@ body { background: var(--bg); }
 
     <!-- STEP 5 — VIBE -->
     <div class="up-step" id="step-5">
-      <div class="up-eyebrow">Step 5 · The vibe</div>
-      <div class="up-title">Set the <em>mood</em></div>
-      <p class="up-sub">Pick up to <strong>3</strong> vibes. This helps the right people find your clip — and keeps discovery clean (no spammy hashtags here).</p>
+      <div class="up-eyebrow">Step 5 · Genre &amp; vibe</div>
+      <div class="up-title">What is it, and how does it <em>feel?</em></div>
+      <p class="up-sub">Pick up to <strong>3</strong> genres and up to <strong>3</strong> vibes. Structured signals — no spammy hashtags — so the right people find your clip.</p>
+      <div class="up-section-label">Genre</div>
+      <div class="up-chip-grid" id="up-genre-grid"></div>
+      <div class="up-section-label" style="margin-top:18px;">Vibe</div>
       <div class="up-vibe-grid" id="up-vibe-grid"></div>
       <div class="up-vibe-note" id="up-vibe-note">Optional, but it really helps your clip travel.</div>
     </div>
@@ -661,6 +673,7 @@ const draft = {
                       // persisted onto content_titles.curator_platform_ids at save/publish (Req 3.1).
   pitch: '',
   vibes: [],
+  genres: [],         // curator-picked genres (up to 3) → meta.genres at publish
   coverTime: 0,       // Cover frame (Req 8): OFFSET INTO THE PUBLISHED (trimmed) clip in
                       // seconds. Default 0 = first frame (Req 8.3). Stored at insert as
                       // meta.cover_time; the mux-webhook (task 12.3) renders it as a Mux
@@ -688,6 +701,7 @@ const draft = {
    Title search now hits the real `titles` table over Supabase (see STEP 3) —
    the mock SHOW_CATALOG was removed with task 14.3. */
 const VIBES = SSData.vibes;
+const GENRES = SSData.genres;
 
 const PITCH_PROMPTS = SSData.pitchPrompts;
 
@@ -821,7 +835,7 @@ function syncFooter() {
     else if (v.inSweetSpot)  fb.innerHTML = 'Perfect length ✓';
     else                     fb.innerHTML = `<em>${v.length}</em> / ${window.SS_PITCH_MAX}`;
   }
-  else if (step === 5) fb.innerHTML = draft.vibes.length ? `<em>${draft.vibes.length}</em> vibe${draft.vibes.length>1?'s':''} selected` : 'Optional — pick up to 3';
+  else if (step === 5) { const g = draft.genres.length, v = draft.vibes.length; fb.innerHTML = (g||v) ? `<em>${g}</em> genre${g!==1?'s':''} · <em>${v}</em> vibe${v!==1?'s':''}` : 'Optional — pick genres &amp; vibes'; }
   else if (step === 6) {
     const ct = (typeof draft.coverTime === 'number' && isFinite(draft.coverTime) && draft.coverTime > 0) ? draft.coverTime : 0;
     fb.innerHTML = ct > 0 ? `Cover at <em>${fmtTrimTime(ct)}</em>` : 'Using the first frame';
@@ -1680,6 +1694,19 @@ function buildVibes() {
   document.getElementById('up-vibe-grid').innerHTML = VIBES.map(([e,l]) =>
     `<div class="up-vibe" data-vibe="${l}" onclick="toggleVibe(this,'${l}')"><span class="up-vibe-emoji">${e}</span><span class="up-vibe-label">${l}</span></div>`).join('');
 }
+function buildGenres() {
+  document.getElementById('up-genre-grid').innerHTML = GENRES.map(g =>
+    `<div class="up-chip" data-genre="${g}" onclick="toggleGenre(this,'${g}')">${g}</div>`).join('');
+}
+function toggleGenre(el, label) {
+  const i = draft.genres.indexOf(label);
+  if (i >= 0) { draft.genres.splice(i,1); el.classList.remove('on'); }
+  else {
+    if (draft.genres.length >= 3) { ssToast('Pick up to 3 genres'); return; }
+    draft.genres.push(label); el.classList.add('on');
+  }
+  syncFooter();
+}
 function toggleVibe(el, label) {
   const i = draft.vibes.indexOf(label);
   if (i >= 0) { draft.vibes.splice(i,1); el.classList.remove('on'); }
@@ -1920,6 +1947,7 @@ function buildReview() {
     n ? draft.selectedTitles.map(t => t.year ? `${t.name} (${t.year})` : t.name).join(' · ') : '';
   document.getElementById('up-review-pitch').textContent = draft.pitch || 'No pitch written';
   document.getElementById('up-review-vibes').innerHTML =
+    draft.genres.map(g => `<span class="up-review-vibe">${g}</span>`).join('') +
     draft.vibes.map(v => `<span class="up-review-vibe">${v}</span>`).join('');
 
   // Attestation step (Req 1.1/1.6): collected only for a REAL publish (fresh or
@@ -2168,6 +2196,9 @@ async function publish() {
     // Vibes (Req 3): canonical meta.vibes string[] — always an array, never null.
     // Matches ssDraftToRow / ssRowToDraft / ssBuildEditPatch so resume + edit round-trip.
     vibes: Array.isArray(draft.vibes) ? draft.vibes.slice() : [],
+    // Genres (curator-picked, up to 3) → meta.genres string[]. Surfaced on clips
+    // by ssMapContentRowsToClips / ssLoadMyClips as clip.genre.
+    genres: Array.isArray(draft.genres) ? draft.genres.slice() : [],
     // Cover (Req 8.2/8.3): timestamp into the PUBLISHED clip. The mux-webhook builds
     // thumbnail.jpg?time=<cover_time> once the playback id exists. Finite >= 0;
     // default 0 = first frame when the curator didn't scrub.
@@ -2755,6 +2786,7 @@ async function enterEditMode(contentId) {
 ════════════════════════════════════════════════ */
 buildProgress();
 buildVibes();
+buildGenres();
 buildPrompts();
 renderTitlesList('');
 

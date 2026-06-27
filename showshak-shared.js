@@ -1560,7 +1560,7 @@ async function ssHydrateStacks() {
           muxPlaybackId: c.mux_playback_id || null,
           poster: c.thumbnail_url || (c.mux_playback_id ? ssCoverThumbUrl(c.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
           platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
-          caption: c.description || '', genre: [], lang: meta.lang || '', fires: c.fires_count || 0,
+          caption: c.description || '', genre: Array.isArray(meta.genres) ? meta.genres.slice() : [], lang: meta.lang || '', fires: c.fires_count || 0,
           addedBy: it.added_by || null, addedByName: (it.adder && it.adder.username) || null,
           creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
       })
@@ -1594,7 +1594,7 @@ async function ssHydrateStacks() {
                 muxPlaybackId: rc.mux_playback_id || null,
                 poster: rc.thumbnail_url || (rc.mux_playback_id ? ssCoverThumbUrl(rc.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),
                 platColor: p.color || '#EA3B32', platLabel: p.name || '', platAbbr: p.abbr || '', platRgb: _ssHexToRgb(p.color) || '234,59,50',
-                caption: rc.description || '', genre: [], lang: meta.lang || '', fires: rc.fires_count || 0,
+                caption: rc.description || '', genre: Array.isArray(meta.genres) ? meta.genres.slice() : [], lang: meta.lang || '', fires: rc.fires_count || 0,
                 addedBy: rc.added_by || null, addedByName: rc.added_by_username || null,
                 creator: { name: cr.username || 'curator', letter: (cr.username||'C').charAt(0).toUpperCase(), bg: '#EA3B32' } };
             })
@@ -1850,7 +1850,7 @@ function ssMapContentRowsToClips(rows){
       id: row.id,
       title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
       caption: row.description||"", fires: row.fires_count||0, views: row.views_count||0,
-      genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
+      genre: Array.isArray(meta.genres) ? meta.genres.slice() : [], mood: mood, lang: meta.lang||"", season: meta.season||"",
       bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
       // Mux playback fields: null muxPlaybackId → GradientSurface fallback (Req 4.2, 4.4).
       muxPlaybackId: row.mux_playback_id || null,
@@ -3518,7 +3518,7 @@ async function ssLoadMyClips(){
         id: row.id, status: row.status, mine: true,
         title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
         caption: row.description||"", fires: row.fires_count||0, views: row.views_count||0,
-        genre: [], mood: mood, lang: meta.lang||"", season: meta.season||"",
+        genre: Array.isArray(meta.genres) ? meta.genres.slice() : [], mood: mood, lang: meta.lang||"", season: meta.season||"",
         bg: meta.bg||"linear-gradient(160deg,#1a0505,#2d0808,#0d0d0d,#000)",
         muxPlaybackId: row.mux_playback_id || null,
         poster: row.thumbnail_url || (row.mux_playback_id ? ssCoverThumbUrl(row.mux_playback_id, (typeof meta.cover_time === 'number' && meta.cover_time > 0) ? meta.cover_time : undefined) : null),

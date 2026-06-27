@@ -193,19 +193,37 @@
      CORE 5 — STATIC TAXONOMIES  (moods / vibes / prompts)
   ════════════════════════════════════════════════ */
   const MOODS = [
-    { label: 'Edge of My Seat', cls: 'mood-edge'     },
-    { label: 'Feel Good',       cls: 'mood-feelgood' },
-    { label: 'Want to Cry',     cls: 'mood-cry'      },
-    { label: 'Date Night',      cls: 'mood-date'     },
-    { label: 'Mind-Bending',    cls: 'mood-mind'     },
-    { label: 'Family Night',    cls: 'mood-family'   },
-    { label: 'Late Night',      cls: 'mood-night'    },
-    { label: 'Laugh Out Loud',  cls: 'mood-laugh'    },
+    { label: 'Edge of My Seat',       cls: 'mood-edge'       },
+    { label: 'Feel Good',             cls: 'mood-feelgood'   },
+    { label: 'Want to Cry',           cls: 'mood-cry'        },
+    { label: 'Date Night',            cls: 'mood-date'       },
+    { label: 'Mind-Bending',          cls: 'mood-mind'       },
+    { label: 'Family Night',          cls: 'mood-family'     },
+    { label: 'Late Night',            cls: 'mood-night'      },
+    { label: 'Laugh Out Loud',        cls: 'mood-laugh'      },
+    { label: 'Adrenaline Rush',       cls: 'mood-adrenaline' },
+    { label: 'Cozy Comfort',          cls: 'mood-cozy'       },
+    { label: 'Dark & Gritty',         cls: 'mood-dark'       },
+    { label: 'Based on a True Story', cls: 'mood-true'       },
+    { label: 'Nostalgia',             cls: 'mood-nostalgia'  },
+    { label: 'Scare Me',              cls: 'mood-scare'      },
+    { label: 'Hopeless Romantic',     cls: 'mood-romantic'   },
+    { label: 'Thought-Provoking',     cls: 'mood-think'      },
   ];
 
+  // Upload vibe picker (emoji + label). Mirrors MOODS labels 1:1.
   const VIBES = [
     ['🍿', 'Edge of My Seat'], ['☀️', 'Feel Good'], ['😭', 'Want to Cry'], ['❤️', 'Date Night'],
     ['🤯', 'Mind-Bending'], ['👨‍👩‍👧', 'Family Night'], ['🌙', 'Late Night'], ['😂', 'Laugh Out Loud'],
+    ['🔥', 'Adrenaline Rush'], ['🛋️', 'Cozy Comfort'], ['🌑', 'Dark & Gritty'], ['📖', 'Based on a True Story'],
+    ['🕰️', 'Nostalgia'], ['😱', 'Scare Me'], ['💘', 'Hopeless Romantic'], ['🧠', 'Thought-Provoking'],
+  ];
+
+  // Genres — the structured "what kind of show" signal, picked by the curator at
+  // upload (distinct from MOODS/vibes, which are "how it feels").
+  const GENRES = [
+    'Action', 'Thriller', 'Crime', 'Drama', 'Comedy', 'Romance', 'Sci-Fi', 'Horror',
+    'Mystery', 'Fantasy', 'Adventure', 'Documentary', 'Family', 'Anime', 'Historical', 'Reality',
   ];
 
   const PITCH_PROMPTS = [
@@ -341,6 +359,7 @@
     catalog: CATALOG,
     moods: MOODS,
     vibes: VIBES,
+    genres: GENRES,
     pitchPrompts: PITCH_PROMPTS,
     platformFilterOrder: PLATFORM_FILTER_ORDER,
     // projections (page-shaped)

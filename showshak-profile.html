@@ -1543,7 +1543,15 @@ function renderCreds() {
     switch (k) {
       case 'following':   return (typeof ssGetFollowing === 'function') ? ssGetFollowing().length : 0;
       case 'stacks':      return (typeof ssGetStacks === 'function') ? ssGetStacks().length : 0;
-      case 'clipsPosted': return getMyClips().length || _cachedClipsCount || 0;   // real once loaded; cached count for the instant first paint
+      case 'clipsPosted':
+        // Signed-in owner: the DB list is authoritative once loaded; before that
+        // use the prewarm head-count (accurate) rather than the partial session
+        // mirror (which holds only THIS session's uploads → would wrongly show 1).
+        if (typeof isSignedInOwn === 'function' && isSignedInOwn()) {
+          if (_myClipsCache) return _myClipsCache.length;
+          return _cachedClipsCount || getMyClips().length || 0;
+        }
+        return getMyClips().length || _cachedClipsCount || 0;
       case 'followers':   return PROFILE.followers || 0;   // real count cached by fetchOwnFollowers(); 0 for a new user
       default:            return PROFILE[k] || 0;
     }
@@ -2842,6 +2850,7 @@ async function hydrateMyClipsFromDB() {
     if (typeof ssWriteMyProfileCache === 'function') ssWriteMyProfileCache({ clips_count: _myClipsCache.length });   // refresh instant-paint cache
     // Re-render every surface that reads getMyClips() so the real status,
     // count, and grid replace the stale session mirror.
+    renderCreds();
     renderWall();
     renderTabs();
     renderCreate();
