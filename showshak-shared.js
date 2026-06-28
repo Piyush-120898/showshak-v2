@@ -4694,8 +4694,8 @@ const ClipEngine = {
      Feed and the fullscreen viewer recycle identically through one engine
      (Req 2.7). Re-points freed surfaces onto entering clips instead of
      destroy-and-recreate; never branches on surface type. */
-  pruneInlineSurfaces(activeIdx) {
-    _poolRecycle(activeIdx, 'INLINE');
+  pruneInlineSurfaces(activeIdx, direction) {
+    _poolRecycle(activeIdx, 'INLINE', direction);
   },
 };
 // Expose globally so inline onclick handlers (rail flame) resolve it.
@@ -5232,7 +5232,13 @@ function _inlineSetupObserver(container) {
         entry.target.classList.add('active');
         const idx = parseInt(entry.target.dataset.ssIdx, 10);
         if (!isNaN(idx)) {
-          ClipEngine.pruneInlineSurfaces(idx);   // mount the band around the new active, drop the rest (Req 9.5)
+          // Derive scroll direction BEFORE pruning: pruneInlineSurfaces runs
+          // before setActive, so _inlineActiveIdx still holds the PREVIOUS
+          // active index here (feed-scroll-stutter-fix Req 2.x).
+          const dir = (idx > _inlineActiveIdx) ? 'down'
+                    : (idx < _inlineActiveIdx) ? 'up'
+                    : undefined;                 // re-entry / same clip → no bias change
+          ClipEngine.pruneInlineSurfaces(idx, dir); // mount the band around the new active, drop the rest (Req 9.5)
           ClipEngine.setActive(idx, 'INLINE');
           _inlineMaybeLoadNext(idx);             // sliding-window fetch at the +6 leading edge (Req 9.3)
         }
@@ -6755,14 +6761,18 @@ function _ssvWireClip(i) {
    end up in a worse state than the previous prune. host = 'INLINE' | 'FULLSCREEN'
    selects the per-host state arrays + DOM id scheme; behavior is identical
    across both through the single engine (Req 2.7, 10.1). */
-function _poolRecycle(activeIdx, host) {
+function _poolRecycle(activeIdx, host, direction) {
   var isInline = (host === 'INLINE');
   var clips    = isInline ? _inlineClips    : _ssvClips;
   var surfaces = isInline ? _inlineSurfaces : _ssvSurfaces;
   var bars     = isInline ? _inlineBars     : _ssvBars;
   var a = (activeIdx == null) ? (isInline ? _inlineActiveIdx : _ssvActiveIdx) : activeIdx;
 
-  var band = ssMountedPlayerSet(a, clips.length, SS_MAX_LIVE_PLAYERS);
+  // Direction-aware ahead-bias (feed-scroll-stutter-fix): ON by default; founder
+  // can revert on-device with localStorage ss_ff_aheadband='off' (→ original
+  // one-behind band F). FULLSCREEN never passes a direction.
+  var dir = (isInline && !_ssFeatureOff('aheadband')) ? direction : undefined;
+  var band = ssMountedPlayerSet(a, clips.length, SS_MAX_LIVE_PLAYERS, dir);
   var bandSet = new Set(band);
 
   // Current mounted clip indices.
@@ -8284,16 +8294,45 @@ function ssShouldFetchNextWindow(activeIdx, windowStart, totalLoaded, inFlight) 
 }
 
 /**
- * ssMountedPlayerSet(activeIdx, totalLoaded, maxLive) — the bounded set of clip
- * indices whose surface should stay mounted: a sliding band around the active
- * index (one behind, the rest ahead) of size at most maxLive (Req 9.5).
+ * ssMountedPlayerSet(activeIdx, totalLoaded, maxLive, direction) — the bounded
+ * set of clip indices whose surface should stay mounted: a sliding band around
+ * the active index of size at most maxLive (Req 9.5).
  * Returns a sorted array of in-range indices; size is always ≤ maxLive.
+ *
+ * @param {number} activeIdx   index of the currently-active clip
+ * @param {number} totalLoaded number of loaded clips
+ * @param {number} maxLive     live-player cap (falls back to SS_MAX_LIVE_PLAYERS)
+ * @param {string} [direction] OPTIONAL scroll direction: 'down' biases the band
+ *   ahead (pre-mounts activeIdx + 1), 'up' biases behind. When omitted or
+ *   unrecognised the band keeps the ORIGINAL one-behind bias (start = activeIdx
+ *   - 1) and is byte-identical to the original 3-arg helper.
+ *
+ * Bug_Condition (feed-scroll-stutter-fix design): under cap = 2 the original
+ *   one-behind band { activeIdx - 1, activeIdx } never contains the travel-
+ *   direction neighbour, so the next clip cold-starts and stalls on iOS.
+ * Expected_Behavior: with a recognised direction the band pre-mounts the next
+ *   clip in the direction of travel (down → ahead-heavy, up → behind-heavy)
+ *   while keeping activeIdx mounted and size ≤ maxLive.
+ * Preservation: omitting/unrecognising direction reproduces the original F
+ *   exactly (Property 3); the totality, bounds and ordering invariants hold for
+ *   all inputs (Property 2). See design.md "Fix Implementation".
  */
-function ssMountedPlayerSet(activeIdx, totalLoaded, maxLive) {
+function ssMountedPlayerSet(activeIdx, totalLoaded, maxLive, direction) {
   var cap = (maxLive && maxLive > 0) ? maxLive : SS_MAX_LIVE_PLAYERS;
   if (!totalLoaded || totalLoaded <= 0 || activeIdx < 0 || activeIdx >= totalLoaded) return [];
   var band = Math.min(cap, totalLoaded);
-  var start = activeIdx - 1;                      // bias one behind the active clip
+  // ── Direction-aware initial bias ──────────────────────────────
+  var start;
+  if (direction !== 'down' && direction !== 'up') {
+    start = activeIdx - 1;                        // PRESERVATION: original F bias (one behind)
+  } else {
+    var neighbours = band - 1;                    // slots other than the active clip
+    var behind = (direction === 'down')
+      ? Math.floor(neighbours / 2)                // ahead-heavy: ahead gets the ceil
+      : Math.ceil(neighbours / 2);                // behind-heavy: behind gets the ceil
+    start = activeIdx - behind;
+  }
+  // ── Shared clamp (IDENTICAL to original F) ────────────────────
   if (start + band > totalLoaded) start = totalLoaded - band;  // fit against the end
   if (start < 0) start = 0;
   // Guarantee the active clip is inside [start, start+band) so it stays mounted.
