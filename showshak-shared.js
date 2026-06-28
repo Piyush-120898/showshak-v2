@@ -4942,11 +4942,7 @@ function _inlineClipHTML(c, i) {
         </div>
       </div>
       <div class="fire-burst" id="burst-${i}">
-        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path fill="#EA3B32" d="M40 6C40 6 26 22 26 34a14 14 0 0 0 28 0c0-5.5-2.8-11-5-15C46 24 47 30 43 34c-1.5 2-3 3-3 3S32 32 32 26c0-8 8-20 8-20z"/>
-          <path fill="#FF4D42" d="M40 46c-7.7 0-14 6.3-14 14s6.3 14 14 14 14-6.3 14-14-6.3-14-14-14z"/>
-          <circle cx="40" cy="60" r="6" fill="#FFB800" opacity="0.7"/>
-        </svg>
+        <svg width="110" height="110" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
       </div>
       <div class="mobile-action-rail" id="m-rail-${i}">
         <div class="m-act-btn" id="m-lit-${i}" onclick="event.stopPropagation(); ClipEngine.fire(${i}, null, null, 'INLINE')">
