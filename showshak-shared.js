@@ -5079,6 +5079,21 @@ function _inlineTogglePause(idx) {
   }
 }
 
+/* ssNonActivePlayers(activeIdx, count) — PURE (DOM-free, Node-testable). The set
+   of mounted-surface indices in [0, count) that are NOT the active clip, i.e. the
+   surfaces that MUST be paused so only the active clip can ever play (the
+   "background-autoplay" fix; design: feed-scroll-stutter-fix follow-up). When
+   activeIdx is out of range (e.g. -1 = no active clip) EVERY index is returned, so
+   the caller pauses everything (nothing should play without an active clip). Total
+   and deterministic: a non-finite/<=0 count → []. Never throws. */
+function ssNonActivePlayers(activeIdx, count) {
+  var out = [];
+  var n = (typeof count === 'number' && isFinite(count)) ? Math.floor(count) : 0;
+  if (n <= 0) return out;
+  for (var i = 0; i < n; i++) if (i !== activeIdx) out.push(i);
+  return out;
+}
+
 /* Solo the active clip: PAUSE + mute every mounted surface EXCEPT the active one.
    This is the "only the clip you're looking at ever plays" invariant. Muting
    alone is NOT enough: a non-active <mux-player> that is still PLAYING (e.g. its
@@ -5094,14 +5109,32 @@ function _inlineTogglePause(idx) {
    Host-agnostic (pass the host's surface array). */
 function _ssMuteOthers(surfaces, activeIdx) {
   if (!Array.isArray(surfaces)) return;
-  for (var i = 0; i < surfaces.length; i++) {
-    if (i === activeIdx) continue;
-    var s = surfaces[i];
+  var idxs = ssNonActivePlayers(activeIdx, surfaces.length);
+  for (var j = 0; j < idxs.length; j++) {
+    var s = surfaces[idxs[j]];
     if (!s) continue;
     // Pause FIRST (also clears the autoplay attribute via the surface's pause())
     // so the element can never grab a playback slot, then mute as a backstop.
     if (typeof s.pause === 'function')    { try { s.pause(); } catch (e) {} }
     if (typeof s.setMuted === 'function') { try { s.setMuted(true); } catch (e) {} }
+  }
+}
+
+/* _ssEnforceSoloPlay(surfaces, activeIdx) — structural guarantee that ONLY the
+   active surface may retain play-intent. Pauses every OTHER mounted surface, which
+   also clears its autoplay attribute (see VideoSurface.pause), so a pre-buffered
+   ahead clip — now mounted by the direction-aware band (feed-scroll-stutter-fix)
+   — can be READY but never PLAYING ("plays from the middle" / background-autoplay
+   bug). Unlike _ssMuteOthers it does NOT mute (the activation path owns the active
+   clip's sound; non-active surfaces are paused so audibility is moot) — keeping the
+   side-effects minimal on the heavily-recycled feed path. Never touches the active
+   surface. Host-agnostic; never throws. */
+function _ssEnforceSoloPlay(surfaces, activeIdx) {
+  if (!Array.isArray(surfaces)) return;
+  var idxs = ssNonActivePlayers(activeIdx, surfaces.length);
+  for (var j = 0; j < idxs.length; j++) {
+    var s = surfaces[idxs[j]];
+    if (s && typeof s.pause === 'function') { try { s.pause(); } catch (e) {} }
   }
 }
 
@@ -6901,6 +6934,20 @@ function _poolRecycle(activeIdx, host, direction) {
   // the preload ladder + resolution cap for the new band (only the active clip
   // is 'auto'; circuit-open forces non-active to 'none').
   _ssApplyPreloadTiers(host);
+
+  // SOLO-PLAY INVARIANT (background-autoplay fix). The direction-aware band now
+  // keeps the AHEAD clip mounted + pre-buffered so scrolling is instant — but a
+  // pre-buffered, recycled <mux-player> can carry a stale autoplay attribute /
+  // play-intent and start playing muted off-screen, so you arrive mid-clip ("plays
+  // from the middle"). After every re-point, force the invariant: only the
+  // INCOMING active surface (`a`, which setActive plays next) may play; pause every
+  // other mounted surface, which also clears any stale autoplay attribute. This is
+  // belt-and-braces with setActive's _ssMuteOthers and, crucially, also covers
+  // fast-scroll (an intermediate clip briefly activated then left armed) and the
+  // late-`canplay` window after a clip finishes buffering. Pausing preserves the
+  // buffered first frame, so the ahead clip stays READY (the stutter fix is
+  // intact). Gated ss_ff_soloplay (default ON) for on-device reversibility.
+  if (!_ssFeatureOff('soloplay')) _ssEnforceSoloPlay(surfaces, a);
 }
 
 /* _ssvPruneSurfaces(activeIdx) — FULLSCREEN host entry point, now delegating to
@@ -8210,6 +8257,13 @@ function VideoSurface(clip, opts) {
       ended = false; errored = false; wantPlay = false;
       onTick = []; onMute = []; onPlay = []; _playing = false;   // engine rebinds for the new clip
       if (!el) { return this.mount(container); } // nothing to reuse → mount fresh
+      // A re-pointed surface is, by definition, a freshly-assigned NON-active slot.
+      // The `autoplay` attribute survives a re-point (it is intentionally set on the
+      // ELEMENT to survive a custom-element upgrade — see play()), so clearing
+      // wantPlay alone is not enough: the pooled element could auto-play the NEW
+      // clip muted in the background. Clear all play-intent now so a recycled slot
+      // never self-starts; the engine arms playback explicitly via setActive.
+      try { el.autoplay = false; el.removeAttribute('autoplay'); if (typeof el.pause === 'function') el.pause(); } catch (e) {}
       // Poster-first paint for the NEW clip before the stream swaps.
       if (clip.poster) el.setAttribute('poster', clip.poster);
       else { el.removeAttribute('poster'); if (container) container.style.background = clip.bg || '#000'; }
@@ -9286,9 +9340,14 @@ function ssPublicSignalsOnly(record) {
   var keys = Object.keys(record);
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
-    if (SS_SCOREBOARD_DENYLIST.indexOf(k) === -1) {
-      out[k] = record[k];
-    }
+    // Scoreboard fields → drop (HIDE THE SCOREBOARD).
+    if (SS_SCOREBOARD_DENYLIST.indexOf(k) !== -1) continue;
+    // Prototype-pollution / unsafe keys → drop. These are never real public
+    // signals, and assigning out[k] for k='__proto__' would silently hit the
+    // inherited setter (mutating the prototype) instead of creating an own key.
+    // Skipping them keeps the sanitized cache payload safe AND own-key-faithful.
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    out[k] = record[k];
   }
   return out;
 }
@@ -9912,6 +9971,7 @@ if (typeof window !== 'undefined') {
   window.ssMuteRoundTrip = ssMuteRoundTrip;
   window.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   window.ssMountedPlayerSet = ssMountedPlayerSet;
+  window.ssNonActivePlayers = ssNonActivePlayers;
   window.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   window.ssPoolPlan = ssPoolPlan;
   window.ssNetworkTier = ssNetworkTier;
@@ -9958,6 +10018,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssResolveCuratorViewModel = ssResolveCuratorViewModel;
   module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
+  module.exports.ssNonActivePlayers = ssNonActivePlayers;
   module.exports.ssShouldShowTapToPlay = ssShouldShowTapToPlay;
   module.exports.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   module.exports.ssPoolPlan = ssPoolPlan;

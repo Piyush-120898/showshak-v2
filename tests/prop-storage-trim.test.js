@@ -85,7 +85,7 @@ try {
     assert(Array.isArray(plan.evict) && Array.isArray(plan.keep),
       `plan.evict and plan.keep must be arrays: got ${show(plan)}`);
 
-    const byKey = {};
+    const byKey = Object.create(null);
     entries.forEach((e) => { byKey[e.key] = e; });
     const inputKeys = entries.map((e) => e.key);
 
@@ -96,8 +96,8 @@ try {
     assert(keepSet.size === plan.keep.length, `duplicate key in keep: ${show(plan.keep)}`);
     assert(plan.evict.length + plan.keep.length === inputKeys.length,
       `partition size mismatch: |evict|=${plan.evict.length} + |keep|=${plan.keep.length} != |input|=${inputKeys.length}`);
-    for (const k of plan.evict) assert(byKey.hasOwnProperty(k), `evicted unknown key ${show(k)}`);
-    for (const k of plan.keep) assert(byKey.hasOwnProperty(k), `kept unknown key ${show(k)}`);
+    for (const k of plan.evict) assert(Object.prototype.hasOwnProperty.call(byKey, k), `evicted unknown key ${show(k)}`);
+    for (const k of plan.keep) assert(Object.prototype.hasOwnProperty.call(byKey, k), `kept unknown key ${show(k)}`);
     for (const k of inputKeys) {
       assert(evictSet.has(k) !== keepSet.has(k),
         `key ${show(k)} must be in exactly one of evict/keep`);

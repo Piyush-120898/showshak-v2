@@ -61,13 +61,21 @@ const DENYLIST = [
 ];
 const DENYSET = new Set(DENYLIST);
 
+/* ── Prototype-pollution / unsafe keys. These are never real public signals and
+   the gate drops them (assigning out['__proto__'] would hit the inherited setter,
+   not create an own key). Excluded from generators + dropped by the oracle so the
+   test mirrors the product contract exactly. ──────────────────────────────────── */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /* ── Oracle: faithfully recompute the documented contract without reaching into
-   module internals. Non-object → {}; otherwise shallow copy minus denylist. ──── */
+   module internals. Non-object → {}; otherwise shallow copy minus denylist and
+   the unsafe (prototype-pollution) keys. ─────────────────────────────────────── */
 function sanitizeOracle(record) {
   if (record === null || typeof record !== 'object' || Array.isArray(record)) return {};
   const out = {};
   for (const k of Object.keys(record)) {
-    if (!DENYSET.has(k)) out[k] = record[k];
+    if (DENYSET.has(k) || UNSAFE_KEYS.has(k)) continue;
+    out[k] = record[k];
   }
   return out;
 }
@@ -103,9 +111,11 @@ const publicVal = fc.oneof(
 const scoreboardVal = fc.integer({ min: 0, max: 1000000 });
 
 // An arbitrary extra key that is guaranteed NOT to be on the denylist (so it
-// represents an additional public/neutral field that must be preserved).
+// represents an additional public/neutral field that must be preserved). Unsafe
+// prototype-pollution keys are excluded — they are not public signals and are
+// dropped by the gate (see UNSAFE_KEYS).
 const extraNeutralKey = fc.string({ minLength: 1, maxLength: 12 })
-  .filter((k) => typeof k === 'string' && k.length > 0 && !DENYSET.has(k));
+  .filter((k) => typeof k === 'string' && k.length > 0 && !DENYSET.has(k) && !UNSAFE_KEYS.has(k));
 
 // A record holding ONLY public/neutral fields (no scoreboard).
 const publicOnlyRecord = fc.dictionary(
@@ -181,7 +191,7 @@ if (typeof ss.ssPublicSignalsOnly !== 'function') {
     fc.assert(fc.property(fc.oneof(publicOnlyRecord, mixedRecord), (record) => {
       const out = ss.ssPublicSignalsOnly(record);
       for (const k of Object.keys(record)) {
-        if (DENYSET.has(k)) continue;            // scoreboard → must be gone
+        if (DENYSET.has(k) || UNSAFE_KEYS.has(k)) continue;  // scoreboard/unsafe → must be gone
         assert(Object.prototype.hasOwnProperty.call(out, k),
           `Public_Signal "${k}" was dropped from ${show(out)} (input ${show(record)})`);
         assert(snapshot(out[k]) === snapshot(record[k]),
@@ -195,7 +205,7 @@ if (typeof ss.ssPublicSignalsOnly !== 'function') {
   prop('Property 3c: mixed record keeps public fields (never skipped/emptied)', () => {
     fc.assert(fc.property(mixedRecord, (record) => {
       const out = ss.ssPublicSignalsOnly(record);
-      const expectedPublicKeys = Object.keys(record).filter((k) => !DENYSET.has(k));
+      const expectedPublicKeys = Object.keys(record).filter((k) => !DENYSET.has(k) && !UNSAFE_KEYS.has(k));
       // The mixed record had ≥1 public field by construction; the result must keep them.
       assert(Object.keys(out).length === expectedPublicKeys.length,
         `mixed record should keep ${expectedPublicKeys.length} public field(s), ` +
