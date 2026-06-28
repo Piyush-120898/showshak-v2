@@ -128,7 +128,8 @@
     - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
     - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
     - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
-    - SUITE: 89 files green; migrations 0001–0031 applied (0030 reserved for DMCA Phase 2)
+    - SUITE: 89 files green; migrations 0001–0032 applied (0030 reserved for DMCA Phase 2;
+      0032 = YouTube removed from the platform catalog — APPLIED)
     - feed-clip-load-performance ✓ (A-grade feed clip-load + caching pipeline;
       9 prop-feed-* properties; the heavy prefetch/SW-cache pieces are OPT-IN —
       see SESSION LOG; the iOS feed-stall root cause = unbounded player mount, fixed)
@@ -146,12 +147,74 @@
     - felt-quality follow-ups ✓ (clip vignette lightened — clip now reads as the foreground,
       not a dimmed backdrop; profile follower/clip-count stats prefetched into the prewarm
       cache so they paint INSTANTLY on landing; CACHE_VERSION v32 — see SESSION LOG)
+    - iOS autoplay stall FIX ✓ (v39) — SS_MAX_LIVE_PLAYERS 4 → 2; killed the iOS native-HLS
+      decoder-contention "stuck on first frame" bug. SACRED cap — never raise. (see SESSION LOG)
+    - genre + expanded moods ✓ (v34) — upload Step 5 "Genre & Vibe": 16 genres + 16 moods;
+      meta.genres (no migration), surfaced across feed/discover/profile/stacks; new mood pill
+      colors (v35). Post-publish genre edit NOT wired yet.
+    - Watch It restyle ✓ (v36-v38) — transparent fire-orange + platform-blind; Follow/Following
+      tags transparent + orange-hint.
+    - clip-count bug FIX ✓ (v34); clip brightness FIX ✓ (v40-v41, brightness on .clip-media/.ssv-media);
+      feed fire-burst icon matched to viewer ✓ (v42).
+    - INVESTOR PITCH DECK ✓ — showshak-pitch-deck.html (15-slide on-brand HTML deck; LIVE/public).
+    - prefetch-cache-pipeline SPEC ✓ (requirements DONE + analysis-clean; design/tasks NOT yet;
+      spec files UNCOMMITTED) — the next big build. (see NEXT STEP)
 
 
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (feed-follows SHIPPED + felt-quality follow-ups; suite 73 → 89 files green) ──
+  ── MOST RECENT (UX polish sweep + iOS autoplay fix + genre/moods + pitch deck + prefetch spec;
+     CACHE_VERSION v32 → v42; suite stays 89 files green; NO new shared.js property tests this
+     session — changes were CSS/markup/config + a profile.html bug fix + the genre data plumbing) ──
+    CONTEXT: a fast iterative on-device polish + strategy session. Headline wins: the iOS autoplay
+    stall is FINALLY fixed (founder-confirmed on device); genre selection + a bigger mood set landed
+    in upload; the Watch It button was restyled platform-blind; an investor PITCH DECK was built; and
+    the next big build — prefetch-cache-pipeline — was scoped to requirements (analysis-clean).
+
+    • iOS AUTOPLAY STALL — FIXED (v39, commit 020ab7e). Symptom: feed clips stuck on first frame/poster
+      on iOS (feed-open + scroll), "2-3 paused then one plays"; iOS-only. Deep code+web investigation
+      found the ROOT CAUSE: SS_MAX_LIVE_PLAYERS=4 mounted 4 <mux-player>s at once; iOS native HLS
+      (AVPlayer) has a hard simultaneous-decode limit → active clip couldn't get a decoder; the pool
+      freed decoders as you scrolled, hence "eventually one plays". FIX = cap 4 → 2 (uses the existing
+      tested pool; one behaviour both platforms; reversible). FOUNDER CONFIRMED FIXED. ⚠ Cap is SACRED.
+      If it ever regresses, the deeper fix is "active-only decoder" (release the HLS source on
+      non-active surfaces) — do it as a guarded phase, never by raising the cap.
+    • GENRE + MOODS (v34-v35). Upload Step 5 is now "Genre & Vibe": GENRES (16, new) above VIBES
+      (moods 8 → 16). data/showshak-data.js now exports GENRES; VIBES/MOODS expanded. Stored in
+      meta.genres at publish (no migration), surfaced as clip.genre in ssMapContentRowsToClips +
+      ssLoadMyClips (+ the two shared-stack mappers). Discover got --mood-glow color sets for the 8
+      new pills (v35). KNOWN GAP: ssBuildEditPatch only carries vibes/cover_time, so editing genres
+      AFTER publish isn't wired (existing genres are PRESERVED via the meta merge). Low priority.
+    • WATCH IT RESTYLE (v36-v38). Was filled with the platform brand color; now transparent fire-orange
+      rgba(255,99,45,0.26) + backdrop blur + the animated orange tracing border, across feed rail +
+      mobile + viewer. The platform-color fill (set inline by syncRail/_inlineClipHTML/the viewer
+      template) was removed. PLATFORM-BLIND: stripped the platform logo chip + "on <Platform>"
+      sublabel — platform now reveals ONLY in the Watch It sheet (more on-philosophy). Follow/Following
+      tags also transparent + orange-hint (.ssv-follow.is-following / .creator-follow.is-following).
+    • CLIP-COUNT BUG (v34). Profile "Clips" reset to 1 after an upload. TWO causes (multi-cause):
+      hydrateMyClipsFromDB never called renderCreds() (the creds strip never refreshed), AND the
+      'clipsPosted' count used the partial session mirror over the accurate DB/prewarm head-count.
+      Both fixed in showshak-profile.html.
+    • CLIP BRIGHTNESS (v40-v41). The feed clip felt dull. Discovered the inline FEED .clip-vignette was
+      never lightened with the viewer (still 0.80 while .ssv-vig was 0.62). Lightened feed scrim to
+      0.58/0.20 AND moved a real brightness(1.18) saturate(1.1) lift onto the media CONTAINER
+      (.clip-media / .ssv-media) so poster + video lift in one reliable pass (filtering the
+      <mux-player> host directly is flaky on iOS). One-number dial if it needs tuning.
+    • FIRE-BURST ICON (v42). Feed double-tap burst now uses the fullscreen viewer's two-path flame.
+    • v32 (clip vignette + instant profile stats) — was push-pending; confirmed pushed (commit 6bf864d).
+    • migration 0032_remove_youtube_platform.sql — APPLIED ✓ (deactivates YouTube from the catalog,
+      same pattern as 0027). Active catalog = 16 platforms (6 major + 9 regional + Crunchyroll).
+    • INVESTOR PITCH DECK — showshak-pitch-deck.html (15 slides, on-brand, ↑↓/space). LIVE & PUBLIC at
+      https://piyush-120898.github.io/showshak-v2/showshak-pitch-deck.html. Built from deep research on
+      Airbnb/Sequoia decks + how VCs read decks (avg ~2.5 min; one-sentence-forward test; show-don't-tell,
+      no negations). Market reframe captured in "points to keep in mind pitch wise.txt".
+    • NEW SPEC — prefetch-cache-pipeline (.kiro/specs/prefetch-cache-pipeline/): requirements DONE +
+      analysis-clean (14 reqs, EARS, 3 phases). The cache-layer architecture map (storage tiering,
+      SW strategies, cross-page prewarm, Speculation Rules, View Transitions) goes in the DESIGN doc
+      — NOT yet written. ⚠ spec files UNCOMMITTED. This is the next build (see NEXT STEP).
+
+  ── PREVIOUS (feed-follows SHIPPED + felt-quality follow-ups; suite 73 → 89 files green) ──
     CONTEXT: this session built and SHIPPED feed-follows — the cold-start lever that
     finally wires the follow graph into feed ordering — as a full spec
     (.kiro/specs/feed-follows/, requirements → design → tasks, executed task-by-task,
@@ -802,6 +865,7 @@
   (0030 is RESERVED for DMCA Phase 2 — not created yet.)
 
   STILL PENDING — ⚠️ TO FULLY LIGHT UP THE BETA COMPLIANCE SURFACES:
+  - (migration 0032 YouTube-removal — APPLIED ✓ this session; active catalog = 16 platforms.)
   - RUN supabase/seed/seed_policy_versions.sql in the Supabase SQL editor. It is
     READY TO RUN (real ToS/Privacy/Curator-Terms bodies inlined verbatim, dollar-
     quoted as $SS$). Idempotent. Until it runs, showshak-legal.html shows the
@@ -958,36 +1022,54 @@ clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
 The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
 "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v31 = feed-follows, commit 05afc86; v32 = felt-quality follow-ups
-[clip brightness + instant profile stats], PUSH-PENDING — confirm it's on main; migrations
-0001-0031 applied — 0030 is RESERVED for DMCA Phase 2, so consent uses 0031): the felt-quality +
-reliability sweep, watch-it-curator-availability, feed-clip-load-performance, server-side Mux trim,
-portrait lock, analytics/highlights/discover polish, DMCA Phase 1 + beta-consent-gate, PLUS this
-session's FEED-FOLLOWS ranker (below). Pure logic in showshak-shared.js, dual-exported +
-property-tested (node tests/run-all.js → now 89 files green).
+LIVE ON MAIN (CACHE_VERSION v42, last commit 2c0d59f; migrations 0001-0032 applied — 0030 RESERVED
+for DMCA Phase 2; 0032 = YouTube removed from the platform catalog, APPLIED): everything
+from prior sessions (felt-quality sweep, watch-it-curator-availability, feed-clip-load-performance,
+server-side Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate, feed-follows ranker, v32
+clip-brightness/instant-profile-stats) PLUS this session's iOS AUTOPLAY FIX, genre+moods upload,
+Watch It restyle, clip-count fix, brightness pass, burst-icon match, and the INVESTOR PITCH DECK
+(below). Pure logic in showshak-shared.js, dual-exported + property-tested (node tests/run-all.js →
+89 files green).
 
-SHIPPED THIS SESSION (founder-side ops noted in §7):
-  - feed-follows, spec .kiro/specs/feed-follows/ — THE COLD-START LEVER: the flat
-    newest-first feed is now a TIERED, TRUST-WEIGHTED feed: 1) new clips from curators
-    you follow → 2) other new clips → 3) followed curators' older popular clips →
-    4) global popular → 5) randomized rest. Pure ssRankFeed / ssSliceRankedPage /
-    ssFeedTier (Recency_Window 14d) / ssPopularityScore (fires*3 + views*1) + a seeded
-    PRNG (deterministic Tier 5 + stable pagination), 13 fast-check properties. Wired
-    behind the UNCHANGED ssLoadClips: candidate fetch → rank (cached once per feed
-    session) → slice → hydrate via the existing rich select. HIDE THE SCOREBOARD enforced
-    at the data layer (candidate query selects ONLY id/creator_id/created_at/fires_count/
-    views_count — never a private metric). Seen clips sink within their tier; empty-follow/
-    guest degrades to ~today's feed. ss_ff_ranker='off' kill switch + automatic flat-feed
-    fallback on ANY error. Seen-state in localStorage 'ss_seen_v1_<uid>' next to ssRecordView
-    — NO migration. 3 unit-feed-* shell tests. The TDD tests caught a BLANK-FEED bug (ranker
-    rejected the status-less candidate rows) before it shipped. SHIPPED to main, commit
-    05afc86, CACHE_VERSION v31. Frontend-only.
-  - felt-quality follow-ups (on-device feedback) → CACHE_VERSION v32 (PUSH-PENDING — confirm
-    on main): (1) clip vignette lightened (inline .clip-vignette + fullscreen .ssv-vig) so the
-    clip reads as the FOREGROUND, not a dimmed backdrop — bottom legibility scrim kept, top
-    tint removed; (2) profile follower/clip-count stats prefetched into the ssPrewarmProfile
-    cache so the creds strip paints REAL numbers INSTANTLY on landing (merge-safe cache,
-    revalidated by fetchOwnFollowers + hydrateMyClipsFromDB).
+SHIPPED THIS SESSION (all pushed to main; CACHE_VERSION v32 → v42):
+  - ★ iOS AUTOPLAY STALL FIXED (v39) — THE big one. Clips stuck on the first frame/poster on iOS
+    (on feed-open AND on scroll: "2-3 paused, then one plays"); iOS-only. ROOT CAUSE (confirmed in
+    code + matched to iOS behaviour): SS_MAX_LIVE_PLAYERS=4 mounted 4 <mux-player>s at once; iOS
+    uses NATIVE HLS (AVPlayer) which has a hard simultaneous-decode limit → the active clip couldn't
+    acquire a decoder. FIX = SS_MAX_LIVE_PLAYERS 4 → 2 (active + 1 neighbor). FOUNDER CONFIRMED FIXED
+    ON DEVICE. ⚠ SACRED: do NOT raise the cap; any clip prefetch must warm BYTES only, never extra
+    players. (Also rule out iOS Low Power Mode — it blocks autoplay entirely, separate from our code.)
+  - GENRE + EXPANDED MOODS in upload (v34) — Step 5 is now "Genre & Vibe": pick up to 3 GENRES (16,
+    NEW) above up to 3 VIBES (moods expanded 8 → 16). Stored in meta.genres (NO migration), surfaced
+    as clip.genre across feed/discover/profile/stacks (ssMapContentRowsToClips + ssLoadMyClips).
+    Discover got colored borders for the 8 new mood pills (v35). Taxonomies live in
+    data/showshak-data.js (GENRES, VIBES, MOODS). NOTE: editing genres POST-publish not wired yet.
+  - WATCH IT RESTYLE (v36-v38) — now TRANSPARENT with a warm fire-orange fill rgba(255,99,45,0.26) +
+    backdrop blur + the existing animated orange tracing border, across feed rail + mobile + viewer.
+    PLATFORM-BLIND: stripped the platform logo chip + "on <Platform>" sublabel (platform reveals only
+    in the Watch It sheet now — MORE on-philosophy). Follow/Following tags also transparent + orange-hint.
+  - CLIP-COUNT BUG FIXED (v34) — profile "Clips" reset to 1 after an upload. TWO causes:
+    hydrateMyClipsFromDB never re-rendered the creds strip (added renderCreds()), and the count
+    preferred the partial session mirror over the DB/prewarm head-count (now prefers the real count).
+  - CLIP BRIGHTNESS FIXED PROPERLY (v40-v41) — feed clip felt dull/like a background. The inline FEED
+    vignette had never been lightened alongside the viewer (still 0.80). FIX: feed scrim matched to
+    viewer (0.58/0.20) + a real brightness(1.18) saturate(1.1) lift moved onto the media CONTAINER
+    (.clip-media / .ssv-media) so poster AND video lift in one pass (filtering the container is
+    reliable on iOS; filtering the <mux-player> host was not). Brightness is a one-number dial.
+  - FEED FIRE-BURST ICON (v42) — the double-tap "fire" burst now matches the fullscreen viewer's
+    two-path flame (feed previously used a different 3-element icon).
+  - v32 felt-quality (clip vignette + instant profile stats) — was push-pending last session;
+    CONFIRMED pushed this session (commit 6bf864d).
+  - ★ INVESTOR PITCH DECK — showshak-pitch-deck.html: premium, self-contained, on-brand HTML deck
+    (15 slides; ↑↓/space nav). Cover A = current splash; Cover B (RECOMMENDED) tagline
+    "Discover · Trust · Watch It". Every figure sourced (2025-26) + cross-checked. LIVE & PUBLIC at
+    https://piyush-120898.github.io/showshak-v2/showshak-pitch-deck.html. Team = Piyush Gupta (B.Tech
+    IT + performance marketer who did lead-gen/sales for small businesses — framed "built by the
+    buyer"). Market math + revenue framing captured in "points to keep in mind pitch wise.txt" (§MARKET
+    REFRAME). NOT yet committed if you regenerate — it IS committed (in repo).
+  - ★ NEW ACTIVE SPEC — prefetch-cache-pipeline (.kiro/specs/prefetch-cache-pipeline/): requirements
+    DONE + analysis-clean (14 reqs, EARS, 3 phases). DESIGN not yet written — that is the next build
+    (see NEXT STEP). ⚠ The spec files are UNCOMMITTED (in the working tree) — commit them when you resume.
   - PREVIOUSLY SHIPPED (now LIVE on main — full detail in SESSION LOG §5): DMCA Phase 1
     (migration 0029 APPLIED) + beta-consent-gate (migration 0031 APPLIED + Anonymous sign-ins
     ENABLED). The founder-side beta-compliance ops are STILL PENDING — see NEXT STEP + §7.
@@ -997,26 +1079,27 @@ DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
 content.status='removed' in Supabase (RLS hides it everywhere).
 
 NEXT STEP (resume here):
-  FOUNDER-SIDE (only YOU can do — see §7; STILL PENDING from the DMCA/consent work, these
-  gate going WIDE to real users): (a) RUN supabase/seed/seed_policy_versions.sql in the
-  Supabase SQL editor so the beta shows the real policy text; (b) DEPLOY the DMCA intake fn:
-  supabase functions deploy submit-takedown --no-verify-jwt; (c) fill the [PLACEHOLDERS] in
-  legal/*.md (entity/emails/Grievance Officer) + book the IP-lawyer hour, then re-seed a new
-  version row to clear the counsel banner. Open question: the operating ENTITY (company vs
-  individual).
-  CONFIRM: push v32 (clip brightness + instant profile stats) to main if not already, and
-  reopen the installed PWA twice to pick it up.
-  BUILD (feed-follows is SHIPPED — watch it on-device with real follows). The feed only rewards
-  trust once users actually follow curators, so the next levers are about FILLING + SURFACING
-  the follow graph: (i) curator discovery / suggested-curators so users build follows;
-  (ii) a "new from curators you follow" surfacing/notification; (iii) tune the ranker
-  (Recency_Window 14d, popularity 3:1 weight, seen-state) once real beta data exists. Spec the
-  big ones (requirements → design → tasks), phase so the Feed never breaks.
+  FOUNDER-SIDE (only YOU can do): (a) migration 0032 (YouTube removal) — APPLIED ✓ this session;
+  (b) STILL PENDING before going wide (from the DMCA/consent work): RUN
+  supabase/seed/seed_policy_versions.sql, DEPLOY the intake fn (supabase functions deploy
+  submit-takedown --no-verify-jwt), fill legal/*.md [PLACEHOLDERS] + IP-lawyer hour + decide the
+  operating ENTITY; (c) reopen the installed PWA twice to pick up v42.
+  BUILD — the prefetch-cache-pipeline spec is the ACTIVE build (requirements DONE + analysis-clean,
+  3 phases). NEXT ACTION = generate the DESIGN doc (the cache-layer architecture map), then tasks,
+  then execute phased so the Feed never breaks. GOAL: make Discover/Watchlist + clips feel INSTANT.
+  Phase 1 = prewarm Discover/Watchlist DATA + posters from the Feed (the visible "black gradient →
+  slow thumbnails" pain). Phase 2 = storage tiering (IndexedDB for page JSON, Cache API for URL
+  assets, localStorage flags only) + SW per-resource strategies. Phase 3 = clip SEGMENT-BYTE prefetch
+  (within the 2-player cap — NEVER more players) + device-verified SW segment cache + back-buffer cap
+  + Android-deeper (Speculation Rules API) + View Transitions. The DB is already A-grade (audited: no
+  SELECT*, no N+1, partial feed index idx_content_feed_live in 0013) — NOT the bottleneck. ⚠ COMMIT the
+  prefetch-cache-pipeline spec files (currently uncommitted in the working tree) when you resume.
   PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
   Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
 
 Do NOT relitigate locked player decisions (no MP4, no CDN swap, no player swap,
-no unbounded memory cache; ONE behaviour for iOS+Android, recycled player pool).
+no unbounded memory cache; ONE behaviour for iOS+Android, recycled player pool;
+SS_MAX_LIVE_PLAYERS = 2 — the v39 iOS-stall fix, sacred, never raise it).
 
 Start by reading the files above, give me a tight confirmation that you've got the
 full picture and current state, then continue from NEXT STEP. Bring your A-game.

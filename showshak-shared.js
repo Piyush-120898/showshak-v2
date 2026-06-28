@@ -5330,6 +5330,22 @@ var SS_SPLASH_CEILING_MS  = 4000;                              // hard max splas
 var SS_METADATA_WINDOW    = 30;                                // clips retained in the L1 metadata (SWR) cache (Req 7.1/7.4)
 var SS_BUFFER_SATISFIED_S = 5;                                 // active-clip buffered-ahead seconds that gate progressive deepening (Req 2.1)
 var SS_DWELL_THRESHOLD    = 0.5;                               // min dwell (0.0–1.0) at/above which aggressive deepening is permitted (Req 2.3)
+var SS_PREWARM_POSTER_COUNT = 12;                              // posters decoded into the browser image cache per Target_Page cross-page prewarm. MUST stay in [12,15] (prefetch-cache-pipeline R2.2).
+
+/* Documented Kill_Switch defaults — every Pipeline capability sits behind its
+   own `ss_ff_<name>` flag and defaults OFF, so a fresh / unconfigured install
+   degrades to today's load-after-mount behaviour. These 7 boolean defaults are
+   the single source consumed by ssResolveKillSwitches (prefetch-cache-pipeline
+   R10.1, R10.2, R10.5). All false = all capabilities off by default. */
+var SS_KILL_SWITCH_DEFAULTS = {
+  ss_ff_prewarm:       false,   // Cross_Page_Prewarm (Phase 1)
+  ss_ff_idb:           false,   // IndexedDB Page_Data tiering (Phase 2)
+  ss_ff_poster_swr:    false,   // Poster Stale_While_Revalidate (Phase 2)
+  ss_ff_segprefetch:   false,   // Segment-byte prefetch (Phase 3)
+  ss_ff_segcache:      false,   // SW Segment_Cache (Phase 3)
+  ss_ff_speculation:   false,   // Speculation Rules prerender (Phase 3)
+  ss_ff_viewtransition:false,   // cross-document View Transitions (Phase 3)
+};
 
 if (typeof window !== 'undefined') {
   window.SS_PREFETCH_DEPTH      = SS_PREFETCH_DEPTH;
@@ -5342,6 +5358,8 @@ if (typeof window !== 'undefined') {
   window.SS_METADATA_WINDOW     = SS_METADATA_WINDOW;
   window.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
   window.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
+  window.SS_PREWARM_POSTER_COUNT = SS_PREWARM_POSTER_COUNT;
+  window.SS_KILL_SWITCH_DEFAULTS = SS_KILL_SWITCH_DEFAULTS;
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports.SS_PREFETCH_DEPTH      = SS_PREFETCH_DEPTH;
@@ -5354,6 +5372,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.SS_METADATA_WINDOW     = SS_METADATA_WINDOW;
   module.exports.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
   module.exports.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
+  module.exports.SS_PREWARM_POSTER_COUNT = SS_PREWARM_POSTER_COUNT;
+  module.exports.SS_KILL_SWITCH_DEFAULTS = SS_KILL_SWITCH_DEFAULTS;
 }
 
 /* ── Session prefetch byte budget + circuit breaker (Req 3.1/3.2/3.5) ──
@@ -5577,6 +5597,130 @@ if (typeof window !== 'undefined') {
     requestIdleCallback(function () { try { ssPrewarmProfile(); } catch (e) {} }, { timeout: 2500 });
   } else if (typeof setTimeout === 'function') {
     setTimeout(function () { try { ssPrewarmProfile(); } catch (e) {} }, 1200);
+  }
+}
+
+/* ── Cross-page data + poster prewarm (prefetch-cache-pipeline Phase 1) ───────
+   IMPURE shell that mirrors ssPrewarmProfile: during the Feed's Idle_Time, warm
+   Discover's and Watchlist's Page_Data into the existing per-page cache and
+   decode their first posters into the browser image cache, so those tabs paint
+   real content on first paint. Pure decisions (which flags are on, whether to
+   warm a target, which posters to decode, what's Scoreboard-safe) come from the
+   dual-exported pure core (ssResolveKillSwitches / ssShouldPrewarm /
+   ssPosterPrewarmList / ssPublicSignalsOnly); this shell only does the I/O.
+
+   Window-only + fully fail-soft: gated entirely by ss_ff_prewarm (default OFF →
+   today's load-after-mount behaviour is unchanged), scheduled OFF the first-paint
+   critical path, and every target's work is wrapped so a query/decode failure
+   leaves that Target_Page's load-after-mount path untouched. Never throws.
+   Intentionally NOT in module.exports (impure, touches localStorage/Image/ssDB). */
+
+/* Map location.pathname → the canonical page name, fail-soft. */
+function _ssCurrentPageName() {
+  try {
+    var p = (typeof location !== 'undefined' && location.pathname) ? location.pathname.toLowerCase() : '';
+    if (p.indexOf('discover') !== -1)  return 'discover';
+    if (p.indexOf('watchlist') !== -1) return 'watchlist';
+    if (p.indexOf('feed') !== -1)      return 'feed';
+    return '';
+  } catch (e) { return ''; }
+}
+
+/* Read the raw ss_ff_* Kill_Switch flags off localStorage, fail-soft. Returns a
+   partial { capability: boolean } map of the flags that are actually SET, or
+   null when storage is unreadable — so ssResolveKillSwitches applies the
+   all-or-defaults rule (unreadable → every capability takes its default). A flag
+   is "on" only when its stored value is 'on' / 'true' / '1' (defaults are OFF). */
+function _ssReadPrewarmFlags() {
+  try {
+    if (typeof localStorage === 'undefined' || !localStorage) return null;
+    var raw = {};
+    for (var cap in SS_KILL_SWITCH_DEFAULTS) {
+      if (!Object.prototype.hasOwnProperty.call(SS_KILL_SWITCH_DEFAULTS, cap)) continue;
+      var v = localStorage.getItem(cap);
+      if (v !== null) raw[cap] = (v === 'on' || v === 'true' || v === '1');
+    }
+    return raw;
+  } catch (e) { return null; }   // unreadable storage → all-defaults
+}
+
+/* Session set of Target_Page names already warmed this Feed session (warm at
+   most once per session, prefetch-cache-pipeline R1.3). */
+var _ssPrewarmDone = (typeof Set === 'function') ? new Set() : null;
+
+function ssPrewarmPages() {
+  try {
+    // 1) Resolve Kill_Switches; if Cross_Page_Prewarm is OFF (the default), do
+    //    NOTHING — today's load-after-mount behaviour is unchanged (R10.2).
+    var flags = (typeof ssResolveKillSwitches === 'function')
+      ? ssResolveKillSwitches(_ssReadPrewarmFlags(), SS_KILL_SWITCH_DEFAULTS)
+      : SS_KILL_SWITCH_DEFAULTS;
+    if (!flags || !flags.ss_ff_prewarm) return;
+
+    var current = _ssCurrentPageName();
+    var targets = ['discover', 'watchlist'];
+    // Both Target_Pages use the SAME data path the pages themselves use
+    // (ssLoadClips → ssClipsForDiscover); fetch+shape once, reuse per target.
+    var sharedClips = null, sharedFetched = false;
+
+    function warmTarget(target) {
+      // 3) Gate: skip the page we're on (R3.3) and any already warmed (R1.3).
+      if (!(typeof ssShouldPrewarm === 'function') || !ssShouldPrewarm(target, current, _ssPrewarmDone)) return;
+      if (_ssPrewarmDone && _ssPrewarmDone.add) _ssPrewarmDone.add(target);   // decision to warm → mark done
+
+      // 5) FULLY fail-soft per target: a query/decode failure leaves this
+      //    Target_Page's load-after-mount path untouched (R1.5, R10.3).
+      Promise.resolve()
+        .then(function () {
+          if (sharedFetched) return sharedClips;
+          sharedFetched = true;
+          if (typeof ssLoadClips !== 'function' || typeof ssClipsForDiscover !== 'function') return null;
+          return Promise.resolve(ssLoadClips(50, 0)).then(function (base) {
+            sharedClips = (base && base.length) ? ssClipsForDiscover(base) : null;
+            return sharedClips;
+          });
+        })
+        .then(function (clips) {
+          if (!clips || !clips.length) return;
+          // 4) Sanitize EVERY record through ssPublicSignalsOnly BEFORE writing
+          //    (R11.1 — no Scoreboard fields ever enter a cached payload).
+          var safe = clips.map(function (c) {
+            return (typeof ssPublicSignalsOnly === 'function') ? ssPublicSignalsOnly(c) : c;
+          });
+          if (typeof ssWritePageCache === 'function') ssWritePageCache(target, safe);
+
+          // Decode the first SS_PREWARM_POSTER_COUNT posters into the browser
+          // image cache (R2.1, R2.4, R2.6). The page clip shape carries `poster`;
+          // bridge it to the helper's `posterUrl` contract.
+          var posterInput = safe.map(function (c) { return { posterUrl: (c && c.poster) || '' }; });
+          var list = (typeof ssPosterPrewarmList === 'function')
+            ? ssPosterPrewarmList(posterInput, SS_PREWARM_POSTER_COUNT) : [];
+          for (var j = 0; j < list.length; j++) {
+            // A single poster decode failure must continue with the rest (R2.5).
+            try { _ssWarmImage(list[j]); } catch (e) {}
+          }
+        })
+        .catch(function () { /* leave this target's load-after-mount path untouched */ });
+    }
+
+    for (var i = 0; i < targets.length; i++) {
+      try { warmTarget(targets[i]); } catch (e) { /* never let one target break another */ }
+    }
+  } catch (e) { /* never block the app */ }
+}
+if (typeof window !== 'undefined') {
+  window.ssPrewarmPages = ssPrewarmPages;   // window-only (impure); NOT in module.exports
+  // 2/6) Kick cross-page prewarm ONLY from the Feed (so a non-feed page never
+  //      initiates prewarm of itself), scheduled OFF the first-paint critical
+  //      path with rIC + a setTimeout fallback — same guard style as the
+  //      ssPrewarmProfile kick above. With ss_ff_prewarm unset (default OFF) the
+  //      call is a no-op, so today's load-after-mount behaviour is unchanged.
+  if (_ssCurrentPageName() === 'feed') {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(function () { try { ssPrewarmPages(); } catch (e) {} }, { timeout: 2500 });
+    } else if (typeof setTimeout === 'function') {
+      setTimeout(function () { try { ssPrewarmPages(); } catch (e) {} }, 1200);
+    }
   }
 }
 
@@ -8655,6 +8799,164 @@ function ssNavStrategy(env) {
   return (supportsViewTransition && !reducedMotion) ? 'view-transition' : 'instant';
 }
 
+/**
+ * ssResolveKillSwitches — resolve the effective on/off state of every Pipeline
+ * capability from a (possibly partial / unreadable) raw flag map plus the
+ * documented `defaults` (prefetch-cache-pipeline Property 8 / Req 10.2, 10.5).
+ *
+ * Pure: no DOM, no network, no localStorage. The impure shell reads the raw
+ * `ss_ff_*` flags off storage and passes them in as `rawFlags`.
+ *
+ *   rawFlags — a map of `{ capability: boolean }`; may be partial, empty, or
+ *              unreadable (null / non-object / array).
+ *   defaults — the documented `{ capability: boolean }` defaults map; its key
+ *              set defines exactly which capabilities are resolved.
+ *
+ * Rules:
+ *   • Result carries an effective boolean for EVERY capability in `defaults`
+ *     and no others (key set === keys(defaults)).
+ *   • A flag PRESENT in a readable rawFlags overrides its default (coerced to
+ *     boolean); an ABSENT flag takes its documented default (coerced to boolean).
+ *   • When rawFlags is UNREADABLE (null / non-object / array) EVERY capability
+ *     takes its documented default — never a mix of present + defaulted flags
+ *     (the all-or-defaults rule that prevents a half-configured pipeline).
+ *
+ * Total, deterministic, never throws. A non-object `defaults` yields `{}`.
+ */
+function ssResolveKillSwitches(rawFlags, defaults) {
+  var out = {};
+  // A non-object/array defaults map has no capability set → nothing to resolve.
+  if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) return out;
+  // rawFlags is only "readable" when it is a plain object (not null/array).
+  var readable = !!rawFlags && typeof rawFlags === 'object' && !Array.isArray(rawFlags);
+  for (var cap in defaults) {
+    if (!Object.prototype.hasOwnProperty.call(defaults, cap)) continue;
+    var def = !!defaults[cap];
+    if (readable && Object.prototype.hasOwnProperty.call(rawFlags, cap)) {
+      out[cap] = !!rawFlags[cap];   // present flag overrides its default
+    } else {
+      out[cap] = def;               // absent (or unreadable path) → documented default
+    }
+  }
+  return out;
+}
+
+/**
+ * ssShouldPrewarm — the single cross-page prewarm gate (prefetch-cache-pipeline
+ * Property 1 / Req 1.3, 3.3, 3.5). The idle loop calls this once per candidate
+ * Target_Page to decide whether to warm it this Feed session.
+ *
+ * Pure: no DOM, no network, no localStorage. The impure shell (ssPrewarmPages)
+ * supplies the current page and the session `doneSet`.
+ *
+ *   targetPage  — the page being considered for prewarm.
+ *   currentPage — the page the viewer is on right now (skip it).
+ *   doneSet     — a Set of Target_Page names already warmed this session.
+ *
+ * Returns `true` IFF ALL hold:
+ *   • targetPage is a known Target_Page — a string in {'discover','watchlist'}
+ *     (case-sensitive; the ONLY two pages eligible for cross-page prewarm), AND
+ *   • targetPage !== currentPage (never prewarm the page already on screen), AND
+ *   • targetPage is NOT already in `doneSet` (warm at most once per session).
+ * Every other input — unknown / non-string page, target equal to current,
+ * target already warmed, or a `doneSet` that is not a Set — returns `false`.
+ *
+ * Total, deterministic, never throws.
+ */
+function ssShouldPrewarm(targetPage, currentPage, doneSet) {
+  // Known Target_Pages — the only two pages eligible for cross-page prewarm.
+  var isKnown = (targetPage === 'discover' || targetPage === 'watchlist');
+  if (!isKnown) return false;
+  if (targetPage === currentPage) return false;             // skip the current page
+  if ((doneSet instanceof Set) && doneSet.has(targetPage)) return false; // skip already-warmed
+  return true;
+}
+
+/**
+ * ssPosterPrewarmList — pick the poster URLs to decode for a Target_Page's
+ * cross-page prewarm (prefetch-cache-pipeline Property 2 / Req 2.1, 2.4, 2.6).
+ *
+ * Pure: no DOM, no network, no localStorage. The impure shell (ssPrewarmPages)
+ * feeds the result to `_ssWarmImage` to decode posters into the browser cache.
+ *
+ *   pageData — the Target_Page's Page_Data (an array of clip-shaped entries).
+ *   count    — how many posters to decode (e.g. SS_PREWARM_POSTER_COUNT).
+ *
+ * Scans `pageData` IN ORDER, collecting the `posterUrl` of every entry that
+ * HAS one — a non-null object whose `posterUrl` is a non-empty string — and
+ * skipping every entry that does not (missing/empty/non-string posterUrl, or
+ * non-object junk). Returns the FIRST `count` of those collected URLs, so the
+ * result length is `min(count, number-of-entries-with-a-poster)`: it never
+ * exceeds `count` (R2.6) and never pads beyond the posters that actually exist
+ * (R2.4); every returned element is a real poster URL drawn in order (R2.1).
+ *
+ *   • Non-array `pageData` → `[]`.
+ *   • Non-finite / non-number `count` → `[]`.
+ *   • `count` is floored at 0 (negative or fractional counts are clamped).
+ *
+ * Total, deterministic, never throws.
+ */
+function ssPosterPrewarmList(pageData, count) {
+  if (!Array.isArray(pageData)) return [];
+  if (typeof count !== 'number' || !isFinite(count)) return [];
+  var n = Math.max(0, Math.floor(count));
+  var out = [];
+  for (var i = 0; i < pageData.length && out.length < n; i++) {
+    var e = pageData[i];
+    if (e && typeof e === 'object' && typeof e.posterUrl === 'string' && e.posterUrl.length > 0) {
+      out.push(e.posterUrl);
+    }
+  }
+  return out;
+}
+
+/* The canonical Scoreboard denylist — the private engagement totals that MUST
+   NEVER enter a cached/prefetched payload (prefetch-cache-pipeline Req 11.2).
+   Defined as a named constant so the gate is auditable and trivial to extend:
+   adding a new private total is a one-line edit here. Every field listed is
+   stripped by ssPublicSignalsOnly before any write to any Storage_Tier. */
+var SS_SCOREBOARD_DENYLIST = [
+  'fires_received', 'fires_received_total', 'watch_taps', 'watch_it_taps',
+];
+
+/**
+ * ssPublicSignalsOnly — the SACRED "hide the scoreboard" gate every cached /
+ * prefetched payload passes through (prefetch-cache-pipeline Property 3 /
+ * Req 11.1–11.4). Strips every Scoreboard field so private engagement totals
+ * can never leak into a cache, while preserving every Public_Signal verbatim.
+ *
+ * Pure: no DOM, no network, no localStorage; never mutates its input.
+ *
+ *   record — a source clip/page record (may carry Public_Signals, Scoreboard
+ *            fields, both, or neither).
+ *
+ * Returns a SHALLOW COPY of `record` with every field on SS_SCOREBOARD_DENYLIST
+ * removed (fires_received, fires_received_total, watch_taps, watch_it_taps) and
+ * every other field — all Public_Signals (fires_count, views_count, follower
+ * counts, id, caption, posterUrl, muxPlaybackId, titleLinks) and any other
+ * non-denylisted field — kept exactly as-is (R11.1, R11.2, R11.3). A record
+ * carrying BOTH kinds returns its public fields rather than being skipped /
+ * emptied (R11.4).
+ *
+ *   • Non-object input (null/undefined/number/string/boolean/array) → `{}`.
+ *   • Idempotent: sanitizing an already-sanitized record is a fixpoint.
+ *
+ * Total, deterministic, never throws.
+ */
+function ssPublicSignalsOnly(record) {
+  // Non-object (incl. null and arrays) → empty object: nothing public to keep.
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) return {};
+  var out = {};
+  var keys = Object.keys(record);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (SS_SCOREBOARD_DENYLIST.indexOf(k) === -1) {
+      out[k] = record[k];
+    }
+  }
+  return out;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    DMCA / MODERATION SCAFFOLDING — Phase 1 pure correctness helpers
    (no DOM, no network, never throw, dual-exported; Node-testable).
@@ -9061,6 +9363,11 @@ if (typeof window !== 'undefined') {
   window.ssResolveFirstFrame = ssResolveFirstFrame;
   window.ssShouldRevealBody = ssShouldRevealBody;
   window.ssNavStrategy = ssNavStrategy;
+  window.ssResolveKillSwitches = ssResolveKillSwitches;
+  window.ssShouldPrewarm = ssShouldPrewarm;
+  window.ssPosterPrewarmList = ssPosterPrewarmList;
+  window.ssPublicSignalsOnly = ssPublicSignalsOnly;
+  window.SS_SCOREBOARD_DENYLIST = SS_SCOREBOARD_DENYLIST;
   window.ssClipProgress = ssClipProgress;
   window.ssSeekToTime = ssSeekToTime;
   window.ssSetMediaMuted = ssSetMediaMuted;
@@ -9091,6 +9398,11 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssResolveFirstFrame = ssResolveFirstFrame;
   module.exports.ssShouldRevealBody = ssShouldRevealBody;
   module.exports.ssNavStrategy = ssNavStrategy;
+  module.exports.ssResolveKillSwitches = ssResolveKillSwitches;
+  module.exports.ssShouldPrewarm = ssShouldPrewarm;
+  module.exports.ssPosterPrewarmList = ssPosterPrewarmList;
+  module.exports.ssPublicSignalsOnly = ssPublicSignalsOnly;
+  module.exports.SS_SCOREBOARD_DENYLIST = SS_SCOREBOARD_DENYLIST;
   module.exports.ssClipProgress = ssClipProgress;
   module.exports.ssSeekToTime = ssSeekToTime;
   module.exports.ssSetMediaMuted = ssSetMediaMuted;

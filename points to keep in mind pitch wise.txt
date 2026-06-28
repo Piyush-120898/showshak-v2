@@ -406,3 +406,70 @@ WHAT "INVESTORS WILL PROBE IT" ACTUALLY MEANS:
     asking you to bet on the revenue model today. We're asking you to
     bet that we can get 15 curators posting and 100 users coming back.
     Everything above unlocks the moment that's true."
+
+
+═══════════════════════════════════════════════════════════════
+  MARKET REFRAME + PITCH-DECK INSIGHTS  (added this session — 2026)
+  The corrected market math + how we frame/pitch. Supersedes any
+  loose "10% of the OTT market" framing.
+═══════════════════════════════════════════════════════════════
+
+THE MARKET WE'RE IN (corrected — this is the framing to use):
+  We do NOT capture a % of OTT SUBSCRIPTION revenue. Our market is the
+  ENTERTAINMENT PROMOTION ECONOMY — the money spent to make people WATCH:
+    1. OTT content marketing (new + catalog title promotion)
+    2. OTT subscriber-acquisition spend (cost to win a paying sub)
+    3. Theatrical / box-office film P&A (launch marketing)
+    4. Social + influencer marketing for films/shows
+  Same buckets everywhere — only the playground (India → global) changes.
+
+THE NUMBERS (triangulated from FICCI-EY 2026, WPP Media 2026, Kofluence,
+  Ormax 2025, Netflix/studio disclosures — use RANGES, cite sources):
+  - INDIA (beachhead): entertainment-promotion pool ~$0.7-1.2B/yr (TAM).
+    Serviceable slice we can serve (title promo + UA + influencer) ~$240-480M (SAM).
+    Target 10% capture at maturity ≈ ₹200-400 cr (~$24-48M) ARR (SOM).
+  - GLOBAL (next): SAME buckets ≈ $50B+/yr (streaming marketing+UA ~$15-25B;
+    film P&A ~$10-15B; entertainment influencer ~$4-6B). India ≈ 1-1.5% of it
+    → the India and global numbers are CONSISTENT (the sanity check that the
+    earlier "$1.4T" figure FAILED — that was ALL E&M ad revenue, wrong bucket).
+  - Anchors: a single tentpole now spends $100-150M on MARKETING alone;
+    Netflix CAC ~$89/sub; India = 148M PAYING OTT subs (lead with paying, NOT
+    the 601M total which includes free YouTube viewers). India ad market ~$22B 2026.
+  - India OTT platform count: use "15+ platforms incl. regional" (our own
+    catalog has 16-17) — defensible; do NOT claim "60+" (not cleanly sourced).
+
+REVENUE MODEL — the founder's seeding idea, corrected (good instinct, fix these):
+  Idea: seed curators with titles to clip; promoted titles funded by OTT/studios;
+  higher payouts for promoted. RIGHT monetization (= promoted clips, the prize). FIX:
+  - OPT-IN, not assigned — curators choose promoted titles that fit their taste
+    (forced assignment reads fake; authenticity IS the inventory).
+  - RATIO-CAP organic:promoted (the Trust Tax) — hard cap in product, ~15-20%.
+  - DISCLOSE (ASCI / IT Rules) — promoted clips must be labelled. Mandatory in India.
+  - PASS-THROUGH payouts — at scale, curator pay is funded BY the OTT promo money
+    with a take-rate; don't self-fund.
+  - FIRST PAYING CUSTOMERS = regional OTT + film launches (60+ regional services +
+    constant film slate need discovery most, least marketing muscle) — NOT Netflix first.
+
+PITCH DECK (showshak-pitch-deck.html — built this session; LIVE/public):
+  - 15 slides, on-brand HTML, ↑↓/space nav. Cover A = current splash; Cover B
+    (recommended) tagline "Discover · Trust · Watch It" (drops the generic "Swipe",
+    adds TRUST = the one word no rival can say, upgrades to branded "Watch It").
+  - DECK VOICE RULES (from research on Airbnb/Sequoia + how VCs read decks, avg
+    ~2.5 min/first-pass; one-sentence-forward test): SHOW DON'T TELL. Assert what we
+    ARE and why we WIN — never narrate our internal journey, never use "isn't/unlike/
+    not" negations, never put our risks in the deck. Bottom-up market sizing, not a
+    big TAM number. End with a clear ask.
+  - Comps that prove the category is a business: JustWatch (60M+ users/mo, profitable
+    since 2016, studio clients) = cold where-to-watch DB; Letterboxd (~29M users,
+    valued ~$50-60M) = film-taste community. We're the warm TRUST + ACTION layer between.
+  - Moat = NEUTRALITY (only a cross-platform layer can hold cross-platform taste; a
+    streamer that promotes rivals stops being itself) + the compounding taste graph.
+  - Team slide = Piyush Gupta (B.Tech IT + ~years performance marketing / lead-gen +
+    sales for small businesses) framed "BUILT BY THE BUYER" — founder-market fit:
+    ShowShak's customer IS a performance marketer; the founder has been that buyer.
+    Solo + AI-built = capital efficiency (a strength in 2026), not a gap. Add a real
+    ad-spend/ROAS number + 1-2 advisors when available to harden it.
+  - Stage framing: pre-seed; the ask is "bet we can get 15 curators + ~1000 users
+    returning + first Watch-It conversion data," not "bet on the revenue model today".
+  - BEFORE any investor send: get the neutrality/data language + India legal posture
+    a counsel read (same discipline as legal/*.md).
