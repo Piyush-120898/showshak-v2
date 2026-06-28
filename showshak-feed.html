@@ -118,14 +118,18 @@ html, body { overflow: hidden; }
   overflow: hidden; flex-shrink: 0;
 }
 
+.clip-media {
+  /* Holds the poster (background-image) + the mounted <mux-player>. The brightness
+     lift lives HERE so BOTH the poster and the video pop as the foreground (not a
+     dull backdrop) — filtering the container is also more reliable on iOS than
+     filtering the <mux-player> host directly. */
+  position: absolute; inset: 0;
+  filter: brightness(1.18) saturate(1.1);
+}
 .clip-bg {
   position: absolute; inset: 0;
   background-size: cover; background-position: center;
   transform: scale(1.04);
-  /* Brightness lift so the clip pops as the foreground (not a dull backdrop).
-     Applies to the poster + the mux-player video; mild enough to avoid blowing
-     highlights. */
-  filter: brightness(1.12) saturate(1.06);
   transition: transform 0.7s var(--ease-smooth);
 }
 .clip.active .clip-bg { transform: scale(1); }

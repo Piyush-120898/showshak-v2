@@ -4176,11 +4176,10 @@ function _ssvBuildList(clicked, list) {
     }
     /* Media_Surface mount point — the surface attaches its gradient/<video>
        node here. Sits below the tap zone (z 10) and chrome. */
-    .ssv-media { position: absolute; inset: 0; z-index: 0; }
+    .ssv-media { position: absolute; inset: 0; z-index: 0; filter: brightness(1.18) saturate(1.1); }
     .ssv-bg {
       position: absolute; inset: 0;
       background-size: cover; background-position: center;
-      filter: brightness(1.12) saturate(1.06);
       transform: scale(1.04); transition: transform 0.6s var(--ease-smooth);
     }
     .ssv-clip.active .ssv-bg { transform: scale(1); }
