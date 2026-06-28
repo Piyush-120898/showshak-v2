@@ -342,7 +342,7 @@ html, body { overflow: hidden; }
    FOR YOU — 2-column grid
 ════════════════════════════════════════════════ */
 .foryou-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
 }
 
 .fy-clip-card {
@@ -516,7 +516,7 @@ html, body { overflow: hidden; }
   .mood-row     { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .clips-row    { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .platform-row { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
-  .foryou-grid  { gap: 10px; }
+  .foryou-grid  { grid-template-columns: 1fr 1fr; gap: 10px; }
   .clip-card    { width: 140px; }
 }
 </style>

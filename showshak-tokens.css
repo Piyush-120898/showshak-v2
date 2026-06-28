@@ -13,6 +13,22 @@
   padding: 0;
 }
 
+/* ─── HIDE SCROLLBARS (app-wide) ──────────────────────────────────
+   ShowShak is a PWA-first, app-like surface: the visible scroll-position
+   bar on the right breaks that feel. Hide the scrollbar chrome on every
+   element (matches the Feed, which already does this) while keeping scroll
+   fully functional. WebKit/Blink via ::-webkit-scrollbar, Firefox via
+   scrollbar-width, legacy Edge/IE via -ms-overflow-style. */
+* {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* old Edge / IE */
+}
+*::-webkit-scrollbar {          /* Chrome / Safari / Edge (Blink/WebKit) */
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* ─── DESIGN TOKENS ───────────────────────────── */
 :root {
   /* Backgrounds */

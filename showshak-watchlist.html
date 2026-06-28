@@ -325,10 +325,11 @@ html, body { overflow: hidden; }
 .rec-section { padding: 16px 28px 40px; }
 @media (max-width:700px) { .rec-section { padding: 16px 20px 40px; } }
 
-/* 3-column grid on desktop, 2-column on narrow mobile */
+/* Auto-fill grid: many small cards on desktop (cap card size so they aren't
+   huge), 2-column on narrow mobile (forced below). */
 .rec-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 10px;
 }
 @media (max-width: 500px) {
