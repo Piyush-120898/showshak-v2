@@ -274,8 +274,8 @@ on a version bump (founder reopens the PWA twice).
 
 ### PHASE 3 — Segment-byte prefetch + Segment_Cache + platform split (gated `ss_ff_segprefetch`, `ss_ff_segcache`, `ss_ff_speculation`, `ss_ff_viewtransition`)
 
-- [ ] 11. Add the Phase-3 tunable constants
-  - [ ] 11.1 Add `SS_BACK_BUFFER_S`, `SS_IOS_STORAGE_BUDGET`, `SS_ANDROID_STORAGE_BUDGET`
+- [x] 11. Add the Phase-3 tunable constants
+  - [x] 11.1 Add `SS_BACK_BUFFER_S`, `SS_IOS_STORAGE_BUDGET`, `SS_ANDROID_STORAGE_BUDGET`
     - Add `SS_BACK_BUFFER_S` (~30 s, finite positive), `SS_IOS_STORAGE_BUDGET` (~50 MB), and
       `SS_ANDROID_STORAGE_BUDGET` (≥ iOS). Reuse the existing `SS_PREFETCH_DEPTH`,
       `SS_SESSION_BYTE_BUDGET`, `SS_SEG_CACHE_CEILING`, `SS_SEG_CACHE_WINDOW`. Dual-export. Add the
@@ -284,8 +284,8 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 7.5, 8.4, 8.5, 12.1_
 
-- [ ] 12. Write the 4 Phase-3 property tests (TDD — author FIRST, before task 13)
-  - [ ] 12.1 Property 6 — device profile classification
+- [x] 12. Write the 4 Phase-3 property tests (TDD — author FIRST, before task 13)
+  - [x] 12.1 Property 6 — device profile classification
     - `tests/prop-device-profile.test.js`: `ssDeviceProfile(ua)` returns `'ios'` for iOS user agents
       (iPhone/iPad/iPod and iPadOS-as-desktop signals) and `'android'` otherwise; non-string / absent
       input → `'ios'` (fail lean — never grant the deep budget on uncertainty). Total, deterministic.
@@ -293,7 +293,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.2**
     - _Files: tests/prop-device-profile.test.js_
 
-  - [ ] 12.2 Property 7 — device prefetch-budget invariants
+  - [x] 12.2 Property 7 — device prefetch-budget invariants
     - `tests/prop-device-budget.test.js`: for any tier, `ssResolvePrefetchBudget('android', tier)`
       yields `byteBudget` and `storageBudget` ≥ the `'ios'` values; iOS `storageBudget ===
       SS_IOS_STORAGE_BUDGET` for every tier; `('android','fast')` `prefetchDepth ===
@@ -303,7 +303,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.3, 8.4, 8.5**
     - _Files: tests/prop-device-budget.test.js_
 
-  - [ ] 12.3 Property 9 — iOS storage-trim stays within budget and partitions input
+  - [x] 12.3 Property 9 — iOS storage-trim stays within budget and partitions input
     - `tests/prop-storage-trim.test.js`: `ssStorageTrimPlan(entries, budgetBytes)` evicts
       least-recently-used first until kept bytes ≤ budget (floor: a single entry larger than the
       budget is kept); no evicted entry has a newer `lastUsed` than any kept entry; `evict ∪ keep`
@@ -313,7 +313,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.7, 12.4**
     - _Files: tests/prop-storage-trim.test.js_
 
-  - [ ] 12.4 Property 10 — totality of all 8 new pure helpers
+  - [x] 12.4 Property 10 — totality of all 8 new pure helpers
     - `tests/prop-pipeline-totality.test.js`: for any input (incl. `null`, `undefined`, wrong-typed,
       non-finite, malformed) every new pure helper (`ssShouldPrewarm`, `ssPosterPrewarmList`,
       `ssPublicSignalsOnly`, `ssStorageTier`, `ssDeviceProfile`, `ssResolvePrefetchBudget`,
@@ -323,14 +323,14 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 1.5, 9.4, 13.3, 13.4**
     - _Files: tests/prop-pipeline-totality.test.js_
 
-- [ ] 13. Implement the Phase-3 pure helpers (make P6, P7, P9, P10 green)
-  - [ ] 13.1 Add `ssDeviceProfile(ua)`
+- [x] 13. Implement the Phase-3 pure helpers (make P6, P7, P9, P10 green)
+  - [x] 13.1 Add `ssDeviceProfile(ua)`
     - Classify iOS (`iPhone|iPad|iPod`, iPadOS-as-Mac-with-touch when signalled) → `'ios'`; otherwise
       → `'android'`; non-string → `'ios'` (fail lean). Total. Dual-export.
     - _Files: showshak-shared.js_
     - _Requirements: 8.2_
 
-  - [ ] 13.2 Add `ssResolvePrefetchBudget(deviceProfile, networkTier)`
+  - [x] 13.2 Add `ssResolvePrefetchBudget(deviceProfile, networkTier)`
     - Return `{ byteBudget, prefetchDepth, storageBudget }` per Property 7's invariants (Android ≥
       iOS for the same tier; iOS storage `=== SS_IOS_STORAGE_BUDGET`; `('android','fast')` depth `=
       SS_PREFETCH_DEPTH.fast`; unknown device → iOS, unknown tier → medium via `ssNetworkPolicy`).
@@ -338,14 +338,14 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 8.3, 8.4, 8.5_
 
-  - [ ] 13.3 Add `ssStorageTrimPlan(entries, budgetBytes)`
+  - [x] 13.3 Add `ssStorageTrimPlan(entries, budgetBytes)`
     - Generic byte-bounded LRU planner per Property 9 (evict LRU-first to budget, single-entry floor,
       exact partition); non-array / non-finite budget → `{ evict: [], keep: [] }`. Mirrors
       `ssSegmentEvictionPlan` but tier-agnostic. Total. Dual-export.
     - _Files: showshak-shared.js_
     - _Requirements: 8.7, 12.4_
 
-  - [ ] 13.4 Verify P6, P7, P9, P10 pass and the existing suite stays green
+  - [x] 13.4 Verify P6, P7, P9, P10 pass and the existing suite stays green
     - **IMPORTANT**: re-run task-12 tests; run `node tests/run-all.js` (P6/P7/P9/P10 + all prior +
       existing GREEN). Confirm dual-export of `ssDeviceProfile`, `ssResolvePrefetchBudget`,
       `ssStorageTrimPlan`, and that `prop-pipeline-totality` sees all 8 helpers on `module.exports`.

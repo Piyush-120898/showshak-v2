@@ -5343,6 +5343,9 @@ var SS_METADATA_WINDOW    = 30;                                // clips retained
 var SS_BUFFER_SATISFIED_S = 5;                                 // active-clip buffered-ahead seconds that gate progressive deepening (Req 2.1)
 var SS_DWELL_THRESHOLD    = 0.5;                               // min dwell (0.0–1.0) at/above which aggressive deepening is permitted (Req 2.3)
 var SS_PREWARM_POSTER_COUNT = 12;                              // posters decoded into the browser image cache per Target_Page cross-page prewarm. MUST stay in [12,15] (prefetch-cache-pipeline R2.2).
+var SS_BACK_BUFFER_S      = 30;                                // tunable: bounded played-back media (seconds) kept on the recycled <mux-player> so the L3 MSE buffer stays bounded. Finite & > 0 (prefetch-cache-pipeline R7.5).
+var SS_IOS_STORAGE_BUDGET = 50 * 1024 * 1024;                 // tunable: ~50 MB total Pipeline storage ceiling on iOS (origin-quota lean tier) (prefetch-cache-pipeline R8.4).
+var SS_ANDROID_STORAGE_BUDGET = 100 * 1024 * 1024;            // tunable: ~100 MB Android storage budget; MUST be >= SS_IOS_STORAGE_BUDGET (prefetch-cache-pipeline R8.5).
 
 /* Documented Kill_Switch defaults — every Pipeline capability sits behind its
    own `ss_ff_<name>` flag and defaults OFF, so a fresh / unconfigured install
@@ -5371,6 +5374,9 @@ if (typeof window !== 'undefined') {
   window.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
   window.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
   window.SS_PREWARM_POSTER_COUNT = SS_PREWARM_POSTER_COUNT;
+  window.SS_BACK_BUFFER_S       = SS_BACK_BUFFER_S;
+  window.SS_IOS_STORAGE_BUDGET  = SS_IOS_STORAGE_BUDGET;
+  window.SS_ANDROID_STORAGE_BUDGET = SS_ANDROID_STORAGE_BUDGET;
   window.SS_KILL_SWITCH_DEFAULTS = SS_KILL_SWITCH_DEFAULTS;
 }
 if (typeof module !== 'undefined' && module.exports) {
@@ -5385,6 +5391,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.SS_BUFFER_SATISFIED_S  = SS_BUFFER_SATISFIED_S;
   module.exports.SS_DWELL_THRESHOLD     = SS_DWELL_THRESHOLD;
   module.exports.SS_PREWARM_POSTER_COUNT = SS_PREWARM_POSTER_COUNT;
+  module.exports.SS_BACK_BUFFER_S       = SS_BACK_BUFFER_S;
+  module.exports.SS_IOS_STORAGE_BUDGET  = SS_IOS_STORAGE_BUDGET;
+  module.exports.SS_ANDROID_STORAGE_BUDGET = SS_ANDROID_STORAGE_BUDGET;
   module.exports.SS_KILL_SWITCH_DEFAULTS = SS_KILL_SWITCH_DEFAULTS;
 }
 
@@ -9270,6 +9279,145 @@ function ssPageCacheBound(clips) {
   return clips.slice(0, SS_PAGE_CACHE_MAX);
 }
 
+/**
+ * ssDeviceProfile — the pure platform classifier for the Android-deeper /
+ * iOS-lean budget split (prefetch-cache-pipeline Property 6 / Req 8.2). One
+ * user-agent string in, a Device_Profile string out.
+ *
+ * Pure: no DOM, no `navigator`, no globals — the impure shell passes
+ * `navigator.userAgent` (or the UA-CH platform) in.
+ *
+ *   ua — the user-agent string to classify.
+ *
+ * Classification:
+ *   • iPhone / iPad / iPod token (any case)            → 'ios'
+ *   • iPadOS-as-desktop: 'Macintosh' + a 'touch' token → 'ios'
+ *     (modern iPads spoof a Mac UA; the touch signal disambiguates)
+ *   • every other string                               → 'android'
+ *     (the deeper-budget default — only iOS needs the lean treatment)
+ *   • non-string / absent (null/undefined/number/…)    → 'ios'
+ *     (FAIL LEAN — never grant the deep budget on uncertainty)
+ *
+ * Total, deterministic, never throws.
+ */
+function ssDeviceProfile(ua) {
+  if (typeof ua !== 'string') return 'ios';                 // fail lean on uncertainty
+  if (/(iphone|ipad|ipod)/i.test(ua)) return 'ios';
+  if (/macintosh/i.test(ua) && /touch/i.test(ua)) return 'ios'; // iPadOS-as-desktop
+  return 'android';
+}
+
+/* Per-tier and per-device byte-budget factors for ssResolvePrefetchBudget. The
+   session prefetch ceiling (SS_SESSION_BYTE_BUDGET) is scaled by the network
+   tier and the device so that, for the SAME tier, android.byteBudget >=
+   ios.byteBudget (Android gets the deeper budget, R8.5). Tunables — dialing
+   generosity is config, not control logic. */
+var SS_PREFETCH_TIER_BYTE_FACTOR   = { slow: 0.25, medium: 0.5, fast: 1 };
+var SS_PREFETCH_DEVICE_BYTE_FACTOR = { ios: 0.5, android: 1 };
+
+/**
+ * ssResolvePrefetchBudget — the pure budget resolver combining Device_Profile +
+ * Network_Tier (prefetch-cache-pipeline Property 7 / Req 8.3, 8.4, 8.5).
+ *
+ * Pure: no DOM, no network; reads only the dual-exported tunables
+ * (SS_PREFETCH_DEPTH, SS_SESSION_BYTE_BUDGET, SS_IOS_STORAGE_BUDGET,
+ * SS_ANDROID_STORAGE_BUDGET) via the same medium-fallback rule as ssNetworkPolicy.
+ *
+ *   deviceProfile — 'ios' | 'android' (unknown → iOS row, fail lean).
+ *   networkTier   — 'slow' | 'medium' | 'fast' (unknown → medium row).
+ *
+ * Returns `{ byteBudget, prefetchDepth, storageBudget }` (all finite numbers):
+ *   • prefetchDepth = the tier's SS_PREFETCH_DEPTH (via the same source as
+ *     ssNetworkPolicy); ('android','fast') === SS_PREFETCH_DEPTH.fast and >= any
+ *     other tier's depth (R8.3).
+ *   • storageBudget = SS_IOS_STORAGE_BUDGET on iOS for EVERY tier; on android
+ *     SS_ANDROID_STORAGE_BUDGET (>= iOS, R8.4, R8.5).
+ *   • byteBudget = SS_SESSION_BYTE_BUDGET scaled by tier × device, so
+ *     android.byteBudget >= ios.byteBudget for the same tier (R8.5).
+ *
+ * Total, deterministic, never throws.
+ */
+function ssResolvePrefetchBudget(deviceProfile, networkTier) {
+  // Unknown device → iOS row (fail lean); unknown tier → medium row.
+  var device = (deviceProfile === 'android') ? 'android' : 'ios';
+  var tier = (networkTier === 'slow' || networkTier === 'fast' || networkTier === 'medium')
+    ? networkTier : 'medium';
+
+  // Depth from the single tier source (same as ssNetworkPolicy.preloadDepth).
+  var prefetchDepth = ssNetworkPolicy(tier).preloadDepth;
+
+  // Storage ceiling pinned by device: iOS lean for every tier, android deeper.
+  var storageBudget = (device === 'android') ? SS_ANDROID_STORAGE_BUDGET : SS_IOS_STORAGE_BUDGET;
+
+  // Session prefetch byte budget scaled by tier × device (android >= ios).
+  var byteBudget = Math.round(
+    SS_SESSION_BYTE_BUDGET *
+    SS_PREFETCH_TIER_BYTE_FACTOR[tier] *
+    SS_PREFETCH_DEVICE_BYTE_FACTOR[device]
+  );
+
+  return { byteBudget: byteBudget, prefetchDepth: prefetchDepth, storageBudget: storageBudget };
+}
+
+/**
+ * ssStorageTrimPlan — the generic byte-bounded LRU planner that governs the iOS
+ * total-storage guard (prefetch-cache-pipeline Property 9 / Req 8.7, 12.4).
+ * Tier-agnostic sibling of ssSegmentEvictionPlan: it plans eviction over TOTAL
+ * Pipeline storage, not just segments.
+ *
+ * Pure: no DOM, no network, no storage; entries + a byte budget in, an
+ * { evict, keep } plan out.
+ *
+ *   entries     — cache entries `{ key:string, bytes:number, lastUsed:number }`.
+ *   budgetBytes — the byte ceiling kept bytes must fit within.
+ *
+ * Algorithm: evict least-recently-used (smallest `lastUsed`) FIRST until kept
+ * bytes <= budget. Documented floor — a single entry larger than the budget is
+ * KEPT (we never shed below one entry). Eviction is MINIMAL: re-adding the
+ * newest evicted entry would exceed the budget. The plan partitions the input
+ * keys EXACTLY (evict ∪ keep === input key set, disjoint, no duplication) and
+ * no evicted entry has a newer `lastUsed` than any kept entry.
+ *
+ * Defensive: non-array `entries` or non-finite `budgetBytes` → { evict:[], keep:[] };
+ * malformed entries (missing/typed-wrong key/bytes/lastUsed) are skipped safely.
+ *
+ * Total, deterministic, never throws.
+ */
+function ssStorageTrimPlan(entries, budgetBytes) {
+  var empty = { evict: [], keep: [] };
+  if (!Array.isArray(entries)) return empty;
+  if (typeof budgetBytes !== 'number' || !isFinite(budgetBytes)) return empty;
+  var isNum = function (x) { return typeof x === 'number' && isFinite(x); };
+
+  // Sanitize: skip malformed entries (never throw, never partition garbage).
+  var valid = [];
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (!e || typeof e !== 'object') continue;
+    if (typeof e.key !== 'string') continue;
+    if (!isNum(e.bytes) || !isNum(e.lastUsed)) continue;
+    valid.push(e);
+  }
+
+  // LRU-by-time: oldest lastUsed first, so the front of the array is evicted
+  // first; never shed the last remaining entry (documented floor).
+  valid.sort(function (a, b) { return a.lastUsed - b.lastUsed; });
+  var keptBytes = 0;
+  for (var j = 0; j < valid.length; j++) keptBytes += valid[j].bytes;
+  var keep = valid.slice();
+  var evict = [];
+  while (keptBytes > budgetBytes && keep.length > 1) {
+    var victim = keep.shift();   // oldest (least-recently-used)
+    evict.push(victim);
+    keptBytes -= victim.bytes;
+  }
+
+  return {
+    evict: evict.map(function (x) { return x.key; }),
+    keep:  keep.map(function (x) { return x.key; })
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════════
    DMCA / MODERATION SCAFFOLDING — Phase 1 pure correctness helpers
    (no DOM, no network, never throw, dual-exported; Node-testable).
@@ -9685,6 +9833,10 @@ if (typeof window !== 'undefined') {
   window.ssStorageTier = ssStorageTier;
   window.ssPageCacheBound = ssPageCacheBound;
   window.SS_PAGE_CACHE_MAX = SS_PAGE_CACHE_MAX;
+  // prefetch-cache-pipeline Phase 3 — device split + budget resolver + storage trim
+  window.ssDeviceProfile = ssDeviceProfile;
+  window.ssResolvePrefetchBudget = ssResolvePrefetchBudget;
+  window.ssStorageTrimPlan = ssStorageTrimPlan;
   window.ssClipProgress = ssClipProgress;
   window.ssSeekToTime = ssSeekToTime;
   window.ssSetMediaMuted = ssSetMediaMuted;
@@ -9724,6 +9876,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssStorageTier = ssStorageTier;
   module.exports.ssPageCacheBound = ssPageCacheBound;
   module.exports.SS_PAGE_CACHE_MAX = SS_PAGE_CACHE_MAX;
+  // prefetch-cache-pipeline Phase 3 — device split + budget resolver + storage trim
+  module.exports.ssDeviceProfile = ssDeviceProfile;
+  module.exports.ssResolvePrefetchBudget = ssResolvePrefetchBudget;
+  module.exports.ssStorageTrimPlan = ssStorageTrimPlan;
   module.exports.ssClipProgress = ssClipProgress;
   module.exports.ssSeekToTime = ssSeekToTime;
   module.exports.ssSetMediaMuted = ssSetMediaMuted;
