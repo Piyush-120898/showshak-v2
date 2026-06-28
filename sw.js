@@ -23,7 +23,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v46';
+var CACHE_VERSION = 'v47';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -38,6 +38,14 @@ var CACHE_NAME = 'showshak-' + CACHE_VERSION;
    ss_ff_segcache='off') to disable interception on-device without a redeploy. */
 var SEG_CACHE = 'showshak-seg';               // dedicated, version-independent bucket
 var SEG_CACHE_CEILING = 200 * 1024 * 1024;    // ~200 MB LRU-by-bytes ceiling
+// iOS total-storage guard (prefetch-cache-pipeline Phase 3, task 15.3, Req 8.4/8.5/8.7).
+// Device-aware budget posted by the page (SS_SEG_BUDGET): iOS ~50 MB, Android ~100 MB.
+// Defaults to SEG_CACHE_CEILING when unset so behaviour is EXACTLY as today (200 MB)
+// until a budget arrives. The effective ceiling is Math.min(SEG_CACHE_CEILING,
+// _segStorageBudget) — the device budget only ever TIGHTENS, never loosens, the
+// ceiling, and it reuses the SAME already-tested ssSegmentEvictionPlan (no second
+// eviction algorithm). Fail-soft.
+var _segStorageBudget = SEG_CACHE_CEILING;
 var SEG_WINDOW = { ahead: 5, behind: 5 };     // eviction eligibility window (clips around active)
 var _segCacheEnabled = false;                 // OFF by default — Phase 4 is OPT-IN (page posts enable when ss_ff_segcache='on') until the 206 path is validated on-device
 var _segWindow = { ids: [], activeIdx: 0 };   // ordered playback ids + active index (page-supplied)
@@ -127,7 +135,11 @@ function _segEvictSoon(cache) {
         var e = _segIndex[k];
         return { key: k, bytes: e.bytes || 0, lastUsed: e.lastUsed || 0, clipDistance: (typeof e.clipDistance === 'number') ? e.clipDistance : 999 };
       });
-      var plan = ssSegmentEvictionPlan({ segments: segs, ceilingBytes: SEG_CACHE_CEILING, windowAhead: SEG_WINDOW.ahead, windowBehind: SEG_WINDOW.behind });
+      // Effective ceiling = the tighter of the static ceiling and the device
+      // budget (iOS lean / Android deeper); defaults to SEG_CACHE_CEILING when no
+      // budget has been posted, so behaviour is exactly as today (task 15.3).
+      var effCeiling = Math.min(SEG_CACHE_CEILING, _segStorageBudget);
+      var plan = ssSegmentEvictionPlan({ segments: segs, ceilingBytes: effCeiling, windowAhead: SEG_WINDOW.ahead, windowBehind: SEG_WINDOW.behind });
       if (plan && plan.evict && plan.evict.length) {
         plan.evict.forEach(function (key) { try { cache.delete(key); } catch (e) {} delete _segIndex[key]; });
       }
@@ -363,6 +375,11 @@ self.addEventListener('message', function (event) {
       _segWindow.activeIdx = (typeof d.activeIdx === 'number' && isFinite(d.activeIdx)) ? d.activeIdx : 0;
     } else if (d.type === 'SS_SEG_CACHE') {
       _segCacheEnabled = (d.enabled !== false);
+    } else if (d.type === 'SS_SEG_BUDGET') {
+      // Device-aware total-storage guard for the Segment_Cache (task 15.3): a
+      // valid positive budget tightens the eviction ceiling; anything else
+      // resets to the static SEG_CACHE_CEILING (today's behaviour). Fail-soft.
+      _segStorageBudget = (typeof d.budget === 'number' && isFinite(d.budget) && d.budget > 0) ? d.budget : SEG_CACHE_CEILING;
     } else if (d.type === 'SS_POSTER_SWR') {
       _posterSwrEnabled = (d.enabled === true);   // poster SWR is opt-in (ss_ff_poster_swr='on'); default/off → posters not intercepted
     }

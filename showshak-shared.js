@@ -6089,9 +6089,12 @@ function ssWarmClips(clips, n) {
       _ssWarmed[pid] = true;
       // Circuit_Breaker engaged → active-only: skip the (budget-charged) video
       // prefetch for the rest of the session (Req 3.3). Posters still warm.
-      // Also gated on the SW cache being on (_ssSegPrefetchOn) — without it the
-      // prefetched bytes aren't reusable and only starve the active clip's pipe.
-      if (!_ssCircuitOpen && _ssSegPrefetchOn()) {
+      // Byte-prefetch gate (R6.1/6.3): issuing the fetch needs BOTH flags —
+      // _ssSegmentPrefetchOn (ss_ff_segprefetch) is the prefetch switch, and
+      // _ssSegPrefetchOn (ss_ff_segcache) makes the bytes reusable in the SW
+      // Segment_Cache. Without the cache the bytes aren't reusable and only
+      // starve the active clip's stream.mux.com pipe — so both are required.
+      if (!_ssCircuitOpen && _ssSegPrefetchOn() && _ssSegmentPrefetchOn()) {
         try { _ssPrefetchFirstSegment(pid); } catch (e) {}
       }
     }
@@ -6147,17 +6150,24 @@ function _warmNext(activeIdx, host) {
 }
 
 function _warmTick(a, clips, policy) {
+  // Device-aware prefetch depth (R6.3, R8.3/8.5): flow the depth through the
+  // device+network budget resolver instead of reading ssNetworkPolicy.preloadDepth
+  // directly. Same numeric depth per tier today, but iOS/Android budget
+  // differences are honoured going forward.
+  var prof   = ssDeviceProfile((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+  var budget = ssResolvePrefetchBudget(prof, ssNetworkTier(_connEffectiveType()));
+  var depth  = budget.prefetchDepth;
   var action = ssPreloadAction({
     activeReady: _ssActiveReady,
     inFlight: _ssWarmInFlight,
     warmed: 0,                       // ssWarmClips de-dupes per pid, so each tick warms the next un-warmed
-    preloadDepth: policy.preloadDepth
+    preloadDepth: depth
   });
   if (action !== 'start') return;    // 'pause'/'cancel'/'idle' → leave the pipe to the active clip
-  var ahead = clips.slice(a + 1, a + 1 + policy.preloadDepth);
+  var ahead = clips.slice(a + 1, a + 1 + depth);
   if (!ahead.length) return;
   _ssWarmInFlight++;                 // single in-flight discipline (Req 5.1)
-  ssWarmClips(ahead, policy.preloadDepth);   // de-duped, fire-and-forget
+  ssWarmClips(ahead, depth);         // de-duped, fire-and-forget
   setTimeout(function () { if (_ssWarmInFlight > 0) _ssWarmInFlight--; }, 600);
 }
 
@@ -6233,6 +6243,23 @@ function _ssSegPrefetchOn() {
   } catch (e) { return false; }
 }
 
+/* _ssSegmentPrefetchOn() — dedicated kill-switch for the segment-BYTE prefetch
+   (prefetch-cache-pipeline Phase 3, task 14; Req 6.1–6.5). Returns true iff
+   localStorage `ss_ff_segprefetch` is the string 'on'. This is the PREFETCH
+   switch (does the deepen/warm loop issue upcoming-clip byte fetches at all);
+   `_ssSegPrefetchOn` (ss_ff_segcache) is the REUSABILITY switch (does the SW
+   Segment_Cache keep those bytes so the player can reuse them). Prefetched bytes
+   are only worth fetching when they're reusable, so issuing a byte prefetch
+   requires BOTH flags on — `_ssSegPrefetchOn() && _ssSegmentPrefetchOn()`. Both
+   default OFF, so today's behaviour (no prefetch) is completely unchanged.
+   Fail-soft: missing storage / any error → false (off). Window-only (impure). */
+function _ssSegmentPrefetchOn() {
+  try {
+    if (typeof localStorage === 'undefined' || !localStorage) return false;
+    return localStorage.getItem('ss_ff_segprefetch') === 'on';
+  } catch (e) { return false; }
+}
+
 /* ── Progressive-deepening controller (feed-clip-load-performance Phase 2,
    task 11; Req 2.1/2.2/2.4/3.3/3.4/3.6) ───────────────────────────────────
    Impure loop that spends SPARE bandwidth deepening upcoming clips ONLY once
@@ -6270,7 +6297,13 @@ function _ssDeepenTick() {
 
     var dwell = (typeof active.getProgress === 'function') ? active.getProgress() : 0;
     var tier  = ssNetworkTier(_connEffectiveType());
-    var depth = ssNetworkPolicy(tier).preloadDepth;
+    // Device-aware prefetch depth (R6.3, R8.3/8.5): take the depth from the
+    // device+network budget resolver rather than ssNetworkPolicy.preloadDepth
+    // directly. Same numeric depth per tier today; honours iOS/Android budget
+    // differences going forward. tier is still passed to ssShouldDeepen below.
+    var prof   = ssDeviceProfile((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+    var budget = ssResolvePrefetchBudget(prof, tier);
+    var depth  = budget.prefetchDepth;
 
     for (var d = 1; d <= depth; d++) {
       var idx = activeIdx + d;
@@ -6301,10 +6334,13 @@ function _ssDeepenTick() {
 function _ssStartDeepenController(host) {
   _ssDeepenHost = (host === 'INLINE') ? 'INLINE' : 'FULLSCREEN';
   if (_ssFeatureOff('deepen')) { _ssStopDeepenController(); return; }   // kill-switch
-  // Deepening prefetches upcoming segments; those bytes are only reusable when
-  // the SW Segment_Cache is on, and otherwise just starve the active clip's
-  // stream.mux.com connection pool. Gate on the same opt-in flag.
-  if (!_ssSegPrefetchOn()) { _ssStopDeepenController(); return; }
+  // Deepening issues upcoming-clip byte prefetches; that needs BOTH opt-in flags
+  // (R6.1/6.3): ss_ff_segprefetch (_ssSegmentPrefetchOn) is the prefetch switch,
+  // and ss_ff_segcache (_ssSegPrefetchOn) makes the bytes reusable in the SW
+  // Segment_Cache. Without the cache the bytes aren't reusable and only starve
+  // the active clip's stream.mux.com pool — so both must be on. Both default OFF
+  // → the loop issues ZERO byte prefetches (identical to today).
+  if (!(_ssSegPrefetchOn() && _ssSegmentPrefetchOn())) { _ssStopDeepenController(); return; }
   if (_ssDeepenTimer) return;                   // already running (idempotent across setActive calls)
   if (typeof setInterval !== 'function') return;
   _ssDeepenTimer = setInterval(_ssDeepenTick, SS_DEEPEN_TICK_MS);
@@ -6326,6 +6362,21 @@ function _ssPostSegWindow(host) {
   try {
     if (typeof navigator === 'undefined' || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
     var ctrl = navigator.serviceWorker.controller;
+    // iOS total-storage guard for the Segment_Cache (prefetch-cache-pipeline
+    // Phase 3, task 15.3, Req 8.4/8.5/8.7, R12.4). Post the DEVICE-AWARE storage
+    // budget so the SW can tighten its existing Segment_Cache byte ceiling: iOS
+    // stays lean (~SS_IOS_STORAGE_BUDGET) while Android gets the deeper
+    // SS_ANDROID_STORAGE_BUDGET. The SW clamps with Math.min(SEG_CACHE_CEILING,
+    // budget) so this only ever TIGHTENS (never loosens) the already-tested
+    // ssSegmentEvictionPlan ceiling. Fail-soft + inert when segcache is off (the
+    // SW doesn't intercept Mux); reuses the ONE shipped eviction algorithm. The
+    // generic ssStorageTrimPlan remains available for any future generic-storage
+    // trim — the Segment_Cache is the dominant storage consumer guarded here.
+    try {
+      var prof   = ssDeviceProfile((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+      var budget = ssResolvePrefetchBudget(prof, ssNetworkTier(_connEffectiveType())).storageBudget;
+      ctrl.postMessage({ type: 'SS_SEG_BUDGET', budget: budget });
+    } catch (e) { /* best-effort */ }
     // The SW Segment_Cache is OPT-IN (off by default) until its range/206 path
     // is validated on-device — with it off, the PWA delivers Mux exactly like
     // the website (no SW interception). Enable on-device with
@@ -8000,6 +8051,18 @@ function VideoSurface(clip, opts) {
       // segment is a small/low rendition that renders fast. ABR climbs to full
       // quality after the first frame is on screen.
       try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
+      // L3 back-buffer cap (prefetch-cache-pipeline R7.5, R12.2/12.3/12.4): bound
+      // the PLAYED-BACK media the recycled <mux-player> retains so the in-memory
+      // MSE back-buffer stays ~SS_BACK_BUFFER_S seconds. mux-player forwards the
+      // `back-buffer-length` attribute to hls.js (backBufferLength). Capping only
+      // frees ALREADY-PLAYED bytes — it never touches the forward buffer or the
+      // active clip's playback, so playback behaviour is unchanged. Native iOS HLS
+      // (Safari manages its own buffer) simply ignores the attribute. Fail-soft:
+      // an older mux-player silently ignores an unknown attribute, so this is
+      // additive and harmless when unsupported (no kill-switch needed — it only
+      // bounds memory). SACRED: ONE player behaviour iOS+Android, recycled pool,
+      // no player/MP4/CDN swap, no raw-hls.js rewrite.
+      try { el.setAttribute('back-buffer-length', String(SS_BACK_BUFFER_S)); } catch (e) {}
       // Loop the active clip (TikTok/Reels-style) so it replays until the
       // viewer scrolls to another clip. Native loop never fires 'ended', so
       // the error→advance path (handleError) is unaffected.
@@ -8160,6 +8223,11 @@ function VideoSurface(clip, opts) {
       } catch (e) {}
       // Re-seed ABR low for the new clip's fresh hls instance (Phase 4, Req 3.1).
       try { el.setAttribute('initial-bandwidth-estimate-kbps', String(SS_START_BW_KBPS)); } catch (e) {}
+      // Re-apply the L3 back-buffer cap on the recycled element so the new clip's
+      // fresh hls instance also bounds its played-back MSE buffer to
+      // ~SS_BACK_BUFFER_S seconds (prefetch-cache-pipeline R7.5, R12.2/12.3/12.4).
+      // Fail-soft / additive; ignored by native iOS HLS and older mux-player.
+      try { el.setAttribute('back-buffer-length', String(SS_BACK_BUFFER_S)); } catch (e) {}
       el.setAttribute('playback-id', clip.muxPlaybackId);   // new clean hls + Mux Data view
       // Default the recycled element back to preload 'none' so it does not start
       // buffering on its own; the engine re-assigns the real ladder tier right

@@ -149,9 +149,12 @@ check('C4: ssFeedListChanged false iff first window matches by id+order', () => 
 });
 
 check('C5: ssWarmClips bounded to N, de-duped per playback id, never throws', () => {
-  // The first-segment prefetch is gated on the SW Segment_Cache being opt-in
-  // (ss_ff_segcache='on'); enable it here so the prefetch path is exercised.
+  // The first-segment byte prefetch needs BOTH opt-in flags (prefetch-cache-pipeline
+  // Phase 3): ss_ff_segprefetch is the prefetch switch and ss_ff_segcache makes the
+  // bytes reusable in the SW Segment_Cache. Enable both so the prefetch path is
+  // exercised (with either off, ssWarmClips warms posters only — see C6).
   W.localStorage.setItem('ss_ff_segcache', 'on');
+  W.localStorage.setItem('ss_ff_segprefetch', 'on');
   _fetchCalls = []; _imageSrcs = [];
   const clips = makeClips(8);
   W.ssWarmClips(clips, 2);          // warm first 2
@@ -164,6 +167,7 @@ check('C5: ssWarmClips bounded to N, de-duped per playback id, never throws', ()
   W.ssWarmClips(null, 3); W.ssWarmClips([], 3); W.ssWarmClips([{ id: 'x' }], 3);
   assert(_fetchCalls.length === 4, 'clips without playback ids add no fetches');
   W.localStorage.removeItem('ss_ff_segcache');
+  W.localStorage.removeItem('ss_ff_segprefetch');
 });
 
 check('C6: ssWarmClips does NOT prefetch video when the SW cache is off (default)', () => {

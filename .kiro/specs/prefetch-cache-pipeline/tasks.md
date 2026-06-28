@@ -352,8 +352,8 @@ on a version bump (founder reopens the PWA twice).
     - _Files: tests/prop-device-profile.test.js, tests/prop-device-budget.test.js, tests/prop-storage-trim.test.js, tests/prop-pipeline-totality.test.js, showshak-shared.js_
     - _Requirements: 13.3, 13.4, 13.5_
 
-- [ ] 14. Wire the segment-byte prefetch loop within the player cap (gated `ss_ff_segprefetch`)
-  - [ ] 14.1 Warm upcoming clips' HLS bytes only — never mount extra players
+- [x] 14. Wire the segment-byte prefetch loop within the player cap (gated `ss_ff_segprefetch`)
+  - [x] 14.1 Warm upcoming clips' HLS bytes only — never mount extra players
     - Reuse `ssWarmClips` / `_ssDeepenController`: while the Active_Clip's buffer is satisfied and
       the `Circuit_Breaker` is closed, prefetch upcoming clips' init + first media segment **bytes**
       into the SW Segment_Cache, charging `_ssChargePrefetch` (R6.1). Depth from
@@ -365,8 +365,8 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 8.3, 8.5, 12.1, 12.3_
 
-- [ ] 15. Land the device-verified Segment_Cache + bounded back-buffer + iOS storage guard
-  - [ ] 15.1 Extend the `sw.js` `showshak-seg` range-aware Segment_Cache (gated `ss_ff_segcache`)
+- [x] 15. Land the device-verified Segment_Cache + bounded back-buffer + iOS storage guard
+  - [x] 15.1 Extend the `sw.js` `showshak-seg` range-aware Segment_Cache (gated `ss_ff_segcache`)
     - When `ss_ff_segcache` is `on`, intercept Mux HLS_Segment requests against the
       `showshak-seg` bucket (kept out of the activate-time cleanup so a version bump never re-downloads
       warmed video): serve a ranged hit by slicing the cached full body into an HTTP **206** with
@@ -378,14 +378,14 @@ on a version bump (founder reopens the PWA twice).
     - _Files: sw.js_
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.6, 7.7_
 
-  - [ ] 15.2 Cap the player `Back_Buffer` to `SS_BACK_BUFFER_S`
+  - [x] 15.2 Cap the player `Back_Buffer` to `SS_BACK_BUFFER_S`
     - Cap retained played-back media bytes to `SS_BACK_BUFFER_S` on the recycled `<mux-player>` pool
       so L3 stays bounded (R7.5). **SACRED: one player behaviour for iOS + Android, recycled pool, no
       player/MP4/CDN swap, no raw-hls.js rewrite** (R12.2, R12.3).
     - _Files: showshak-shared.js_
     - _Requirements: 7.5, 12.2, 12.3, 12.4_
 
-  - [ ] 15.3 Enforce the iOS total-storage guard via `ssStorageTrimPlan`
+  - [x] 15.3 Enforce the iOS total-storage guard via `ssStorageTrimPlan`
     - On an `ios` `Device_Profile`, keep total Pipeline storage within `SS_IOS_STORAGE_BUDGET`,
       evicting via `ssStorageTrimPlan` when it is exceeded, and never assume cached resources persist
       across sessions (R8.4, R8.7). Android uses `SS_ANDROID_STORAGE_BUDGET` (≥ iOS, R8.5). No
@@ -418,7 +418,7 @@ on a version bump (founder reopens the PWA twice).
     - _Files: sw.js_
     - _Requirements: 13.1_
 
-- [ ] 17. Phase 3 checkpoint — suite green, locked decisions intact
+- [x] 17. Phase 3 checkpoint — suite green, locked decisions intact
   - Run `node tests/run-all.js` (all 10 `prop-*` files + the entire existing suite GREEN) and
     `get_diagnostics` on `showshak-shared.js` and `sw.js`. Confirm in code review: bytes-only
     prefetch never mounts a player, `SS_MAX_LIVE_PLAYERS === 2` unchanged, one player behaviour,
