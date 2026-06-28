@@ -1317,6 +1317,7 @@ async function ssHydrateFollowing() {
         username: u,
         name:     r.creator.name || u,
         letter:   (r.creator.name || u || '?').charAt(0).toUpperCase(),
+        avatar:   r.creator.avatar_url || null,
         bg:       '#EA3B32',
         verified: !!r.creator.verified,
         clips:    prevClips[u] || 0,
@@ -1367,6 +1368,7 @@ function _ssNormalizeCurator(curator) {
     name:     curator.name || u,
     letter:   (curator.letter || u.charAt(0)).toUpperCase(),
     bg:       curator.bg || curator.color || '#EA3B32',
+    avatar:   curator.avatar || curator.photo || null,
     verified: !!curator.verified,
     clips:    curator.clips != null ? curator.clips : (curator.clipCount != null ? curator.clipCount : 0),
   };

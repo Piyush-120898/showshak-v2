@@ -2028,9 +2028,10 @@ async function renderFollowing() {
   const list = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
   const merged = list.filter(c => c && c.username).map(c => ({
     handle:   c.username,
-    letter:   c.letter || (c.username || '?').charAt(0).toUpperCase(),
+    name:     c.name || c.username,
+    avatar:   c.avatar || null,
+    letter:   c.letter || (c.name || c.username || '?').charAt(0).toUpperCase(),
     color:    c.bg || '#EA3B32',
-    clips:    c.clips || 0,
     verified: !!c.verified,
   }));
 
@@ -2038,15 +2039,23 @@ async function renderFollowing() {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">👀</div><div class="empty-t">Not following anyone yet</div><div class="empty-d">Find curators whose taste you trust — tap Follow on any clip or profile and they'll show up here.</div></div>`;
     return;
   }
-  el.innerHTML = merged.map(f=>`
+  // Small HTML/attribute escaper for the curator name (free text) + photo URL.
+  const _e = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  el.innerHTML = merged.map(f=>{
+    const avStyle = f.avatar
+      ? `background-image:url('${_e(f.avatar)}');background-size:cover;background-position:center;`
+      : `background:${f.color}`;
+    const avInner = f.avatar ? '' : f.letter;
+    return `
     <div class="follow-row">
-      <div class="follow-av" style="background:${f.color}" data-curator="${f.handle}" data-curator-name="${f.handle}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}">${f.letter}</div>
-      <div class="follow-info" data-curator="${f.handle}" data-curator-name="${f.handle}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}" data-curator-verified="${f.verified?1:0}">
-        <div class="follow-handle">@${f.handle}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
-        <div class="follow-meta">${f.clips} clips</div>
+      <div class="follow-av" style="${avStyle}" data-curator="${f.handle}" data-curator-name="${_e(f.name)}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}">${avInner}</div>
+      <div class="follow-info" data-curator="${f.handle}" data-curator-name="${_e(f.name)}" data-curator-letter="${f.letter}" data-curator-bg="${f.color}" data-curator-verified="${f.verified?1:0}">
+        <div class="follow-handle">${_e(f.name)}${f.verified?'<span class="follow-v">🔥</span>':''}</div>
+        <div class="follow-meta">@${f.handle}</div>
       </div>
       <button class="btn-following" onclick="unfollowFromList('${f.handle}', this)">Following</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(el);
 }
 function unfollowFromList(handle, btn) {
