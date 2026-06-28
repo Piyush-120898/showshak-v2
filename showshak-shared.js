@@ -4180,6 +4180,7 @@ function _ssvBuildList(clicked, list) {
     .ssv-bg {
       position: absolute; inset: 0;
       background-size: cover; background-position: center;
+      filter: brightness(1.12) saturate(1.06);
       transform: scale(1.04); transition: transform 0.6s var(--ease-smooth);
     }
     .ssv-clip.active .ssv-bg { transform: scale(1); }
@@ -4233,9 +4234,9 @@ function _ssvBuildList(clicked, list) {
     }
     .ssv-vig {
       position: absolute; inset: 0; pointer-events: none;
-      /* Brighter scrim: a light bottom legibility gradient that clears by ~40%,
+      /* Brighter scrim: a light bottom legibility gradient that clears by ~38%,
          no top tint — the clip reads as the foreground, not a dimmed backdrop. */
-      background: linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.22) 18%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 100%);
+      background: linear-gradient(to top, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.20) 16%, rgba(0,0,0,0) 38%, rgba(0,0,0,0) 100%);
     }
 
     /* Double-tap-to-fire: a full-area tap zone that sits ABOVE the bg/vig
