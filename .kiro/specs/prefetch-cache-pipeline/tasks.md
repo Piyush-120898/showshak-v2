@@ -173,7 +173,7 @@ on a version bump (founder reopens the PWA twice).
     exactly as today (R10.4, R14.2). Ensure all tests pass, ask the user if questions arise.
   - _Requirements: 10.4, 13.4, 13.5, 14.1, 14.2_
 
-- [~] 5. FOUNDER-RUN — Phase 1 on-device verification (real installed PWA)
+- [ ] 5. FOUNDER-RUN — Phase 1 on-device verification (real installed PWA)
   - **Founder** (after the `v43` bump, push, reopen the PWA twice): confirm prewarm runs after
     first paint (rIC, with setTimeout fallback), Discover and Watchlist paint from cache with the
     prewarmed posters and **no new poster request** (DevTools network), and that forcing a prewarm
@@ -182,8 +182,8 @@ on a version bump (founder reopens the PWA twice).
 
 ### PHASE 2 — Generic helper + storage tiering + SW per-resource strategies (gated `ss_ff_idb`, `ss_ff_poster_swr`)
 
-- [ ] 6. Write the 2 Phase-2 property tests (TDD — author FIRST, before task 7)
-  - [~] 6.1 Property 4 — storage tier routing
+- [x] 6. Write the 2 Phase-2 property tests (TDD — author FIRST, before task 7)
+  - [x] 6.1 Property 4 — storage tier routing
     - `tests/prop-storage-tier.test.js`: `ssStorageTier(resourceKind)` maps every URL-addressable
       kind (`app_shell`, `css`, `js`, `html`, `poster`, `segment`) → `'cache_storage'`, `page_data`
       → `'indexeddb'`, tiny-flag kinds (`flag`, `last_uid`, `cache_meta`) → `'localstorage'`, and any
@@ -192,7 +192,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 4.1, 4.2, 4.3**
     - _Files: tests/prop-storage-tier.test.js_
 
-  - [~] 6.2 Property 5 — page-cache bound
+  - [x] 6.2 Property 5 — page-cache bound
     - `tests/prop-page-cache-bound.test.js`: for any `clips` array, the value produced by the
       Page_Data write path retains at most `SS_PAGE_CACHE_MAX` clips (stored length
       `= min(clips.length, SS_PAGE_CACHE_MAX)`), so no Target_Page cache grows unbounded. Drive this
@@ -201,15 +201,15 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 4.6, 12.4**
     - _Files: tests/prop-page-cache-bound.test.js_
 
-- [ ] 7. Implement the Phase-2 pure helper + page-cache clamp (make P4, P5 green)
-  - [~] 7.1 Add `ssStorageTier(resourceKind)`
+- [x] 7. Implement the Phase-2 pure helper + page-cache clamp (make P4, P5 green)
+  - [x] 7.1 Add `ssStorageTier(resourceKind)`
     - Pure router per Property 4 (URL-addressable → `cache_storage`; `page_data` → `indexeddb`;
       tiny flags → `localstorage`; unknown → `localstorage`, the smallest/safest tier). Total.
       Dual-export.
     - _Files: showshak-shared.js_
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [~] 7.2 Expose the page-cache clamp as a pure, dual-exported boundary
+  - [x] 7.2 Expose the page-cache clamp as a pure, dual-exported boundary
     - Factor the `min(clips.length, SS_PAGE_CACHE_MAX)` clamp the page-cache write path uses into a
       pure, total, dual-exported boundary (or assert the existing `SS_PAGE_CACHE_MAX = 60` clamp in
       `ssWritePageCache`/`ssWritePageData` is the single bound) so Property 5 tests it directly and
@@ -217,14 +217,14 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 4.6, 12.4_
 
-  - [~] 7.3 Verify P4, P5 pass and the existing suite stays green
+  - [x] 7.3 Verify P4, P5 pass and the existing suite stays green
     - **IMPORTANT**: re-run task-6 tests; run `node tests/run-all.js` (P4/P5 + all prior + existing
       GREEN). Confirm `ssStorageTier` dual-export.
     - _Files: tests/prop-storage-tier.test.js, tests/prop-page-cache-bound.test.js, showshak-shared.js_
     - _Requirements: 13.3, 13.4, 13.5_
 
-- [ ] 8. Wire the Phase-2 impure shell — IndexedDB tiering + SW per-resource strategies
-  - [~] 8.1 Add `ssReadPageData(name)` / `ssWritePageData(name, clips)` (IndexedDB + localStorage fallback)
+- [x] 8. Wire the Phase-2 impure shell — IndexedDB tiering + SW per-resource strategies
+  - [x] 8.1 Add `ssReadPageData(name)` / `ssWritePageData(name, clips)` (IndexedDB + localStorage fallback)
     - Async IndexedDB object store (`ss_pagedata`, key `name|uid`, value `{ v, ts, clips }`) read off
       the main thread (R4.4), clamped to `SS_PAGE_CACHE_MAX` per Target_Page (R4.6). On IndexedDB
       absence or any read/write failure, fall back to the existing synchronous
@@ -233,7 +233,7 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 4.1, 4.4, 4.5, 4.6, 11.1, 11.3_
 
-  - [~] 8.2 Route page reads/writes through the tier, switch prewarm + pages to `ssReadPageData`/`ssWritePageData`
+  - [x] 8.2 Route page reads/writes through the tier, switch prewarm + pages to `ssReadPageData`/`ssWritePageData`
     - Use `ssStorageTier` to confirm `page_data` → IndexedDB and tiny flags/last-uid → localStorage
       (R4.3); switch `ssPrewarmPages` (task 3.1) and the Discover/Watchlist Cache_Then_Revalidate
       paint (task 3.2) to read/write via `ssReadPageData`/`ssWritePageData`, preserving the
@@ -241,7 +241,7 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js, showshak-discover.html, showshak-watchlist.html_
     - _Requirements: 4.1, 4.2, 4.3, 4.5_
 
-  - [~] 8.3 Add the `sw.js` per-resource strategy branches
+  - [x] 8.3 Add the `sw.js` per-resource strategy branches
     - Extend the hand-rolled `sw.js` fetch handler (no Workbox, no build step, R5.4): app shell
       (CSS/JS/icons/manifest) Cache_First with the read-only fallback that keeps serving the shell
       when a write fails but reads succeed (R5.1, R5.6); HTML navigations Stale_While_Revalidate
@@ -251,20 +251,20 @@ on a version bump (founder reopens the PWA twice).
     - _Files: sw.js_
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
 
-  - [~] 8.4 Bump `sw.js` `CACHE_VERSION` `v43` → `v44`
+  - [x] 8.4 Bump `sw.js` `CACHE_VERSION` `v43` → `v44`
     - Publish the new SW strategy branches; founder reopens the PWA twice. Separate from 8.3 so the
       version line and the strategy edits don't collide.
     - _Files: sw.js_
     - _Requirements: 13.1_
 
-- [~] 9. Phase 2 checkpoint — suite green, fallbacks intact
+- [x] 9. Phase 2 checkpoint — suite green, fallbacks intact
   - Run `node tests/run-all.js` (P4/P5 + all prior + existing GREEN) and `get_diagnostics` on
     `showshak-shared.js` and `sw.js`. Confirm with `ss_ff_idb`/`ss_ff_poster_swr` off the app uses
     the localStorage page cache + today's poster fetch (R10.2, R10.4). Ensure all tests pass, ask
     the user if questions arise.
   - _Requirements: 10.2, 10.4, 13.4, 13.5, 14.4_
 
-- [~] 10. FOUNDER-RUN — Phase 2 on-device verification (real installed PWA)
+- [ ] 10. FOUNDER-RUN — Phase 2 on-device verification (real installed PWA)
   - **Founder** (after the `v44` bump): confirm Page_Data reads are async from IndexedDB with no
     main-thread jank; disabling IndexedDB (or `ss_ff_idb` off) falls back to the localStorage page
     cache and still paints; the SW serves the app shell Cache_First, HTML + posters
@@ -275,7 +275,7 @@ on a version bump (founder reopens the PWA twice).
 ### PHASE 3 — Segment-byte prefetch + Segment_Cache + platform split (gated `ss_ff_segprefetch`, `ss_ff_segcache`, `ss_ff_speculation`, `ss_ff_viewtransition`)
 
 - [ ] 11. Add the Phase-3 tunable constants
-  - [~] 11.1 Add `SS_BACK_BUFFER_S`, `SS_IOS_STORAGE_BUDGET`, `SS_ANDROID_STORAGE_BUDGET`
+  - [ ] 11.1 Add `SS_BACK_BUFFER_S`, `SS_IOS_STORAGE_BUDGET`, `SS_ANDROID_STORAGE_BUDGET`
     - Add `SS_BACK_BUFFER_S` (~30 s, finite positive), `SS_IOS_STORAGE_BUDGET` (~50 MB), and
       `SS_ANDROID_STORAGE_BUDGET` (≥ iOS). Reuse the existing `SS_PREFETCH_DEPTH`,
       `SS_SESSION_BYTE_BUDGET`, `SS_SEG_CACHE_CEILING`, `SS_SEG_CACHE_WINDOW`. Dual-export. Add the
@@ -285,7 +285,7 @@ on a version bump (founder reopens the PWA twice).
     - _Requirements: 7.5, 8.4, 8.5, 12.1_
 
 - [ ] 12. Write the 4 Phase-3 property tests (TDD — author FIRST, before task 13)
-  - [~] 12.1 Property 6 — device profile classification
+  - [ ] 12.1 Property 6 — device profile classification
     - `tests/prop-device-profile.test.js`: `ssDeviceProfile(ua)` returns `'ios'` for iOS user agents
       (iPhone/iPad/iPod and iPadOS-as-desktop signals) and `'android'` otherwise; non-string / absent
       input → `'ios'` (fail lean — never grant the deep budget on uncertainty). Total, deterministic.
@@ -293,7 +293,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.2**
     - _Files: tests/prop-device-profile.test.js_
 
-  - [~] 12.2 Property 7 — device prefetch-budget invariants
+  - [ ] 12.2 Property 7 — device prefetch-budget invariants
     - `tests/prop-device-budget.test.js`: for any tier, `ssResolvePrefetchBudget('android', tier)`
       yields `byteBudget` and `storageBudget` ≥ the `'ios'` values; iOS `storageBudget ===
       SS_IOS_STORAGE_BUDGET` for every tier; `('android','fast')` `prefetchDepth ===
@@ -303,7 +303,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.3, 8.4, 8.5**
     - _Files: tests/prop-device-budget.test.js_
 
-  - [~] 12.3 Property 9 — iOS storage-trim stays within budget and partitions input
+  - [ ] 12.3 Property 9 — iOS storage-trim stays within budget and partitions input
     - `tests/prop-storage-trim.test.js`: `ssStorageTrimPlan(entries, budgetBytes)` evicts
       least-recently-used first until kept bytes ≤ budget (floor: a single entry larger than the
       budget is kept); no evicted entry has a newer `lastUsed` than any kept entry; `evict ∪ keep`
@@ -313,7 +313,7 @@ on a version bump (founder reopens the PWA twice).
     - **Validates: Requirements 8.7, 12.4**
     - _Files: tests/prop-storage-trim.test.js_
 
-  - [~] 12.4 Property 10 — totality of all 8 new pure helpers
+  - [ ] 12.4 Property 10 — totality of all 8 new pure helpers
     - `tests/prop-pipeline-totality.test.js`: for any input (incl. `null`, `undefined`, wrong-typed,
       non-finite, malformed) every new pure helper (`ssShouldPrewarm`, `ssPosterPrewarmList`,
       `ssPublicSignalsOnly`, `ssStorageTier`, `ssDeviceProfile`, `ssResolvePrefetchBudget`,
@@ -324,13 +324,13 @@ on a version bump (founder reopens the PWA twice).
     - _Files: tests/prop-pipeline-totality.test.js_
 
 - [ ] 13. Implement the Phase-3 pure helpers (make P6, P7, P9, P10 green)
-  - [~] 13.1 Add `ssDeviceProfile(ua)`
+  - [ ] 13.1 Add `ssDeviceProfile(ua)`
     - Classify iOS (`iPhone|iPad|iPod`, iPadOS-as-Mac-with-touch when signalled) → `'ios'`; otherwise
       → `'android'`; non-string → `'ios'` (fail lean). Total. Dual-export.
     - _Files: showshak-shared.js_
     - _Requirements: 8.2_
 
-  - [~] 13.2 Add `ssResolvePrefetchBudget(deviceProfile, networkTier)`
+  - [ ] 13.2 Add `ssResolvePrefetchBudget(deviceProfile, networkTier)`
     - Return `{ byteBudget, prefetchDepth, storageBudget }` per Property 7's invariants (Android ≥
       iOS for the same tier; iOS storage `=== SS_IOS_STORAGE_BUDGET`; `('android','fast')` depth `=
       SS_PREFETCH_DEPTH.fast`; unknown device → iOS, unknown tier → medium via `ssNetworkPolicy`).
@@ -338,14 +338,14 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js_
     - _Requirements: 8.3, 8.4, 8.5_
 
-  - [~] 13.3 Add `ssStorageTrimPlan(entries, budgetBytes)`
+  - [ ] 13.3 Add `ssStorageTrimPlan(entries, budgetBytes)`
     - Generic byte-bounded LRU planner per Property 9 (evict LRU-first to budget, single-entry floor,
       exact partition); non-array / non-finite budget → `{ evict: [], keep: [] }`. Mirrors
       `ssSegmentEvictionPlan` but tier-agnostic. Total. Dual-export.
     - _Files: showshak-shared.js_
     - _Requirements: 8.7, 12.4_
 
-  - [~] 13.4 Verify P6, P7, P9, P10 pass and the existing suite stays green
+  - [ ] 13.4 Verify P6, P7, P9, P10 pass and the existing suite stays green
     - **IMPORTANT**: re-run task-12 tests; run `node tests/run-all.js` (P6/P7/P9/P10 + all prior +
       existing GREEN). Confirm dual-export of `ssDeviceProfile`, `ssResolvePrefetchBudget`,
       `ssStorageTrimPlan`, and that `prop-pipeline-totality` sees all 8 helpers on `module.exports`.
@@ -353,7 +353,7 @@ on a version bump (founder reopens the PWA twice).
     - _Requirements: 13.3, 13.4, 13.5_
 
 - [ ] 14. Wire the segment-byte prefetch loop within the player cap (gated `ss_ff_segprefetch`)
-  - [~] 14.1 Warm upcoming clips' HLS bytes only — never mount extra players
+  - [ ] 14.1 Warm upcoming clips' HLS bytes only — never mount extra players
     - Reuse `ssWarmClips` / `_ssDeepenController`: while the Active_Clip's buffer is satisfied and
       the `Circuit_Breaker` is closed, prefetch upcoming clips' init + first media segment **bytes**
       into the SW Segment_Cache, charging `_ssChargePrefetch` (R6.1). Depth from
@@ -366,7 +366,7 @@ on a version bump (founder reopens the PWA twice).
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 8.3, 8.5, 12.1, 12.3_
 
 - [ ] 15. Land the device-verified Segment_Cache + bounded back-buffer + iOS storage guard
-  - [~] 15.1 Extend the `sw.js` `showshak-seg` range-aware Segment_Cache (gated `ss_ff_segcache`)
+  - [ ] 15.1 Extend the `sw.js` `showshak-seg` range-aware Segment_Cache (gated `ss_ff_segcache`)
     - When `ss_ff_segcache` is `on`, intercept Mux HLS_Segment requests against the
       `showshak-seg` bucket (kept out of the activate-time cleanup so a version bump never re-downloads
       warmed video): serve a ranged hit by slicing the cached full body into an HTTP **206** with
@@ -378,14 +378,14 @@ on a version bump (founder reopens the PWA twice).
     - _Files: sw.js_
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.6, 7.7_
 
-  - [~] 15.2 Cap the player `Back_Buffer` to `SS_BACK_BUFFER_S`
+  - [ ] 15.2 Cap the player `Back_Buffer` to `SS_BACK_BUFFER_S`
     - Cap retained played-back media bytes to `SS_BACK_BUFFER_S` on the recycled `<mux-player>` pool
       so L3 stays bounded (R7.5). **SACRED: one player behaviour for iOS + Android, recycled pool, no
       player/MP4/CDN swap, no raw-hls.js rewrite** (R12.2, R12.3).
     - _Files: showshak-shared.js_
     - _Requirements: 7.5, 12.2, 12.3, 12.4_
 
-  - [~] 15.3 Enforce the iOS total-storage guard via `ssStorageTrimPlan`
+  - [ ] 15.3 Enforce the iOS total-storage guard via `ssStorageTrimPlan`
     - On an `ios` `Device_Profile`, keep total Pipeline storage within `SS_IOS_STORAGE_BUDGET`,
       evicting via `ssStorageTrimPlan` when it is exceeded, and never assume cached resources persist
       across sessions (R8.4, R8.7). Android uses `SS_ANDROID_STORAGE_BUDGET` (≥ iOS, R8.5). No
@@ -394,7 +394,7 @@ on a version bump (founder reopens the PWA twice).
     - _Requirements: 8.4, 8.5, 8.7, 12.4_
 
 - [ ] 16. Wire the platform enhancements + final SW bump
-  - [~] 16.1 Speculation Rules wiring (Android + supported; manual fallback) (gated `ss_ff_speculation`)
+  - [ ] 16.1 Speculation Rules wiring (Android + supported; manual fallback) (gated `ss_ff_speculation`)
     - When `ssDeviceProfile` is `android` and Speculation_Rules are supported, register a prerender/
       prefetch entry for the next likely page (R8.1); on iOS / unsupported / registration failure,
       fall back to manual `Cross_Page_Prewarm` (`ssPrewarmPages`) (R8.2, R8.6). Gated by
@@ -403,7 +403,7 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-feed.html, showshak-shared.js_
     - _Requirements: 8.1, 8.2, 8.6_
 
-  - [~] 16.2 View Transitions wiring via `ssNavStrategy` (gated `ss_ff_viewtransition`)
+  - [ ] 16.2 View Transitions wiring via `ssNavStrategy` (gated `ss_ff_viewtransition`)
     - Use the existing pure `ssNavStrategy(env)` to decide: supported → cross-document View
       Transition for navigations between ShowShak pages (R9.1, R9.4); unsupported → standard
       navigation with no visual regression (R9.2); a failed-to-start transition completes the
@@ -412,13 +412,13 @@ on a version bump (founder reopens the PWA twice).
     - _Files: showshak-shared.js, showshak-feed.html, showshak-discover.html, showshak-watchlist.html_
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-  - [~] 16.3 Bump `sw.js` `CACHE_VERSION` `v44` → `v45`
+  - [ ] 16.3 Bump `sw.js` `CACHE_VERSION` `v44` → `v45`
     - Publish the Segment_Cache + back-buffer + storage-guard SW changes; founder reopens the PWA
       twice. Separate from 15.1/15.3 so the version line doesn't collide with the strategy edits.
     - _Files: sw.js_
     - _Requirements: 13.1_
 
-- [~] 17. Phase 3 checkpoint — suite green, locked decisions intact
+- [ ] 17. Phase 3 checkpoint — suite green, locked decisions intact
   - Run `node tests/run-all.js` (all 10 `prop-*` files + the entire existing suite GREEN) and
     `get_diagnostics` on `showshak-shared.js` and `sw.js`. Confirm in code review: bytes-only
     prefetch never mounts a player, `SS_MAX_LIVE_PLAYERS === 2` unchanged, one player behaviour,
@@ -427,7 +427,7 @@ on a version bump (founder reopens the PWA twice).
     arise.
   - _Requirements: 10.4, 12.1, 12.2, 12.3, 12.4, 13.4, 13.5_
 
-- [~] 18. FOUNDER-RUN — Phase 3 on-device verification (real installed PWA)
+- [ ] 18. FOUNDER-RUN — Phase 3 on-device verification (real installed PWA)
   - **Founder** (after the `v45` bump): confirm prefetch warms bytes only and the live player count
     never exceeds `SS_MAX_LIVE_PLAYERS`; `ss_ff_segcache` on → 206 slicing correct, miss fetched+
     stored, unsatisfiable range bypasses, a `CACHE_VERSION` bump does NOT wipe `showshak-seg`,

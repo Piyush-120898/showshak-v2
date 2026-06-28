@@ -1089,14 +1089,20 @@ async function _discInit(){
   function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
   // 1) Instant shell — paint last session's real clips from cache (or the mock
   //    defaults) right away so the grids are never empty during the DB fetch.
-  const _cached = (typeof ssReadPageCache === 'function') ? ssReadPageCache('discover') : null;
+  //    ssReadPageData is ASYNC (IndexedDB tier when ss_ff_idb is on, localStorage
+  //    fallback when off) — await it so we still paint from cache as early as
+  //    possible; a null/empty resolve keeps today's load-after-mount path.
+  const _cached = (typeof ssReadPageData === 'function')
+    ? await ssReadPageData('discover')
+    : ((typeof ssReadPageCache === 'function') ? ssReadPageCache('discover') : null);
   if (_cached && _cached.length) { CLIPS = _cached; CURATORS = rebuildCuratorsFromClips(); }
   _discBuildAll();
   // 2) Revalidate against the DB; cache + re-render only if the list changed.
   const _prev = CLIPS;
   const _real = await discoverLoadRealClips();
   if (_real) {
-    if (typeof ssWritePageCache === 'function') ssWritePageCache('discover', CLIPS);
+    if (typeof ssWritePageData === 'function') ssWritePageData('discover', CLIPS);
+    else if (typeof ssWritePageCache === 'function') ssWritePageCache('discover', CLIPS);
     if (typeof ssFeedListChanged !== 'function' || ssFeedListChanged(_prev, CLIPS)) {
       CURATORS = rebuildCuratorsFromClips();
       _discBuildAll();

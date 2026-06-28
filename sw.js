@@ -1,21 +1,29 @@
 /* ShowShak service worker — PWA install + smart caching.
    ─────────────────────────────────────────────────────────────
-   Update-safe by design (your push-to-main workflow stays instant):
-     • HTML navigations → STALE-WHILE-REVALIDATE (instant from cache, then
-       refreshed in the background for next load). Network is used on the first/
+   Per-resource caching strategies (prefetch-cache-pipeline Phase 2, task 8.3):
+     • App shell — same-origin static assets (CSS/JS/SVG/icons/manifest) →
+       CACHE-FIRST (Req 5.1). Served instantly from Cache_Storage; only refreshed
+       on a CACHE_VERSION bump. A failed cache WRITE (quota / read-only store)
+       never breaks serving: reads keep flowing from the cache (Req 5.6).
+     • HTML navigations → STALE-WHILE-REVALIDATE (Req 5.2): instant from cache,
+       refreshed in the background for next load. Network is used on the first/
        uncached visit and as the offline fallback. (Bump CACHE_VERSION to push a
        deploy to users right away.)
-     • Same-origin static assets (CSS/JS/SVG/manifest) → STALE-WHILE-REVALIDATE
-       (instant from cache, refreshed in the background for next load).
-     • Mux video/images, Supabase, fonts, CDN libs → NOT intercepted. Video is
-       never cached here (storage safety; the tiered disk cache is a deliberate
-       LATER decision). The browser's own HTTP cache still handles those.
+     • Posters — image.mux.com thumbnails → STALE-WHILE-REVALIDATE (Req 5.3),
+       gated behind the ss_ff_poster_swr kill-switch (the page posts
+       { type:'SS_POSTER_SWR', enabled } the same way it posts SS_SEG_CACHE).
+       OFF by default → posters are fetched exactly as today (not intercepted).
+     • Any Cache_Storage READ failure → fall through to a normal network fetch
+       (Req 5.5). No cache miss / open error ever throws at the page.
+     • Mux video segments → persistent showshak-seg Segment_Cache (separate
+       bucket, task 15 / ss_ff_segcache) — left untouched here.
+     • Supabase, fonts → NOT intercepted; the browser's HTTP cache handles them.
      • skipWaiting + clients.claim + old-cache cleanup → new SW takes over at
        once, no "close all tabs" dance.
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v43';
+var CACHE_VERSION = 'v44';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -35,6 +43,16 @@ var _segCacheEnabled = false;                 // OFF by default — Phase 4 is O
 var _segWindow = { ids: [], activeIdx: 0 };   // ordered playback ids + active index (page-supplied)
 var _segIndex = {};                           // href → { key, bytes, lastUsed, clipDistance }
 var _segEvictScheduled = false;
+
+/* ── Poster Stale_While_Revalidate (prefetch-cache-pipeline Phase 2, task 8.3, Req 5.3)
+   ───────────────────────────────────────────────────────────────────────────
+   image.mux.com poster thumbnails are served SWR out of the L0 app-shell bucket
+   (showshak-<CACHE_VERSION>): paint instantly from cache, refresh in the
+   background. OFF by default — exactly like the segment cache, the page posts
+   { type:'SS_POSTER_SWR', enabled } (from localStorage ss_ff_poster_swr) so the
+   branch can be toggled on-device without a redeploy. While OFF, posters are NOT
+   intercepted and are fetched precisely as they are today (unchanged behaviour). */
+var _posterSwrEnabled = false;                // OFF by default — poster SWR is opt-in (ss_ff_poster_swr='on')
 
 // Mirror of the property-tested ssSegmentEvictionPlan (showshak-shared.js).
 // Keep in sync; the canonical version is covered by tests/prop-feed-evict-*.
@@ -178,7 +196,24 @@ function _serveMuxSegment(req, url, kind) {
   }).catch(function () { return fetch(req); });
 }
 
-// Best-effort precache of the app shell (failures are ignored so install never
+// Serve an image.mux.com poster thumbnail with STALE-WHILE-REVALIDATE out of the
+// L0 app-shell bucket: return the cached copy instantly (if any) while a
+// background fetch refreshes it for next time; on a miss, await the network and
+// cache it. A failed cache WRITE never breaks serving, and any Cache_Storage
+// READ/open failure falls through to a plain network fetch (Req 5.3, 5.5, 5.6).
+function _servePosterSWR(req) {
+  return caches.open(CACHE_NAME).then(function (cache) {
+    return cache.match(req).then(function (cached) {
+      var network = fetch(req).then(function (res) {
+        if (res && res.status === 200 && res.type !== 'opaque') {
+          cache.put(req, res.clone()).catch(function () { /* read-only / quota: keep serving (Req 5.6) */ });
+        }
+        return res;
+      }).catch(function () { return cached; });   // offline → whatever we have
+      return cached || network;                   // stale-first, else revalidate
+    }).catch(function () { return fetch(req); });  // cache READ failure → network (Req 5.5)
+  }).catch(function () { return fetch(req); });     // cache OPEN failure → network (Req 5.5)
+}
 // breaks if a path 404s). Paths are relative to the SW scope.
 var PRECACHE = [
   './',
@@ -260,6 +295,15 @@ self.addEventListener('fetch', function (event) {
     if (muxKind) { event.respondWith(_serveMuxSegment(req, url, muxKind)); return; }
   }
 
+  // Posters (image.mux.com thumbnails) → STALE-WHILE-REVALIDATE out of the L0
+  // bucket, gated behind ss_ff_poster_swr. Cross-origin, so it must be handled
+  // BEFORE the same-origin gate below. When the kill-switch is off (default) we
+  // don't intercept and the browser fetches posters exactly as today.
+  if (_posterSwrEnabled && url.hostname === 'image.mux.com') {
+    event.respondWith(_servePosterSWR(req));
+    return;
+  }
+
   // Other cross-origin (Mux video/images, Supabase, Google Fonts) → don't
   // intercept. The browser handles them; video is never stored in our cache.
   if (!sameOrigin) return;
@@ -273,36 +317,43 @@ self.addEventListener('fetch', function (event) {
       caches.open(CACHE_NAME).then(function (cache) {
         return cache.match(req).then(function (cached) {
           var network = fetch(req).then(function (res) {
-            if (res && res.status === 200) cache.put(req, res.clone());
+            if (res && res.status === 200) cache.put(req, res.clone()).catch(function () {});
             return res;
           }).catch(function () {
             return cached || cache.match('showshak-feed.html');
           });
           return cached || network;   // instant from cache; network on first visit
         });
-      })
+      }).catch(function () { return fetch(req); })   // cache READ/open failure → network (Req 5.5)
     );
     return;
   }
 
-  // Same-origin static assets → STALE-WHILE-REVALIDATE: serve the cached copy
-  // instantly (fast feel), refresh it in the background for the next load.
+  // App shell — same-origin static assets (CSS/JS/SVG/icons/manifest) →
+  // CACHE-FIRST (Req 5.1): serve the cached copy immediately; only fetch the
+  // network on a miss, then store it for next time. Refreshed on a CACHE_VERSION
+  // bump (not background-revalidated), so the shell is rock-stable between
+  // deploys. A failed cache WRITE (quota / read-only store) is swallowed so reads
+  // keep serving the shell from Cache_Storage (Req 5.6); any cache READ/open
+  // failure falls through to a plain network fetch (Req 5.5).
   event.respondWith(
     caches.open(CACHE_NAME).then(function (cache) {
       return cache.match(req).then(function (cached) {
-        var network = fetch(req).then(function (res) {
-          if (res && res.status === 200) cache.put(req, res.clone());
+        if (cached) return cached;                  // read-only cache hit: serve it (Req 5.1, 5.6)
+        return fetch(req).then(function (res) {
+          if (res && res.status === 200) {
+            cache.put(req, res.clone()).catch(function () { /* write best-effort: keep serving (Req 5.6) */ });
+          }
           return res;
-        }).catch(function () { return cached; });   // offline → whatever we have
-        return cached || network;                   // cached first, else network
-      });
-    })
+        });
+      }).catch(function () { return fetch(req); });  // cache READ failure → network (Req 5.5)
+    }).catch(function () { return fetch(req); })      // cache OPEN failure → network (Req 5.5)
   );
 });
 
 // Let a page tell a waiting SW to take over right away (used by the update prompt),
-// and receive the active-clip window (for segment clipDistance/eviction) + the
-// segment-cache kill-switch.
+// and receive the active-clip window (for segment clipDistance/eviction), the
+// segment-cache kill-switch, and the poster-SWR kill-switch.
 self.addEventListener('message', function (event) {
   var d = event.data;
   if (d === 'SS_SKIP_WAITING') { self.skipWaiting(); return; }
@@ -312,6 +363,8 @@ self.addEventListener('message', function (event) {
       _segWindow.activeIdx = (typeof d.activeIdx === 'number' && isFinite(d.activeIdx)) ? d.activeIdx : 0;
     } else if (d.type === 'SS_SEG_CACHE') {
       _segCacheEnabled = (d.enabled !== false);
+    } else if (d.type === 'SS_POSTER_SWR') {
+      _posterSwrEnabled = (d.enabled === true);   // poster SWR is opt-in (ss_ff_poster_swr='on'); default/off → posters not intercepted
     }
   }
 });

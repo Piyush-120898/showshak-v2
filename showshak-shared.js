@@ -4573,6 +4573,9 @@ const ClipEngine = {
     // Tell the SW the active-clip window so its Segment_Cache can compute
     // clipDistance for window/LRU eviction (Phase 4).
     _ssPostSegWindow('FULLSCREEN');
+    // Sync the poster Stale_While_Revalidate kill-switch to the SW (independent
+    // of segcache; unconditional so a previously-on SW can be turned off).
+    _ssPostPosterSwr();
   },
 
   /* mountInline(container, clips, opts) — the INLINE render mode. Rebuilds the
@@ -5165,6 +5168,9 @@ function _inlineSetActive(idx) {
   // Tell the SW the active-clip window so its Segment_Cache can compute
   // clipDistance for window/LRU eviction (Phase 4).
   _ssPostSegWindow('INLINE');
+  // Sync the poster Stale_While_Revalidate kill-switch to the SW (independent
+  // of segcache; unconditional so a previously-on SW can be turned off).
+  _ssPostPosterSwr();
 }
 
 /* Sync the single fixed desktop #action-rail to the active clip (mirrors the
@@ -5481,9 +5487,200 @@ function ssWritePageCache(name, clips) {
   try {
     if (!Array.isArray(clips) || !clips.length) return;
     window.localStorage.setItem(_ssPageCacheKey(name), JSON.stringify({
-      v: SS_FEED_CACHE_VERSION, ts: Date.now(), clips: clips.slice(0, SS_PAGE_CACHE_MAX),
+      v: SS_FEED_CACHE_VERSION, ts: Date.now(), clips: ssPageCacheBound(clips),
     }));
   } catch (e) { /* best-effort cache */ }
+}
+
+/* ── L1 Page_Data storage tiering — IndexedDB + localStorage fallback ─────────
+   (prefetch-cache-pipeline Phase 2, Req 4.1/4.4/4.5/4.6, 11.1/11.3)
+
+   ssReadPageData(name)  → Promise<clip[] | null>
+   ssWritePageData(name, clips) → Promise<void>  (fire-and-forget at call sites)
+
+   These wrap the synchronous ssReadPageCache / ssWritePageCache localStorage
+   path with an ASYNC IndexedDB tier (read OFF the main thread, R4.4). The tier
+   the structured Page_Data belongs in is the pure ssStorageTier('page_data') →
+   'indexeddb'; the actual I/O lives here.
+
+   GATING + FALLBACK (the whole contract): both functions are gated by the
+   ss_ff_idb Kill_Switch (resolved all-or-defaults via ssResolveKillSwitches over
+   the ss_ff_* flags). When ss_ff_idb is OFF (the default) OR IndexedDB is
+   unavailable OR any open/read/write throws or rejects → they fall back to the
+   existing synchronous ssReadPageCache / ssWritePageCache localStorage path
+   (R4.5). So with the flag off behaviour is byte-identical to Phase 1.
+
+   ssWritePageData sanitizes EVERY record through ssPublicSignalsOnly BEFORE it
+   writes (R11.1, R11.3 — no Scoreboard field ever lands in either tier) and
+   clamps via ssPageCacheBound to SS_PAGE_CACHE_MAX (R4.6). ssReadPageData honors
+   the same TTL check as ssReadPageCache (SS_FEED_CACHE_TTL_MS). NEVER throws —
+   every IndexedDB path is wrapped and rejects degrade to the localStorage tier.
+
+   Window-only + impure (touch IndexedDB / localStorage / ssCurrentUser); NOT in
+   module.exports — same as ssReadPageCache / ssPrewarmPages. */
+
+var SS_PAGEDATA_DB    = 'ss_pagedata';   // structured Page_Data IndexedDB database
+var SS_PAGEDATA_STORE = 'pages';         // object store within SS_PAGEDATA_DB
+
+/* Resolve the effective Pipeline Kill_Switches (all-or-defaults), fail-soft. */
+function _ssResolvePipelineFlags() {
+  try {
+    return (typeof ssResolveKillSwitches === 'function')
+      ? ssResolveKillSwitches(_ssReadPrewarmFlags(), SS_KILL_SWITCH_DEFAULTS)
+      : SS_KILL_SWITCH_DEFAULTS;
+  } catch (e) { return SS_KILL_SWITCH_DEFAULTS; }
+}
+
+/* True only when the IndexedDB API is actually present and usable. */
+function _ssIdbAvailable() {
+  try { return (typeof indexedDB !== 'undefined' && !!indexedDB); } catch (e) { return false; }
+}
+
+/* The per-user Page_Data key: `name + '|' + uid`, using the SAME uid resolution
+   ssWritePageCache uses — current user, else the synchronously-persisted last
+   uid (so it hits on a cold load before the async session resolves), else
+   'guest'. */
+function _ssPageDataUid() {
+  var me = (typeof window !== 'undefined' && typeof window.ssCurrentUser === 'function') ? window.ssCurrentUser() : null;
+  return (me && me.id) || _ssReadLastUid() || 'guest';
+}
+function _ssPageDataKey(name) {
+  return String(name) + '|' + _ssPageDataUid();
+}
+
+/* Open (and lazily create) the Page_Data object store. Rejects on any error so
+   the caller can degrade to the localStorage tier. */
+function _ssOpenPageDataDb() {
+  return new Promise(function (resolve, reject) {
+    try {
+      var req = indexedDB.open(SS_PAGEDATA_DB, 1);
+      req.onupgradeneeded = function () {
+        try {
+          var db = req.result;
+          if (db && !db.objectStoreNames.contains(SS_PAGEDATA_STORE)) db.createObjectStore(SS_PAGEDATA_STORE);
+        } catch (e) { /* surfaced via onerror/onabort */ }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror   = function () { reject(req.error || new Error('idb open error')); };
+      req.onblocked = function () { reject(new Error('idb blocked')); };
+    } catch (e) { reject(e); }
+  });
+}
+
+/* Read one Page_Data envelope from IndexedDB → { v, ts, clips } | null. */
+function _ssIdbReadPage(name) {
+  return _ssOpenPageDataDb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var tx = db.transaction(SS_PAGEDATA_STORE, 'readonly');
+        var store = tx.objectStore(SS_PAGEDATA_STORE);
+        var g = store.get(_ssPageDataKey(name));
+        g.onsuccess = function () { resolve(g.result || null); };
+        g.onerror   = function () { reject(g.error || new Error('idb get error')); };
+      } catch (e) { reject(e); }
+    }).then(
+      function (res) { try { db.close(); } catch (e) {} return res; },
+      function (err) { try { db.close(); } catch (e) {} throw err; }
+    );
+  });
+}
+
+/* Write one Page_Data envelope to IndexedDB. Resolves on tx complete. */
+function _ssIdbWritePage(name, envelope) {
+  return _ssOpenPageDataDb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var tx = db.transaction(SS_PAGEDATA_STORE, 'readwrite');
+        tx.objectStore(SS_PAGEDATA_STORE).put(envelope, _ssPageDataKey(name));
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror    = function () { reject(tx.error || new Error('idb tx error')); };
+        tx.onabort    = function () { reject(tx.error || new Error('idb tx abort')); };
+      } catch (e) { reject(e); }
+    }).then(
+      function () { try { db.close(); } catch (e) {} },
+      function (err) { try { db.close(); } catch (e) {} throw err; }
+    );
+  });
+}
+
+/* Synchronous localStorage fallback read (Phase-1 path), fail-soft → clip[]|null. */
+function _ssReadPageCacheFallback(name) {
+  try { return (typeof ssReadPageCache === 'function') ? ssReadPageCache(name) : null; }
+  catch (e) { return null; }
+}
+/* Synchronous localStorage fallback write (Phase-1 path), fail-soft. */
+function _ssWritePageCacheFallback(name, clips) {
+  try { if (typeof ssWritePageCache === 'function') ssWritePageCache(name, clips); } catch (e) {}
+}
+
+/* Read Page_Data for a Target_Page. Returns a Promise resolving to the cached
+   clip array (or null). IndexedDB when ss_ff_idb is on and available; otherwise
+   the synchronous localStorage page cache. NEVER rejects. */
+function ssReadPageData(name) {
+  try {
+    var flags = _ssResolvePipelineFlags();
+    // Flag OFF (default) or no IndexedDB → byte-identical to Phase 1.
+    if (!flags || !flags.ss_ff_idb || !_ssIdbAvailable()) {
+      return Promise.resolve(_ssReadPageCacheFallback(name));
+    }
+    return _ssIdbReadPage(name).then(function (obj) {
+      // Miss / wrong version / empty / stale → fall back to the localStorage tier
+      // (so a Phase-1 cache still paints during the transition). Same TTL as
+      // ssReadPageCache (SS_FEED_CACHE_TTL_MS).
+      if (!obj || obj.v !== SS_FEED_CACHE_VERSION || !Array.isArray(obj.clips) || !obj.clips.length) {
+        return _ssReadPageCacheFallback(name);
+      }
+      if (SS_FEED_CACHE_TTL_MS && (Date.now() - (obj.ts || 0)) > SS_FEED_CACHE_TTL_MS) {
+        return _ssReadPageCacheFallback(name);
+      }
+      return obj.clips;
+    }).catch(function () {
+      return _ssReadPageCacheFallback(name);   // any IndexedDB failure → localStorage
+    });
+  } catch (e) {
+    return Promise.resolve(_ssReadPageCacheFallback(name));
+  }
+}
+
+/* Write Page_Data for a Target_Page. Returns a Promise (fire-and-forget at call
+   sites). Sanitizes EVERY record through ssPublicSignalsOnly and clamps via
+   ssPageCacheBound BEFORE writing to either tier. IndexedDB when ss_ff_idb is on
+   and available; otherwise the synchronous localStorage page cache. NEVER throws/
+   rejects — every IndexedDB failure degrades to the localStorage tier. */
+function ssWritePageData(name, clips) {
+  var bounded;
+  try {
+    if (!Array.isArray(clips) || !clips.length) return Promise.resolve();
+    // Scoreboard-safe: strip every Scoreboard field BEFORE persisting (R11.1, R11.3).
+    var safe = clips.map(function (c) {
+      return (typeof ssPublicSignalsOnly === 'function') ? ssPublicSignalsOnly(c) : c;
+    });
+    // Clamp to SS_PAGE_CACHE_MAX so neither tier grows unbounded (R4.6).
+    bounded = (typeof ssPageCacheBound === 'function')
+      ? ssPageCacheBound(safe)
+      : safe.slice(0, SS_PAGE_CACHE_MAX);
+    if (!bounded.length) return Promise.resolve();
+
+    var flags = _ssResolvePipelineFlags();
+    // Flag OFF (default) or no IndexedDB → byte-identical to Phase 1.
+    if (!flags || !flags.ss_ff_idb || !_ssIdbAvailable()) {
+      _ssWritePageCacheFallback(name, bounded);
+      return Promise.resolve();
+    }
+    var envelope = { v: SS_FEED_CACHE_VERSION, ts: Date.now(), clips: bounded };
+    return _ssIdbWritePage(name, envelope).catch(function () {
+      _ssWritePageCacheFallback(name, bounded);   // write failed → localStorage
+    });
+  } catch (e) {
+    try { if (bounded && bounded.length) _ssWritePageCacheFallback(name, bounded); } catch (e2) {}
+    return Promise.resolve();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  // Impure, window-only (touch IndexedDB / localStorage); NOT in module.exports.
+  window.ssReadPageData  = ssReadPageData;
+  window.ssWritePageData = ssWritePageData;
 }
 
 /* ── Own-profile prewarm + cache (feed → profile instant cold start) ─────────
@@ -5687,7 +5884,11 @@ function ssPrewarmPages() {
           var safe = clips.map(function (c) {
             return (typeof ssPublicSignalsOnly === 'function') ? ssPublicSignalsOnly(c) : c;
           });
-          if (typeof ssWritePageCache === 'function') ssWritePageCache(target, safe);
+          // Route through the Storage_Tier (ssStorageTier('page_data') →
+          // IndexedDB when ss_ff_idb is on, localStorage when off). ssWritePageData
+          // re-sanitizes (idempotent) + clamps and is fully fail-soft.
+          if (typeof ssWritePageData === 'function') ssWritePageData(target, safe);
+          else if (typeof ssWritePageCache === 'function') ssWritePageCache(target, safe);
 
           // Decode the first SS_PREWARM_POSTER_COUNT posters into the browser
           // image cache (R2.1, R2.4, R2.6). The page clip shape carries `poster`;
@@ -6128,11 +6329,30 @@ function _ssPostSegWindow(host) {
   } catch (e) { /* best-effort */ }
 }
 
+/* _ssPostPosterSwr() — carry the poster Stale_While_Revalidate kill-switch to
+   the service worker (prefetch-cache-pipeline Phase 2). The SW poster-SWR branch
+   is OPT-IN (off by default) until validated on-device; enable on-device with
+   localStorage ss_ff_poster_swr='on'. Posts an explicit enabled:false when off so
+   a previously-on SW gets turned back off — mirroring the segment-cache toggle in
+   _ssPostSegWindow. Independent of segcache (separate kill-switch), so this is
+   called unconditionally at the seg-window kick points. Fail-soft; no-op when
+   there is no controlling SW. */
+function _ssPostPosterSwr() {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    var ctrl = navigator.serviceWorker.controller;
+    var swrOn = false;
+    try { swrOn = (typeof localStorage !== 'undefined' && localStorage) && localStorage.getItem('ss_ff_poster_swr') === 'on'; } catch (e) { swrOn = false; }
+    ctrl.postMessage({ type: 'SS_POSTER_SWR', enabled: swrOn ? true : false });
+  } catch (e) { /* best-effort */ }
+}
+
 if (typeof window !== 'undefined') {
   window._ssFeatureOff            = _ssFeatureOff;
   window._ssStartDeepenController = _ssStartDeepenController;
   window._ssStopDeepenController  = _ssStopDeepenController;
   window._ssPostSegWindow         = _ssPostSegWindow;
+  window._ssPostPosterSwr         = _ssPostPosterSwr;
 }
 
 if (typeof window !== 'undefined') {
@@ -8957,6 +9177,60 @@ function ssPublicSignalsOnly(record) {
   return out;
 }
 
+/* The URL-addressable resource kinds that belong in the Cache_Storage tier
+   (prefetch-cache-pipeline Req 4.1). Listed as a named set so ssStorageTier's
+   routing table is auditable in one place. Exact lowercase only (case-sensitive). */
+var SS_CACHE_STORAGE_KINDS = [
+  'app_shell', 'css', 'js', 'html', 'poster', 'segment',
+];
+
+/**
+ * ssStorageTier — the pure storage-tier router (prefetch-cache-pipeline
+ * Property 4 / Req 4.1, 4.2, 4.3). Maps a resource kind to the Storage_Tier it
+ * belongs in, so every cache write goes to the right place by kind alone.
+ *
+ * Pure: no DOM, no network, no storage; a kind string in, a tier string out.
+ *
+ *   resourceKind — the kind of resource being stored.
+ *
+ * Routing (exact lowercase, case-sensitive):
+ *   • URL-addressable — 'app_shell', 'css', 'js', 'html', 'poster', 'segment'
+ *       → 'cache_storage' (R4.1)
+ *   • structured 'page_data' → 'indexeddb' (R4.2)
+ *   • tiny flags — 'flag', 'last_uid', 'cache_meta' → 'localstorage' (R4.3)
+ *   • anything else (unknown string, '', null, undefined, number, object,
+ *     array, boolean, …) → 'localstorage' — the smallest, safest tier.
+ *
+ * Total, deterministic, never throws.
+ */
+function ssStorageTier(resourceKind) {
+  if (SS_CACHE_STORAGE_KINDS.indexOf(resourceKind) !== -1) return 'cache_storage';
+  if (resourceKind === 'page_data') return 'indexeddb';
+  // tiny flags + every unknown/garbage kind fall to the smallest/safest tier.
+  return 'localstorage';
+}
+
+/**
+ * ssPageCacheBound — the single pure boundary that clamps a Page_Data clip
+ * array to SS_PAGE_CACHE_MAX (prefetch-cache-pipeline Property 5 / Req 4.6,
+ * 12.4). Every page-cache write path routes through this so no Target_Page
+ * cache — in any Storage_Tier — can grow without bound (R12.4).
+ *
+ * Pure: no DOM, no network, no storage; never mutates its input.
+ *
+ *   clips — the page-shaped clip array to bound.
+ *
+ * Returns an array whose length === min(clips.length, SS_PAGE_CACHE_MAX): the
+ * order-preserving FIRST-N prefix, with the SAME clip references as the input
+ * (out[i] === clips[i]). A non-array input → [] (total; never throws).
+ *
+ * Total, deterministic, never mutates the input.
+ */
+function ssPageCacheBound(clips) {
+  if (!Array.isArray(clips)) return [];
+  return clips.slice(0, SS_PAGE_CACHE_MAX);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    DMCA / MODERATION SCAFFOLDING — Phase 1 pure correctness helpers
    (no DOM, no network, never throw, dual-exported; Node-testable).
@@ -9368,6 +9642,10 @@ if (typeof window !== 'undefined') {
   window.ssPosterPrewarmList = ssPosterPrewarmList;
   window.ssPublicSignalsOnly = ssPublicSignalsOnly;
   window.SS_SCOREBOARD_DENYLIST = SS_SCOREBOARD_DENYLIST;
+  // prefetch-cache-pipeline Phase 2 — storage tiering + page-cache bound
+  window.ssStorageTier = ssStorageTier;
+  window.ssPageCacheBound = ssPageCacheBound;
+  window.SS_PAGE_CACHE_MAX = SS_PAGE_CACHE_MAX;
   window.ssClipProgress = ssClipProgress;
   window.ssSeekToTime = ssSeekToTime;
   window.ssSetMediaMuted = ssSetMediaMuted;
@@ -9403,6 +9681,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssPosterPrewarmList = ssPosterPrewarmList;
   module.exports.ssPublicSignalsOnly = ssPublicSignalsOnly;
   module.exports.SS_SCOREBOARD_DENYLIST = SS_SCOREBOARD_DENYLIST;
+  // prefetch-cache-pipeline Phase 2 — storage tiering + page-cache bound
+  module.exports.ssStorageTier = ssStorageTier;
+  module.exports.ssPageCacheBound = ssPageCacheBound;
+  module.exports.SS_PAGE_CACHE_MAX = SS_PAGE_CACHE_MAX;
   module.exports.ssClipProgress = ssClipProgress;
   module.exports.ssSeekToTime = ssSeekToTime;
   module.exports.ssSetMediaMuted = ssSetMediaMuted;

@@ -1279,7 +1279,9 @@ async function wlInit() {
   // and never reflected newly-added clips. Now it's cache-then-revalidate against
   // the REAL DB clips (same loader the Feed/Discover use), with the mock as a
   // last-resort fallback for guests/offline/empty — so the grid stays live.
-  var cached = (typeof ssReadPageCache === 'function') ? ssReadPageCache('watchlist') : null;
+  var cached = (typeof ssReadPageData === 'function')
+    ? await ssReadPageData('watchlist')
+    : ((typeof ssReadPageCache === 'function') ? ssReadPageCache('watchlist') : null);
   ALL_CLIPS = (cached && cached.length) ? cached : SSData.watchlistClips();
   buildRec();
   render();
@@ -1298,7 +1300,8 @@ async function wlInit() {
       var base = await ssLoadClips(48, 0);
       if (base && base.length) {
         var real = ssClipsForDiscover(base);
-        if (typeof ssWritePageCache === 'function') ssWritePageCache('watchlist', real);
+        if (typeof ssWritePageData === 'function') ssWritePageData('watchlist', real);
+        else if (typeof ssWritePageCache === 'function') ssWritePageCache('watchlist', real);
         var changed = (typeof ssFeedListChanged !== 'function') || ssFeedListChanged(ALL_CLIPS, real);
         if (changed) { ALL_CLIPS = real; buildRec(); ssSyncAllSaveBtns(); }
       }
