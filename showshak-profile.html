@@ -2016,6 +2016,25 @@ function followingCount() {
   catch (e) { return 0; }
 }
 
+/* Prefetch followed curators' profile photos so the Following list paints them
+   instantly. Warms the browser HTTP cache via Image() (deduped) — the rows use
+   background-image, which a browser may defer while the tab is hidden, so an
+   explicit eager fetch here makes the photos quick the moment the tab opens. */
+const _followAvatarWarmed = {};
+function _prefetchFollowingAvatars(rows) {
+  try {
+    (rows || []).forEach(f => {
+      const url = f && f.avatar;
+      if (url && !_followAvatarWarmed[url]) {
+        _followAvatarWarmed[url] = true;
+        const img = new Image();
+        try { img.decoding = 'async'; } catch (e) {}
+        img.src = url;
+      }
+    });
+  } catch (e) { /* prefetch is best-effort — never block the render */ }
+}
+
 async function renderFollowing() {
   const el = document.getElementById('following');
   if (!el) return;
@@ -2034,6 +2053,9 @@ async function renderFollowing() {
     color:    c.bg || '#EA3B32',
     verified: !!c.verified,
   }));
+
+  // Warm the curator photos up front so the rows paint instantly.
+  _prefetchFollowingAvatars(merged);
 
   if (!merged.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-ic">👀</div><div class="empty-t">Not following anyone yet</div><div class="empty-d">Find curators whose taste you trust — tap Follow on any clip or profile and they'll show up here.</div></div>`;

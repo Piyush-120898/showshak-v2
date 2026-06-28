@@ -325,16 +325,26 @@ html, body { overflow: hidden; }
 .rec-section { padding: 16px 28px 40px; }
 @media (max-width:700px) { .rec-section { padding: 16px 20px 40px; } }
 
-/* Auto-fill grid: many small cards on desktop (cap card size so they aren't
-   huge), 2-column on narrow mobile (forced below). */
+/* 4-column grid on desktop, 2-column on narrow mobile (forced below). */
 .rec-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 @media (max-width: 500px) {
   .rec-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
 }
+
+/* "More Clips" button — honest pagination over the recommended pool (reveals
+   more rows; hidden once the pool is exhausted). */
+.more-clips-wrap { display: none; justify-content: center; margin: 22px 0 6px; }
+.more-clips-btn {
+  padding: 12px 32px; border-radius: 100px; cursor: pointer;
+  background: rgba(234,59,50,0.1); border: 1.5px solid var(--border2);
+  color: var(--red); font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.more-clips-btn:hover { background: rgba(234,59,50,0.18); }
 
 .rec-clip-card {
   cursor: pointer; position: relative;
@@ -722,6 +732,9 @@ html, body { overflow: hidden; }
         <div class="ss-shell-card"></div><div class="ss-shell-card"></div><div class="ss-shell-card"></div>
         <div class="ss-shell-card"></div><div class="ss-shell-card"></div><div class="ss-shell-card"></div>
       </div>
+      <div class="more-clips-wrap" id="rec-more-wrap">
+        <button class="more-clips-btn" id="rec-more-btn">More Clips</button>
+      </div>
     </div>
 
   </div>
@@ -970,13 +983,9 @@ const EYE_SVG   = `<svg width="11" height="11" viewBox="0 0 24 24"><path fill="#
 const PLAY_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 const BKMK_SVG  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
 
-function buildRec() {
-  const grid = document.getElementById('rec-grid');
-  const shuffled = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
-
-  grid.innerHTML = shuffled.map(c => {
-    const cr = wlCreator(c);
-    return `
+function _wlRecCardHTML(c) {
+  const cr = wlCreator(c);
+  return `
     <div class="rec-clip-card" onclick="ssOpenClip('${c.id}', ALL_CLIPS)">
       <div class="rec-clip-thumb">
         <div class="rec-clip-bg" style="background:${c.bg}"></div>
@@ -998,8 +1007,37 @@ function buildRec() {
       </div>
     </div>
   `;
-  }).join('');
+}
+
+/* Honest pagination: 8 rows (×4 cols) up front, then "More Clips" reveals +4
+   rows until the recommended pool is exhausted (button hides). No duplicates;
+   sourced from the in-memory ALL_CLIPS pool. Rebuilds fresh on revalidate. */
+let _recOrder = [], _recShown = 0;
+const REC_INITIAL = 32;   // 8 rows × 4 cols
+const REC_STEP    = 16;   // +4 rows × 4 cols
+function buildRec() {
+  const grid = document.getElementById('rec-grid');
+  if (!grid) return;
+  _recOrder = [...ALL_CLIPS].sort(() => Math.random() - 0.5);
+  _recShown = 0;
+  grid.innerHTML = '';
+  const btn = document.getElementById('rec-more-btn');
+  if (btn && !btn._ssWired) { btn._ssWired = true; btn.addEventListener('click', _recRevealMore); }
+  _recRevealMore();
+}
+function _recRevealMore() {
+  const grid = document.getElementById('rec-grid');
+  if (!grid) return;
+  const n = (_recShown === 0) ? REC_INITIAL : REC_STEP;
+  const end = Math.min(_recShown + n, _recOrder.length);
+  let html = '';
+  for (let i = _recShown; i < end; i++) html += _wlRecCardHTML(_recOrder[i]);
+  grid.insertAdjacentHTML('beforeend', html);
+  _recShown = end;
+  const wrap = document.getElementById('rec-more-wrap');
+  if (wrap) wrap.style.display = (_recShown < _recOrder.length) ? 'flex' : 'none';
   if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(grid);
+  if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
 }
 
 /* ════════════════════════════════════════════════

@@ -342,8 +342,34 @@ html, body { overflow: hidden; }
    FOR YOU — 2-column grid
 ════════════════════════════════════════════════ */
 .foryou-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
 }
+
+/* ── Progressive disclosure: "More" rail tile + "More Clips" grid button ──
+   Honest pagination over the loaded clip pool — reveals more real clips and
+   stops (tile/button removed) when there are none left. No duplicates. */
+.more-tile {
+  flex-shrink: 0; width: 160px; aspect-ratio: 9/16; border-radius: 16px;
+  border: 1px dashed var(--border2); background: rgba(234,59,50,0.06);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; cursor: pointer; color: var(--red); font-weight: 700; font-size: 13px;
+  transition: background 0.15s, transform 0.2s var(--ease-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+.more-tile:hover  { background: rgba(234,59,50,0.12); transform: translateY(-6px); }
+.more-tile:active { transform: scale(0.96); }
+.more-tile-arrow {
+  width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1;
+}
+.more-clips-wrap { display: none; justify-content: center; margin: 22px 0 6px; }
+.more-clips-btn {
+  padding: 12px 32px; border-radius: 100px; cursor: pointer;
+  background: rgba(234,59,50,0.1); border: 1.5px solid var(--border2);
+  color: var(--red); font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+}
+.more-clips-btn:hover { background: rgba(234,59,50,0.18); }
 
 .fy-clip-card {
   cursor: pointer; position: relative; -webkit-tap-highlight-color: transparent;
@@ -518,6 +544,7 @@ html, body { overflow: hidden; }
   .platform-row { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .foryou-grid  { grid-template-columns: 1fr 1fr; gap: 10px; }
   .clip-card    { width: 140px; }
+  .more-tile    { width: 140px; }
 }
 </style>
 </head>
@@ -581,6 +608,21 @@ html, body { overflow: hidden; }
         <div class="sec-sub">· based on your fires</div>
       </div>
       <div class="foryou-grid" id="foryou-grid"></div>
+
+      <div class="sec-head">
+        <div class="sec-title">Latest <em>Clips</em></div>
+        <div class="sec-sub">· fresh from curators</div>
+      </div>
+      <div class="clips-row" id="latest-row"></div>
+
+      <div class="sec-head">
+        <div class="sec-title">More to <em>Explore</em></div>
+        <div class="sec-sub">· keep discovering</div>
+      </div>
+      <div class="foryou-grid" id="explore-grid"></div>
+      <div class="more-clips-wrap" id="explore-more-wrap">
+        <button class="more-clips-btn" id="explore-more-btn">More Clips</button>
+      </div>
     </div>
 
     <!-- SEARCH RESULTS VIEW -->
@@ -744,13 +786,160 @@ function toggleMood(i, el, mood) {
   }
 }
 
-function buildFeatured() {
-  const row = document.getElementById('featured-row');
-  [...CLIPS].sort(() => Math.random() - 0.5).slice(0, 6).forEach(clip => {
-    const wrap = document.createElement('div');
-    wrap.innerHTML = clipCardHTML(clip, 'lg');
-    row.appendChild(wrap.firstElementChild);
+/* ── Progressive disclosure helpers (honest pagination over the CLIPS pool) ──
+   Rails reveal `step` more cards behind a "More" tile until the source is
+   exhausted; grids reveal `stepRows` more rows behind a "More Clips" button.
+   Every card comes from the in-memory pool — NO duplicates; "More" disappears
+   when there are no more real clips (and the experience scales up naturally as
+   the catalog grows toward beta volume). */
+const _shufClips = (a) => [...a].sort(() => Math.random() - 0.5);
+const DISC_COLS = 4;
+
+function _discCardEl(clip, size) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = clipCardHTML(clip, size);
+  return wrap.firstElementChild;
+}
+function _discWireNew(container) {
+  if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(container);
+  if (typeof ssSyncAllSaveBtns === 'function') ssSyncAllSaveBtns();
+}
+
+const _railState = {};   // rowId -> { order, shown, step }
+function _railRender(rowId, order, initialN, step) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  row.innerHTML = '';
+  _railState[rowId] = { order: order, shown: 0, step: step };
+  _railReveal(rowId, initialN);
+}
+function _railReveal(rowId, n) {
+  const row = document.getElementById(rowId);
+  const st = _railState[rowId];
+  if (!row || !st) return;
+  const oldTile = row.querySelector('.more-tile'); if (oldTile) oldTile.remove();
+  const end = Math.min(st.shown + n, st.order.length);
+  for (let i = st.shown; i < end; i++) row.appendChild(_discCardEl(st.order[i], 'lg'));
+  st.shown = end;
+  if (st.shown < st.order.length) {
+    const tile = document.createElement('div');
+    tile.className = 'more-tile';
+    tile.innerHTML = '<div class="more-tile-arrow">→</div><div>More</div>';
+    tile.addEventListener('click', () => _railReveal(rowId, st.step));
+    row.appendChild(tile);
+  }
+  _discWireNew(row);
+}
+
+const _gridState = {};   // gridId -> { order, shown, step, wrapId }
+function _gridRender(gridId, wrapId, btnId, order, initialRows, stepRows) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  grid.innerHTML = '';
+  _gridState[gridId] = { order: order, shown: 0, step: stepRows * DISC_COLS, wrapId: wrapId };
+  const btn = document.getElementById(btnId);
+  if (btn && !btn._ssWired) { btn._ssWired = true; btn.addEventListener('click', () => _gridReveal(gridId, _gridState[gridId].step)); }
+  _gridReveal(gridId, initialRows * DISC_COLS);
+}
+function _gridReveal(gridId, n) {
+  const grid = document.getElementById(gridId);
+  const st = _gridState[gridId];
+  if (!grid || !st) return;
+  const end = Math.min(st.shown + n, st.order.length);
+  for (let i = st.shown; i < end; i++) grid.appendChild(_discCardEl(st.order[i], 'sm'));
+  st.shown = end;
+  const wrap = document.getElementById(st.wrapId);
+  if (wrap) wrap.style.display = (st.shown < st.order.length) ? 'flex' : 'none';
+  _discWireNew(grid);
+}
+
+/* ── Section meaning: each Discover section ranks the SAME pool differently
+   from real signals (not just a shuffle) ──────────────────────────────────
+   Featured  = "around you": followed curators first, then your taste genres,
+               then popularity (fires). New users (no follows/taste) → popular.
+   Latest    = newest uploads (true created_at order via a cheap id query;
+               falls back to pool order for guest/offline/mock).
+   For You   = your taste (genre/mood match) ranked by fires.
+   Explore   = broad discovery by popularity (most fired).
+   On the current mostly-mock / small pool these look similar; they diverge as
+   real clips (timestamps, your follows, your genres) fill in at beta volume. */
+function _discUserGenres() {
+  try {
+    const o = JSON.parse(localStorage.getItem('ss_user_profile_v1') || '{}');
+    const g = (o && (o.genres || o.taste)) || [];
+    return new Set((Array.isArray(g) ? g : []).map(x => String(x).toLowerCase()));
+  } catch (e) { return new Set(); }
+}
+function _discFollowedHandles() {
+  try {
+    const list = (typeof ssGetFollowing === 'function') ? ssGetFollowing() : [];
+    return new Set(list.map(c => String((c && c.username) || '').toLowerCase()).filter(Boolean));
+  } catch (e) { return new Set(); }
+}
+function _discTasteScore(clip, genres) {
+  if (!genres || !genres.size) return 0;
+  let s = 0;
+  (clip.genre || []).forEach(g => { if (genres.has(String(g).toLowerCase())) s++; });
+  (clip.mood  || []).forEach(m => { if (genres.has(String(m).toLowerCase())) s++; });
+  return s;
+}
+/* Featured "around you": follows dominate, then taste, then popularity. */
+function _discFeaturedOrder() {
+  const genres = _discUserGenres(), follows = _discFollowedHandles();
+  return [...CLIPS].map(c => {
+    const followed = follows.has(String((c.creator && c.creator.name) || '').toLowerCase()) ? 1 : 0;
+    return { c, score: followed * 1e6 + _discTasteScore(c, genres) * 1e4 + (Number(c.fires) || 0) };
+  }).sort((a, b) => b.score - a.score).map(x => x.c);
+}
+/* For You: your taste first, then fires. */
+function _discForYouOrder() {
+  const genres = _discUserGenres();
+  return [...CLIPS].map(c => ({ c, score: _discTasteScore(c, genres) * 1e4 + (Number(c.fires) || 0) }))
+    .sort((a, b) => b.score - a.score).map(x => x.c);
+}
+/* Explore: broad popularity. */
+function _discExploreOrder() {
+  return [...CLIPS].sort((a, b) => (Number(b.fires) || 0) - (Number(a.fires) || 0));
+}
+/* Latest: order the pool by the real newest-first id list (when available). */
+let _discLatestIds = null;   // string[] of ids, newest-first (from the DB)
+function _discLatestOrder() {
+  if (!_discLatestIds || !_discLatestIds.length) return CLIPS.slice();   // fallback: pool order
+  const rank = {}; _discLatestIds.forEach((id, i) => { rank[String(id)] = i; });
+  return [...CLIPS].sort((a, b) => {
+    const ra = rank[String(a.id)], rb = rank[String(b.id)];
+    if (ra == null && rb == null) return 0;
+    if (ra == null) return 1;          // unknown (no timestamp) → after the dated ones
+    if (rb == null) return -1;
+    return ra - rb;                    // smaller index = newer
   });
+}
+/* Cheap newest-first id fetch (id only, fail-soft). Refines Latest once it lands. */
+async function _discFetchLatestIds() {
+  try {
+    if (!window.ssDB) return;
+    const res = await window.ssDB.from('content')
+      .select('id').eq('status', 'live').is('deleted_at', null)
+      .order('created_at', { ascending: false }).limit(60);
+    if (res.error || !res.data || !res.data.length) return;
+    _discLatestIds = res.data.map(r => r.id);
+    buildLatest();   // re-render the Latest rail in true upload order
+  } catch (e) { /* keep pool-order fallback */ }
+}
+
+/* Featured rail: 16 cards, then +10 per "More" tile (personalized to you). */
+function buildFeatured() {
+  _railRender('featured-row', _discFeaturedOrder(), 16, 10);
+}
+
+/* Latest Clips rail: newest uploads first. 16 then +10. */
+function buildLatest() {
+  _railRender('latest-row', _discLatestOrder(), 16, 10);
+}
+
+/* More to Explore grid: broad popularity. 4 rows, then "More Clips" +4 rows. */
+function buildExplore() {
+  _gridRender('explore-grid', 'explore-more-wrap', 'explore-more-btn', _discExploreOrder(), 4, 4);
 }
 
 function buildPlatforms() {
@@ -826,27 +1015,20 @@ function _discMatchesPlatform(clip, platName) {
   return _discPlatformAliases(platName).some(a => text.includes(a));
 }
 
+/* For You: a capped taste grid — 6 rows (24 cards), your taste ranked by fires. */
 function buildForYou() {
   const grid = document.getElementById('foryou-grid');
-  [...CLIPS].sort(() => Math.random() - 0.5).forEach(clip => {
-    const wrap = document.createElement('div');
-    wrap.innerHTML = clipCardHTML(clip, 'sm');
-    grid.appendChild(wrap.firstElementChild);
-  });
+  if (!grid) return;
+  grid.innerHTML = '';
+  _discForYouOrder().slice(0, 6 * DISC_COLS).forEach(clip => grid.appendChild(_discCardEl(clip, 'sm')));
+  _discWireNew(grid);
 }
 
 /* Horizontal scrollable clip frames shown under the "By Platform" chips —
    completes the platform section so it reads like Featured. Uses the same
    large card frames; once live data lands this can be platform-aware. */
 function buildPlatformClips() {
-  const row = document.getElementById('platform-clips-row');
-  if (!row) return;
-  row.innerHTML = '';
-  [...CLIPS].sort(() => Math.random() - 0.5).slice(0, 8).forEach(clip => {
-    const wrap = document.createElement('div');
-    wrap.innerHTML = clipCardHTML(clip, 'lg');
-    row.appendChild(wrap.firstElementChild);
-  });
+  _railRender('platform-clips-row', _shufClips(CLIPS), 16, 10);
 }
 
 function buildRecent() {
@@ -1086,7 +1268,7 @@ async function _discInit(){
   MOODS = SSData.moods;
   PLATFORMS = SSData.discoverPlatforms();
   CURATORS = SSData.discoverCurators();
-  function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
+  function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); buildLatest(); buildExplore(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
   // 1) Instant shell — paint last session's real clips from cache (or the mock
   //    defaults) right away so the grids are never empty during the DB fetch.
   //    ssReadPageData is ASYNC (IndexedDB tier when ss_ff_idb is on, localStorage
@@ -1108,6 +1290,8 @@ async function _discInit(){
       _discBuildAll();
     }
   }
+  // 3) Refine the Latest rail to true newest-first upload order (fail-soft).
+  _discFetchLatestIds();
 }
 /* Page-init runs AFTER the deferred shared-JS chain executes — with those
    scripts deferred, DOMContentLoaded fires only once they have all run, so
