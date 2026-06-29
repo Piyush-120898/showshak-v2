@@ -825,13 +825,20 @@ body {
         <div class="ob-sub">ShowShak's open beta is for adults in India. Review and accept to continue — nothing is collected until you do.</div>
 
         <div style="max-width:580px;margin-top:30px;display:flex;flex-direction:column;gap:16px;">
-          <!-- Affirmative consent acceptance — UNTICKED by default (Req 2.2) -->
-          <label for="consent-accept" style="display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:1.5px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);cursor:pointer;transition:border-color .2s;">
-            <input type="checkbox" id="consent-accept" onchange="obUpdateConsentGate()" style="margin-top:1px;width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer;">
+          <!-- Terms of Service — separate affirmative acceptance, UNTICKED by default (Req 2.2) -->
+          <label for="consent-tos" style="display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:1.5px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);cursor:pointer;transition:border-color .2s;">
+            <input type="checkbox" id="consent-tos" onchange="obUpdateConsentGate()" style="margin-top:1px;width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer;">
             <span style="font-size:14px;line-height:1.55;color:var(--white);">
-              I have read and accept ShowShak's
-              <a id="consent-tos-link" href="showshak-legal.html?doc=tos" rel="noopener" style="color:var(--red);font-weight:700;text-decoration:underline;">Terms of Service</a>
-              and
+              Read and accept the
+              <a id="consent-tos-link" href="showshak-legal.html?doc=tos" rel="noopener" style="color:var(--red);font-weight:700;text-decoration:underline;">Terms of Service</a>.
+            </span>
+          </label>
+
+          <!-- Privacy Policy — separate affirmative acceptance, UNTICKED by default (Req 2.2) -->
+          <label for="consent-privacy" style="display:flex;align-items:flex-start;gap:14px;padding:18px 20px;border:1.5px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);cursor:pointer;transition:border-color .2s;">
+            <input type="checkbox" id="consent-privacy" onchange="obUpdateConsentGate()" style="margin-top:1px;width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer;">
+            <span style="font-size:14px;line-height:1.55;color:var(--white);">
+              Read and accept the
               <a id="consent-privacy-link" href="showshak-legal.html?doc=privacy" rel="noopener" style="color:var(--red);font-weight:700;text-decoration:underline;">Privacy Policy</a>.
             </span>
           </label>
@@ -980,9 +987,11 @@ function openOnboarding() {
   document.getElementById('ob-overlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   // Reset the consent gate to its unticked default on every fresh open (Req 2.2/2.3).
-  const acc = document.getElementById('consent-accept');
+  const tos = document.getElementById('consent-tos');
+  const priv = document.getElementById('consent-privacy');
   const age = document.getElementById('consent-age18');
-  if (acc) acc.checked = false;
+  if (tos) tos.checked = false;
+  if (priv) priv.checked = false;
   if (age) age.checked = false;
   obPoliciesResolved = false;
   obBoundTos = null;
@@ -1069,11 +1078,12 @@ function obBack() {
 }
 
 /* ── CONSENT GATE LOGIC (inline, no external-script dependency — Req 2.9) ── */
-// Enabled IFF both boxes checked AND the policy versions resolved (Req 2.5/2.6/4.6).
+// Enabled IFF ToS + Privacy + 18+ are all checked AND the policy versions resolved (Req 2.5/2.6/4.6).
 function obConsentReady() {
-  const a = document.getElementById('consent-accept');
+  const tos = document.getElementById('consent-tos');
+  const priv = document.getElementById('consent-privacy');
   const b = document.getElementById('consent-age18');
-  return !!(a && a.checked && b && b.checked && obPoliciesResolved);
+  return !!(tos && tos.checked && priv && priv.checked && b && b.checked && obPoliciesResolved);
 }
 
 // Drive the advance control's disabled state while the gate is showing.

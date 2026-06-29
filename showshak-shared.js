@@ -3518,6 +3518,7 @@ async function ssLoadMyClips(){
       var uname=cr.username||"curator";
       return {
         id: row.id, status: row.status, mine: true,
+        createdAt: row.created_at || null,
         title: t.name||"", year: t.year||"", synopsis: t.synopsis||"",
         caption: row.description||"", fires: row.fires_count||0, views: row.views_count||0,
         genre: Array.isArray(meta.genres) ? meta.genres.slice() : [], mood: mood, lang: meta.lang||"", season: meta.season||"",
@@ -7546,6 +7547,7 @@ function _ssvSetupObserver(feed) {
   let _obData   = { name: '', username: '', genres: new Set(), platforms: new Set(), gender: '', avatar_url: '' };
   let _obPlatforms = [];    // [{id,name,color,abbr}] from DB
   let _obUsernameOk = false;
+  let _obExistingMeta = {}; // users.meta as read on this login (so we MERGE, never clobber, on write)
 
   /* ── Entry point: called once after a fresh login ── */
   window._ssAfterLogin = async function () {
@@ -7571,7 +7573,23 @@ function _ssvSetupObserver(feed) {
       const { data, error } = await window.ssDB
         .from('users').select('username, gender, genres, avatar_url, meta').eq('id', user.id).single();
       if (error) { console.warn('ShowShak onboarding: profile read failed', error.message); return; }
-      const done = data && data.meta && data.meta.onboarded === true;
+      _obExistingMeta = (data && data.meta && typeof data.meta === 'object') ? data.meta : {};
+
+      // consent-gate-funnel-bypass — the SINGLE post-login consent chokepoint.
+      // Every authentication path (in-app OAuth sheet, in-app email sheet, the
+      // landing onboarding, and a returning login) funnels through _ssAfterLogin,
+      // so enforcing consent here closes the gap where the guest-funnel signup
+      // paths created accounts without ever recording DPDP consent + 18+. Runs
+      // BEFORE the onboarded short-circuit so pre-existing un-consented accounts
+      // are caught at their next login too. Fail-CLOSED: a subject without a
+      // recorded consent cannot reach the usable app.
+      if (ssConsentGateDecision({ authenticated: true, consentStamped: _obExistingMeta.consent_ok === true })) {
+        const granted = await _ssRunConsentGate();
+        if (!granted) return;               // never proceed into the app un-consented
+        _obExistingMeta.consent_ok = true;  // keep the local copy in sync for the onboarding meta-merge
+      }
+
+      const done = _obExistingMeta.onboarded === true;
       if (done) { return; }   // already onboarded → nothing to do (no per-page greeting)
       // Pre-fill the auto-generated username + any provider avatar.
       _obData.username   = (data && data.username) || '';
@@ -7583,6 +7601,199 @@ function _ssvSetupObserver(feed) {
   };
 
   function _ssCanQuery() { return window.ssDB && window.ssDB.from; }
+
+  /* consent-gate-funnel-bypass — the blocking post-login consent gate.
+     Shows a full-screen, non-dismissable DPDP affirmative-consent + 18+ gate
+     (two UNTICKED-by-default checkboxes, version-stamped) and resolves to:
+       true  → consent was recorded via ssRecordConsent (app may proceed)
+       false → could not record (policies unresolved / save failed) — the caller
+               returns WITHOUT admitting the user (fail-closed). The overlay stays
+               up with a Retry so the user is never silently let in un-consented,
+               and never permanently bricked.
+     Mirrors the landing gate (index.html Step 1) and reuses the same tested
+     pieces: ssCurrentPolicyVersions, ssConsentComplete, ssRecordConsent. The
+     consents row written by ssRecordConsent is the legal source of truth;
+     users.meta.consent_ok is only the idempotency cache that suppresses
+     re-prompting on later logins. */
+  function _ssRunConsentGate() {
+    return new Promise(function (resolve) {
+      // Hard fallback: if the consent machinery isn't present we cannot record
+      // consent — do NOT silently admit. Resolve false (fail-closed).
+      if (typeof window.ssRecordConsent !== 'function' ||
+          typeof window.ssCurrentPolicyVersions !== 'function') {
+        resolve(false);
+        return;
+      }
+
+      // ── CSS (once) ──
+      if (!document.getElementById('ss-cg-style')) {
+        const st = document.createElement('style');
+        st.id = 'ss-cg-style';
+        st.textContent = `
+          #ss-cg-overlay { position: fixed; inset: 0; z-index: 800; background: #0B0B0F;
+            display: flex; align-items: center; justify-content: center; padding: 24px;
+            opacity: 0; transition: opacity 0.3s ease; overflow-y: auto; }
+          #ss-cg-overlay.open { opacity: 1; }
+          .ss-cg-card { max-width: 520px; width: 100%; }
+          .ss-cg-mark { width: 64px; height: 64px; background: #000; border-radius: 16px;
+            overflow: hidden; margin: 0 auto 20px; box-shadow: 0 0 32px rgba(234,59,50,0.2); }
+          .ss-cg-mark svg { width: 100%; height: 100%; display: block; }
+          .ss-cg-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(26px,5vw,36px);
+            letter-spacing: 1px; color: #fff; text-align: center; line-height: 1.1; margin-bottom: 8px; }
+          .ss-cg-title em { color: #EA3B32; font-style: normal; }
+          .ss-cg-sub { font-size: 14px; color: #9a9aac; text-align: center; line-height: 1.6; margin-bottom: 26px; }
+          .ss-cg-check { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px;
+            border: 1.5px solid rgba(255,255,255,0.1); border-radius: 14px;
+            background: rgba(255,255,255,0.02); cursor: pointer; margin-bottom: 14px; transition: border-color .2s; }
+          .ss-cg-check:focus-within { border-color: rgba(234,59,50,0.6); }
+          .ss-cg-check input { margin-top: 1px; width: 20px; height: 20px; flex-shrink: 0; accent-color: #EA3B32; cursor: pointer; }
+          .ss-cg-check span { font-size: 14px; line-height: 1.55; color: #fff; }
+          .ss-cg-check a { color: #EA3B32; font-weight: 700; text-decoration: underline; }
+          .ss-cg-status { display: none; font-size: 13px; font-weight: 600; color: #ff7a70;
+            padding: 12px 16px; border: 1px solid rgba(234,59,50,0.5); border-radius: 10px;
+            background: rgba(234,59,50,0.08); margin-bottom: 14px; }
+          .ss-cg-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+          .ss-cg-btn { width: 100%; padding: 15px; border: none; border-radius: 12px; cursor: pointer;
+            font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; color: #fff;
+            background: #EA3B32; transition: opacity .2s; }
+          .ss-cg-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
+          .ss-cg-btn.retry { background: #22222F; }
+          .ss-cg-foot { font-size: 11.5px; color: #5A5A72; text-align: center; line-height: 1.6; margin-top: 16px; }
+        `;
+        document.head.appendChild(st);
+      }
+
+      // ── Overlay HTML (rebuilt each open so state is clean) ──
+      let ov = document.getElementById('ss-cg-overlay');
+      if (ov) ov.remove();
+      ov = document.createElement('div');
+      ov.id = 'ss-cg-overlay';
+      ov.setAttribute('role', 'dialog');
+      ov.setAttribute('aria-label', 'Accept the terms to continue');
+      ov.innerHTML = `
+        <div class="ss-cg-card">
+          <div class="ss-cg-mark"><svg viewBox="0 0 1254 1254"><use href="#ss-mark"/></svg></div>
+          <div class="ss-cg-title">ONE QUICK <em>STEP</em></div>
+          <div class="ss-cg-sub">Before you dive in, please accept our terms and confirm your age. This is a one-time step.</div>
+          <label class="ss-cg-check" for="ss-cg-tos-chk">
+            <input type="checkbox" id="ss-cg-tos-chk">
+            <span>Read and accept the
+              <a id="ss-cg-tos" href="showshak-legal.html?doc=tos" rel="noopener">Terms of Service</a>.</span>
+          </label>
+          <label class="ss-cg-check" for="ss-cg-privacy-chk">
+            <input type="checkbox" id="ss-cg-privacy-chk">
+            <span>Read and accept the
+              <a id="ss-cg-privacy" href="showshak-legal.html?doc=privacy" rel="noopener">Privacy Policy</a>.</span>
+          </label>
+          <label class="ss-cg-check" for="ss-cg-age">
+            <input type="checkbox" id="ss-cg-age">
+            <span>I confirm that I am <strong>18 years of age or older</strong>.</span>
+          </label>
+          <div class="ss-cg-status" id="ss-cg-status" role="alert"></div>
+          <div class="ss-cg-actions">
+            <button class="ss-cg-btn" id="ss-cg-go" disabled>Continue</button>
+            <button class="ss-cg-btn retry" id="ss-cg-retry" style="display:none">Retry</button>
+          </div>
+          <div class="ss-cg-foot">We never share your data. Ever.</div>
+        </div>`;
+      document.body.appendChild(ov);
+      document.body.style.overflow = 'hidden';
+      requestAnimationFrame(function () { ov.classList.add('open'); });
+
+      const accept = ov.querySelector('#ss-cg-tos-chk');
+      const privChk = ov.querySelector('#ss-cg-privacy-chk');
+      const age    = ov.querySelector('#ss-cg-age');
+      const tosA   = ov.querySelector('#ss-cg-tos');
+      const privA  = ov.querySelector('#ss-cg-privacy');
+      const status = ov.querySelector('#ss-cg-status');
+      const goBtn  = ov.querySelector('#ss-cg-go');
+      const retry  = ov.querySelector('#ss-cg-retry');
+
+      let boundTos = null, boundPrivacy = null, policiesResolved = false, submitting = false;
+
+      function setStatus(msg) {
+        if (!status) return;
+        if (msg) { status.style.display = 'block'; status.textContent = msg; }
+        else { status.style.display = 'none'; status.textContent = ''; }
+      }
+      // Ready only when BOTH the ToS and Privacy boxes AND the 18+ box are ticked,
+      // and the current policy versions resolved (fail-closed) and we're not submitting.
+      function ready() { return !!(accept && accept.checked && privChk && privChk.checked && age && age.checked && policiesResolved && !submitting); }
+      function refresh() { if (goBtn) goBtn.disabled = !ready(); }
+
+      // Legal links open the in-page modal at the bound (or current) version.
+      function wireLegal() {
+        if (tosA) tosA.onclick = function (e) {
+          if (typeof ssOpenLegal === 'function') { if (e && e.preventDefault) e.preventDefault(); ssOpenLegal('tos', boundTos || undefined); return false; }
+          return true;
+        };
+        if (privA) privA.onclick = function (e) {
+          if (typeof ssOpenLegal === 'function') { if (e && e.preventDefault) e.preventDefault(); ssOpenLegal('privacy', boundPrivacy || undefined); return false; }
+          return true;
+        };
+      }
+      wireLegal();
+
+      async function resolvePolicies() {
+        policiesResolved = false;
+        boundTos = null; boundPrivacy = null;
+        if (retry) retry.style.display = 'none';
+        refresh();
+        let r = null;
+        try { r = await window.ssCurrentPolicyVersions(); } catch (e) { r = null; }
+        if (r && r.ok === true && r.tos && r.privacy) {
+          boundTos = r.tos.version;
+          boundPrivacy = r.privacy.version;
+          policiesResolved = true;
+          if (tosA)  tosA.href  = 'showshak-legal.html?doc=tos&v='     + encodeURIComponent(boundTos);
+          if (privA) privA.href = 'showshak-legal.html?doc=privacy&v=' + encodeURIComponent(boundPrivacy);
+          setStatus('');
+        } else {
+          // FAIL-CLOSED: cannot resolve the current policy versions → cannot let
+          // the user proceed un-consented. Offer a Retry; keep Continue disabled.
+          setStatus('Couldn\u2019t load the terms right now. Please check your connection and retry.');
+          if (retry) retry.style.display = 'block';
+        }
+        refresh();
+      }
+
+      if (accept) accept.addEventListener('change', refresh);
+      if (privChk) privChk.addEventListener('change', refresh);
+      if (age)    age.addEventListener('change', refresh);
+      if (retry)  retry.addEventListener('click', function () { resolvePolicies(); });
+
+      if (goBtn) goBtn.addEventListener('click', async function () {
+        if (!ready()) return;
+        submitting = true; refresh(); setStatus('');
+        const consent = { affirmative: true, age18plus: true, tos_version: boundTos, privacy_version: boundPrivacy };
+        let r = null;
+        try { r = await window.ssRecordConsent(consent); } catch (e) { r = null; }
+        if (r && r.ok === true) {
+          // Best-effort idempotency stamp (MERGE meta, never clobber). Failure here
+          // only risks a one-time re-prompt next login — the consents row already
+          // recorded the legal proof, so we still proceed.
+          try {
+            if (_ssCanQuery() && _obUser && _obUser.id) {
+              const mergedMeta = Object.assign({}, _obExistingMeta, { consent_ok: true });
+              await window.ssDB.from('users').update({ meta: mergedMeta }).eq('id', _obUser.id);
+            }
+          } catch (e) { /* cache stamp is best-effort */ }
+          ov.classList.remove('open');
+          setTimeout(function () { try { ov.remove(); } catch (e) {} }, 320);
+          // Restore scroll lock. If the onboarding overlay opens next it re-locks;
+          // if the user was already onboarded, the app stays scrollable.
+          document.body.style.overflow = '';
+          resolve(true);
+        } else {
+          submitting = false;
+          setStatus('Couldn\u2019t save that. Please try again.');
+          refresh();
+        }
+      });
+
+      resolvePolicies();
+    });
+  }
 
   /* ── CSS ── */
   (function _css() {
@@ -7907,7 +8118,9 @@ function _ssvSetupObserver(feed) {
       const patch = {
         username: _obData.username,
         genres: Array.from(_obData.genres),
-        meta: { onboarded: true },
+        // MERGE meta (never clobber) so the consent-gate stamp (meta.consent_ok)
+        // and any other existing keys survive onboarding completion.
+        meta: Object.assign({}, _obExistingMeta, { onboarded: true }),
       };
       if (_obData.name && _obData.name.trim()) patch.name = _obData.name.trim();
       if (!skippedPersonal && _obData.gender) patch.gender = _obData.gender;
@@ -9818,6 +10031,57 @@ function ssPolicyNeedsCounselReview(body) {
   return /\[[^\]]+\]/.test(body);
 }
 
+/* consent-gate-funnel-bypass — post-login consent chokepoint decision (PURE).
+   Decides whether an authenticated session must be stopped at the consent gate
+   BEFORE the app is usable. This is the single decision every auth path
+   (landing onboarding, in-app OAuth sheet, email sheet, post-login onboarding)
+   funnels through.
+
+   Returns the strict boolean `true` (MUST gate) IFF `state` is a non-null object
+   AND state.authenticated === true (strict) AND state.consentStamped !== true.
+   Otherwise `false`:
+     - guests (authenticated !== true) are NEVER gated — browse-before-signup is
+       preserved; the gate only fires at/after authentication.
+     - an authenticated subject with consentStamped === true is admitted directly
+       (idempotency — no re-prompt for someone who already consented).
+   FAIL-CLOSED bias: an authenticated subject whose consent status is unknown
+   (consentStamped undefined/false/anything-but-true) is gated, never admitted.
+   PURE: no side effects, does NOT mutate `state`, deterministic, never throws.
+   This drives UI/UX only; the database (ss_record_consent + own-row RLS) remains
+   the security boundary and the consents rows remain the legal source of truth. */
+function ssConsentGateDecision(state) {
+  if (!state || typeof state !== 'object') return false;
+  if (state.authenticated !== true) return false;
+  return state.consentStamped !== true;
+}
+
+/* Profile "NEW" badge freshness window (hours). A posted clip shows the NEW tag
+   only while it is at most this many hours old — not forever. */
+var SS_CLIP_NEW_WINDOW_HOURS = 48;
+
+/* ssIsFreshClip(createdAt, nowMs, windowHours) — PURE. Returns the strict boolean
+   `true` IFF `createdAt` resolves to a finite ms-epoch, is not in the future
+   (age >= 0), and the age is <= windowHours. `createdAt` may be a ms-epoch number,
+   an ISO/date string (Date.parse), or a Date. Unresolvable/garbage → false.
+   `nowMs` defaults to Date.now(); `windowHours` defaults to SS_CLIP_NEW_WINDOW_HOURS
+   and a non-finite / <= 0 window → false. No side effects, deterministic, never
+   throws. Used to gate the profile NEW badge (24–48h freshness, not all clips). */
+function ssIsFreshClip(createdAt, nowMs, windowHours) {
+  var now = (typeof nowMs === 'number' && isFinite(nowMs)) ? nowMs : Date.now();
+  // Omitted window → default; an explicitly-provided invalid window → false (don't guess).
+  var win = (windowHours === undefined || windowHours === null) ? SS_CLIP_NEW_WINDOW_HOURS : windowHours;
+  if (typeof win !== 'number' || !isFinite(win) || win <= 0) return false;
+  var ms;
+  if (typeof createdAt === 'number') ms = isFinite(createdAt) ? createdAt : NaN;
+  else if (typeof createdAt === 'string') ms = Date.parse(createdAt);
+  else if (createdAt instanceof Date) ms = createdAt.getTime();
+  else ms = NaN;
+  if (!isFinite(ms)) return false;
+  var age = now - ms;
+  if (age < 0) return false;              // future-dated → not "new"
+  return age <= win * 3600000;            // within the freshness window
+}
+
 if (typeof window !== 'undefined') {
   window.ssAttestationComplete    = ssAttestationComplete;
   window.ssDmcaNoticeWellFormed   = ssDmcaNoticeWellFormed;
@@ -9825,6 +10089,9 @@ if (typeof window !== 'undefined') {
   window.ssConsentComplete         = ssConsentComplete;
   window.ssCuratorTermsAccepted    = ssCuratorTermsAccepted;
   window.ssPolicyNeedsCounselReview = ssPolicyNeedsCounselReview;
+  window.ssConsentGateDecision     = ssConsentGateDecision;
+  window.ssIsFreshClip             = ssIsFreshClip;
+  window.SS_CLIP_NEW_WINDOW_HOURS  = SS_CLIP_NEW_WINDOW_HOURS;
 }
 
 /* ── DMCA / Moderation Scaffolding — Phase 1 impure RPC-wrapper helpers ──
@@ -10211,6 +10478,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssConsentComplete          = ssConsentComplete;
   module.exports.ssCuratorTermsAccepted     = ssCuratorTermsAccepted;
   module.exports.ssPolicyNeedsCounselReview = ssPolicyNeedsCounselReview;
+  module.exports.ssConsentGateDecision      = ssConsentGateDecision;
+  module.exports.ssIsFreshClip              = ssIsFreshClip;
+  module.exports.SS_CLIP_NEW_WINDOW_HOURS   = SS_CLIP_NEW_WINDOW_HOURS;
 }
 
 /* ── Mute_Preference ─────────────────────────────

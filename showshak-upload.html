@@ -573,26 +573,23 @@ body { background: var(--bg); }
         <span class="up-reveal-note-text">Your clip posts with the <strong>title hidden</strong>. Viewers fire it, save it, and tap <strong>Watch It</strong> to discover what it is — and you get the credit for the find.</span>
       </div>
 
-      <!-- ATTESTATION + INDEMNITY (Req 1.1, 1.2, 1.6, 10.3) — REQUIRED before publish.
-           The curator must affirmatively accept before the clip can publish; publish()
-           is hard-gated on this checkbox and then records the attestation row via
-           ssRecordAttestation. Placeholder wording, COUNSEL REVIEW REQUIRED. Neutral-host
-           guardrail (Req 10.2): this copy names NO specific copyrighted work and offers no
-           media/song picker — it only affirms the curator's own rights + indemnity. Hidden
-           in edit-after-post mode (buildReview), where the live clip already has an
-           attestation on record. -->
-      <label class="up-attest" id="up-attest">
-        <input type="checkbox" id="up-attest-check" class="up-attest-check" onchange="syncFooter()">
+      <!-- POST-TIME CONFIRMATION (one-time-consent follow-up).
+           The full rights warranty + indemnity (Curator Terms §5–§7) is accepted
+           ONCE at Become-a-Curator, forward-looking for EVERY clip the curator
+           posts. So this Review step no longer re-collects an alarming per-upload
+           checkbox (which dampened upload habit) — it shows calm, PASSIVE microcopy,
+           and publish() SILENTLY auto-records the per-clip attestation row
+           (ssRecordAttestation) to preserve the safe-harbour audit trail + satisfy
+           the migration-0029 go-live trigger. The act of posting is the affirmation.
+           Hidden in edit-after-post mode (buildReview). Wording is placeholder
+           pending counsel review. -->
+      <div class="up-attest" id="up-attest">
         <span class="up-attest-text">
-          <span class="up-attest-badge">Counsel review required</span>
-          I confirm I own or have the rights to the video and audio in this clip and I take
-          responsibility for it. I agree to ShowShak's
-          <a href="showshak-legal.html?doc=tos" target="_blank" rel="noopener">Terms of Service</a>
-          and <a href="showshak-legal.html?doc=copyright" target="_blank" rel="noopener">Copyright &amp; DMCA Policy</a>,
-          and I indemnify ShowShak against claims arising from this clip.
-          <em>(Placeholder wording — final attestation &amp; indemnity language to be supplied by counsel.)</em>
+          By posting, you confirm you have the rights to this clip, in line with the
+          <a href="showshak-legal.html?doc=curator" target="_blank" rel="noopener">Curator Terms</a>
+          you accepted when you became a curator.
         </span>
-      </label>
+      </div>
     </div>
 
   </div>
@@ -793,17 +790,19 @@ function canAdvance() {
   if (step === 4) return window.ssValidatePitch(draft.pitch).ok;
   // Cover (Req 8.1/8.3): a cover is always defined (default 0 = first frame), so the
   // Cover step is always advanceable. Steps 5 (Vibe), 6 (Cover) pass through.
-  // Review (step 7): a real publish REQUIRES the curator to affirmatively accept the
-  // attestation + indemnity (Req 1.1/1.2). Edit-after-post (saveEdit) doesn't re-collect it.
-  if (step === TOTAL_STEPS && !editMode()) return upAttestationAccepted();
+  // Review (step 7): the per-upload rights affirmation is no longer a checkbox gate —
+  // the rights warranty + indemnity is accepted ONCE at Become-a-Curator (Curator
+  // Terms §5–§7, covering every future clip), and publish() silently records the
+  // per-clip attestation row. So Review is always advanceable; publish() still
+  // re-checks title linking (ssCanPublish).
   return true;
 }
 
-/* Whether the curator has affirmatively accepted the attestation + indemnity
-   checkbox on the Review step (Req 1.1). The gate for publish() (Req 1.2). */
+/* Retained for back-compat with callers. The per-upload rights affirmation is now
+   PASSIVE microcopy (the curator already accepted the Curator Terms once, covering
+   every clip), so there is no checkbox to tick — this is always satisfied. */
 function upAttestationAccepted() {
-  const el = document.getElementById('up-attest-check');
-  return !!(el && el.checked);
+  return true;
 }
 
 function syncFooter() {
@@ -842,7 +841,7 @@ function syncFooter() {
   }
   else                 fb.innerHTML = editMode()
                           ? 'Save your changes'
-                          : (upAttestationAccepted() ? 'One tap and you\'re live' : 'Accept the attestation to post');
+                          : 'One tap and you\'re live';
 }
 
 /* ════════════════════════════════════════════════
@@ -2101,18 +2100,13 @@ async function publish() {
   if (!draft.file) { ssToast('Add a clip first'); return; }
   if (!window.ssCanPublish(draft)) { ssToast('Link at least one title'); return; }
 
-  // ── Attestation gate (Req 1.1/1.2) ────────────────────────────────────────
-  // The curator MUST affirmatively accept the attestation + indemnity before a clip
-  // can publish. Not accepted → reject the publish request, mint/insert NOTHING, leave
-  // the clip in its current status, and surface a clear message. (The attestation ROW
-  // is recorded below, once the content id exists — section 6.5.) This is a HARD gate,
-  // never a silent bypass; canAdvance() also disables the Post button until accepted.
-  if (!upAttestationAccepted()) {
-    ssToast('You must accept the attestation to publish');
-    const box = document.getElementById('up-attest');
-    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
+  // ── Per-upload rights affirmation (one-time-consent model) ────────────────
+  // No per-upload checkbox gate any more: the rights warranty + indemnity is
+  // accepted ONCE at Become-a-Curator (Curator Terms §5–§7, forward-looking for
+  // every clip), and posting is itself the affirmation (passive microcopy on the
+  // Review step). The per-clip attestation ROW is still recorded SILENTLY below
+  // (section 6.5) so the safe-harbour audit trail + the migration-0029 go-live
+  // trigger are fully preserved — only the alarming repeated UI is gone.
 
   const postBtn = document.getElementById('up-next');
   const restoreBtn = () => { if (postBtn) { postBtn.disabled = false; postBtn.textContent = 'Post Clip 🔥'; } };

@@ -1909,7 +1909,7 @@ function renderPrimary() {
     <div class="g-card ${i===0?'top':''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
       ${owner && c.status === 'processing'
           ? '<div class="g-mine-badge g-proc-badge">● PROCESSING</div>'
-          : (owner && c.mine ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':''))}
+          : (owner && c.mine && typeof ssIsFreshClip === 'function' && ssIsFreshClip(c.createdAt) ? '<div class="g-mine-badge">NEW</div>' : (i===0?'<div class="g-top-badge">🔥 TOP</div>':''))}
       <div class="g-thumb">
         <div class="g-bg" style="background:${c.bg}"></div>
         ${c.poster ? `<img class="g-poster" src="${c.poster}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}

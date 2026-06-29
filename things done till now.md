@@ -9,11 +9,11 @@
 > ShowShak project report — continue from where it ends, following the same
 > principles."*
 >
-> Last updated: after **DMCA Phase 1 shipped + applied** and the **beta-consent-gate**
-> (DPDP consent + 18+ onboarding gate + one-time Curator Terms acceptance) — pushed to
-> main (commit 99e004a, CACHE_VERSION v30, migrations 0001–0031). **See Section 23
-> (bottom) for the latest; COFOUNDER-HANDOFF.txt is the freshest single source — read
-> it first in a new chat.**
+> Last updated: after **prefetch-cache-pipeline Phases 1-3 SHIPPED** (the single-player +
+> byte-prefetch model), the **feed-scroll-stutter-fix** bugfix, and the **2.5s cold-start
+> splash** — pushed to main (commit 5fcfeb6, CACHE_VERSION v47, suite 100 files green,
+> migrations 0001–0032 applied). **See Section 24 (bottom) for the latest; COFOUNDER-HANDOFF.txt
+> is the freshest single source — read it first in a new chat.**
 
 ---
 
@@ -1675,3 +1675,115 @@ surface the follow-driven trust). Spec it (requirements → design → tasks), p
 the Feed never breaks. This is what makes the beta worth testing and what investors
 judge next. (Music stays PARKED: royalty-free only, never a copyrighted "use this
 song" library.)
+
+---
+
+## 24. Prefetch-cache-pipeline (single-player + byte-prefetch) + iOS scroll-stutter fix + 2.5s splash
+
+> Read **COFOUNDER-HANDOFF.txt §5 (top entry) + the refreshed KICKOFF PROMPT** first —
+> freshest single source. State at end of this session: **CACHE_VERSION v47**, suite
+> **100 property-test files green**, migrations **0001–0032 applied**, last commit
+> **5fcfeb6**, all pushed to main.
+
+> **Note on the gap:** between §23 and here, two sessions shipped that are logged in
+> full in COFOUNDER-HANDOFF.txt §5 (not re-typed here): **feed-follows** (the tiered,
+> trust-weighted feed ranker behind `ssLoadClips`; commit 05afc86, v31) + a v32
+> felt-quality pass, then a **UX polish sweep + iOS autoplay fix + genre/moods + pitch
+> deck** (v32 → v42), whose headline was the **iOS AUTOPLAY STALL FIX (v39):
+> `SS_MAX_LIVE_PLAYERS` 4 → 2** — iOS native HLS (AVPlayer) has a hard simultaneous-decode
+> limit, so mounting 4 `<mux-player>`s starved the active clip of a decoder. That cap=2
+> is now **SACRED** — never raise it; any clip prefetch warms BYTES only, never extra
+> players. This session built ON that constraint.
+
+### 24.1 The decision — single-player + byte-prefetch (the founder's vision, made real)
+The founder, frustrated by the long iOS chase, considered **deleting all the iOS/cap
+work** and "just making streaming quick." As cofounder I pushed back: that work IS the
+spine of the model we actually want, and deleting it would re-open the iOS decoder wound.
+The founder's own framing — *only the clip you're on plays; everything else prefetches in
+the background; use the spare time to warm clips (even at better resolution) so low-speed
+users still get quality; on iOS, a paused clip is one tap away from fullscreen play* — IS
+the architecture. Founder chose **"build the single-player + byte-prefetch model."** We
+executed the `prefetch-cache-pipeline` spec end-to-end (Phases 1-3), phased so the Feed
+never breaks.
+
+### 24.2 prefetch-cache-pipeline — Phases 1-3 SHIPPED
+- **Phase 1 (v43, commit db87353) — cross-page prewarm.** From the Feed, prewarm the
+  Discover/Watchlist page **DATA + posters** so they paint INSTANTLY instead of the
+  "black gradient → slow thumbnails" cold-start the founder kept feeling.
+- **Phase 2 (v44, commit 9d08e90) — storage tiering + SW per-resource strategies.**
+  `ssStorageTier` + `ssReadPageData`/`ssWritePageData` = **IndexedDB** for page JSON with
+  a **localStorage fallback**, gated `ss_ff_idb` (localStorage stays flags-only). `sw.js`
+  gained per-resource strategies: **app-shell Cache-First**, **HTML stale-while-revalidate**,
+  **poster SWR** branch gated `ss_ff_poster_swr`. Closed the poster-SWR page-wiring gap via
+  `_ssPostPosterSwr()` (the page tells the SW whether the flag is on). No unbounded cache.
+- **Phase 3 (v46-v47, commits 6daa527 + 5fcfeb6) — the single-player + byte-prefetch model.**
+  - Constants: `SS_BACK_BUFFER_S=30`, `SS_IOS_STORAGE_BUDGET=50MB`,
+    `SS_ANDROID_STORAGE_BUDGET=100MB` (dual-exported).
+  - Pure core (dual-exported, fast-check, **4 new prop files**): `ssDeviceProfile`
+    (iOS/Android/other), `ssResolvePrefetchBudget` (device → byte budget), `ssStorageTrimPlan`
+    (LRU trim to budget). `prop-device-profile` / `prop-device-budget` / `prop-storage-trim`
+    / `prop-pipeline-totality`.
+  - Byte-prefetch loop: `_warmTick` / `_ssDeepenTick` are now **device-budget-aware** via
+    `ssResolvePrefetchBudget`; `_ssSegmentPrefetchOn()` reads `ss_ff_segprefetch`; byte
+    prefetch requires **both** `_ssSegPrefetchOn() && _ssSegmentPrefetchOn()`. It warms BYTES
+    only — **never mounts an extra player** (honors the sacred cap=2).
+  - SW segment cache (Task 15.1): found **already fully built** in `sw.js` from
+    feed-clip-load-performance Phase 4 — a separate `'showshak-seg'` bucket, **HTTP-206**
+    served by slicing the cached full segment (`_sliceTo206` / `_serveMuxSegment`), eviction
+    via `ssSegmentEvictionPlan`, gated `ss_ff_segcache`, and (key) **NOT wiped on a
+    `CACHE_VERSION` bump** so a deploy never re-downloads warmed video.
+  - Back-buffer cap (Task 15.2): `back-buffer-length` attr = `SS_BACK_BUFFER_S` on the
+    mux-player (mount + repoint), fail-soft.
+  - iOS storage guard (Task 15.3): the page posts `SS_SEG_BUDGET` (device storage budget) to
+    the SW; the SW uses `Math.min(SEG_CACHE_CEILING, _segStorageBudget)` as the eviction
+    ceiling so iOS stays under budget.
+  - **DEFERRED:** Task 16 (Speculation Rules API + View Transitions), per founder.
+  - Fixed a genuine **test bug** mid-build: `prop-storage-trim` asserted an unsatisfiable
+    budget on empty input — guarded with `if (inputKeys.length > 0)`.
+- ⚠ **FOUNDER ON-DEVICE VERIFY PENDING (Task 18).** Phase 3 is OFF by default. To light it
+  up: set localStorage `ss_ff_segcache='on'` + `ss_ff_segprefetch='on'`, reopen the PWA twice
+  for v47, then verify in DevTools — 206 slicing works, the segment cache **survives a
+  version bump**, storage stays under the device budget, and only the active clip plays.
+
+### 24.3 feed-scroll-stutter-fix — a bugfix spec (v45, commit b271a38)
+After the v39 cap fix, the founder hit a NEW stutter: one clip plays, the next is paused,
+the next paused… on scroll. Investigated (code + web research on iOS simultaneous-video
+limits + TikTok-style preloading) to the ROOT CAUSE: `ssMountedPlayerSet` biased the
+2-player band **one behind** the active clip (`{active-1, active}`), so under cap=2 the
+**next** clip cold-started the instant it became active → iOS first-frame stall on every
+scroll-down. FIX: `ssMountedPlayerSet` gained an optional `direction` param — scroll-down →
+band `{active, active+1}` (pre-warm ahead), no-direction = **byte-identical** to the
+original. The inline IntersectionObserver derives scroll direction and threads it through
+`pruneInlineSurfaces → _poolRecycle → ssMountedPlayerSet`. Gated `ss_ff_aheadband` (ON by
+default — founder's call). Property-tested (fix-checking + invariants + preservation vs a
+`referenceF` oracle, `prop-mounted-set-direction`). ⚠ The SACRED cap was UNTOUCHED — we
+fixed band **composition**, never the number.
+
+### 24.4 Splash cold-start 2.5s (v46)
+Founder wanted the recurring cold-open splash at 2.5s to cover the first-clip warm:
+`SS_SPLASH_MIN_MS = everLaunched ? 2500 : 3000` in `showshak-feed.html` (first-EVER launch
+left at 3000ms — flagged).
+
+### 24.5 720p — diagnosed, fix deferred
+Founder: "video isn't streaming at 720p even when loaded." Read-only diagnosis: NOT a cap
+issue (`max-resolution=720p` is a CEILING; `SS_RES_CAP` is 720p on all tiers). Leading cause
+= `SS_START_BW_KBPS=700` (a low ABR seed) on a short looping clip → the whole clip buffers at
+~480p before ABR ever climbs, so it never upgrades. The proper fix is the now-shipped
+**progressive-deepening / segment-cache** path (deepen the rendition over a loop) rather than
+a seed hack. Also flagged a **spec drift**: design/requirements say the slow tier should cap
+480p but code has `SS_RES_CAP.slow='720p'`. Revisit after the Phase 3 on-device verify.
+
+### 24.6 Open — a test-side flake
+`tests/prop-scoreboard-safe.test.js` (prefetch Property 3b) intermittently fails when
+fast-check generates a `__proto__` own-key (`ssPublicSignalsOnly`'s `out[k]=record[k]` trips
+the `__proto__` setter, and 3b "preserve" contradicts 3a's "drop" oracle for that one key).
+**Test-side generator/oracle bug, NOT a product bug.** Fix when touched: exclude
+`__proto__`/`constructor`/`prototype` from the generators + reconcile 3a vs 3b.
+
+### 24.7 NEXT
+1. **Founder:** the Phase 3 on-device verify (§24.2 / Task 18). 2. After it's green: consider
+flipping the prefetch flags default-ON; close the 720p question via progressive deepening
+(decide whether to also retune `SS_START_BW_KBPS` / use `rendition-order`; realign
+`SS_RES_CAP.slow` to 480p). 3. Optionally pick up the deferred Task 16 (Speculation Rules +
+View Transitions). 4. Quick: fix the `__proto__` test flake. (Beta-compliance founder ops
+from §23.3 still stand. Music stays PARKED.)

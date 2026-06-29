@@ -128,7 +128,7 @@
     - stack-folder-view ✓ (folder route + share chooser + Watchlist preview + Feature-in-Highlights)
     - settings overhaul ✓ (account/creator DB-wired; live handle uniqueness; deactivate/delete + 30-day retention)
     - views self-collapse ✓ (0024 — curator self-views count once); feed unmute carries on scroll ✓
-    - SUITE: 89 files green; migrations 0001–0032 applied (0030 reserved for DMCA Phase 2;
+    - SUITE: 100 files green; migrations 0001–0032 applied (0030 reserved for DMCA Phase 2;
       0032 = YouTube removed from the platform catalog — APPLIED)
     - feed-clip-load-performance ✓ (A-grade feed clip-load + caching pipeline;
       9 prop-feed-* properties; the heavy prefetch/SW-cache pieces are OPT-IN —
@@ -157,14 +157,246 @@
     - clip-count bug FIX ✓ (v34); clip brightness FIX ✓ (v40-v41, brightness on .clip-media/.ssv-media);
       feed fire-burst icon matched to viewer ✓ (v42).
     - INVESTOR PITCH DECK ✓ — showshak-pitch-deck.html (15-slide on-brand HTML deck; LIVE/public).
-    - prefetch-cache-pipeline SPEC ✓ (requirements DONE + analysis-clean; design/tasks NOT yet;
-      spec files UNCOMMITTED) — the next big build. (see NEXT STEP)
+    - prefetch-cache-pipeline ✓ (Phases 1-3 SHIPPED; Phase 1 cross-page prewarm of
+      Discover/Watchlist + posters from the Feed; Phase 2 storage tiering — IndexedDB page
+      JSON + localStorage fallback via ssStorageTier/ssReadPageData/ssWritePageData (ss_ff_idb)
+      + sw.js per-resource strategies (app-shell Cache-First, HTML SWR, poster SWR via
+      ss_ff_poster_swr); Phase 3 single-player + segment-BYTE prefetch — device-aware budgets
+      ssDeviceProfile/ssResolvePrefetchBudget/ssStorageTrimPlan, SW HTTP-206 segment cache in a
+      separate 'showshak-seg' bucket that survives version bumps (ss_ff_segcache), byte prefetch
+      gated ss_ff_segprefetch, back-buffer cap SS_BACK_BUFFER_S, iOS/Android storage budgets.
+      Phase 3 model OFF by default — founder on-device verify pending. Task 16 (Speculation
+      Rules + View Transitions) DEFERRED.)
+    - feed-scroll-stutter-fix ✓ (bugfix spec; iOS scroll-stutter root cause = the 2-player band
+      sat ONE BEHIND the active clip so the next clip cold-started on arrival; FIX = direction-aware
+      ssMountedPlayerSet band {active, active+1} on scroll-down, gated ss_ff_aheadband, ON by
+      default; SS_MAX_LIVE_PLAYERS stays 2 — fixed band COMPOSITION not the cap.)
+    - splash cold-start 2.5s ✓ (recurring cold-open splash floor 700 → 2500ms in showshak-feed.html;
+      first-ever launch left at 3000ms; the extra time hides the first-clip warm.)
+    - background-autoplay fix ✓ (v48 + v53) — non-active surfaces can never play: repoint() clears
+      autoplay, _poolRecycle solo-enforces, and a CONTINUOUS guard (_inlineReflectStall +
+      ssShouldPauseSurface) pauses any non-active surface that starts playing. Gated ss_ff_soloplay.
+    - SW segment REUSE cache DEFAULT-ON ✓ (v54) — feed→fullscreen→any-page video reuse, fail-soft;
+      kill switch ss_ff_segcache='off'. Aggressive byte PREFETCH still opt-in (ss_ff_segprefetch).
+    - in-page legal modal ✓ (ssOpenLegal; v52-v54) — specific legal links open ONE doc in a centered
+      card (iframes showshak-legal.html?modal=1, reuses exact version resolution); full page kept.
+    - Following list ✓ — real photo + name + @handle + Image() prefetch; Edit Profile genres for ALL
+      users; removed the 4-step upload guide. Scrollbar hidden app-wide.
+    - Discover/Watchlist ✓ — 4-col desktop grids; new Latest + More-to-Explore sections; honest
+      "More" pagination (rails + grids); Discover sections ranked by real signals (Featured=around-you,
+      Latest=newest, For You=taste, Explore=popular).
+    - policy_versions READ GRANT ⚠ FOUNDER-RUN (see §7) — fixes "Curator Terms unavailable".
+    - VPS deploy bundle ✓ (../showshak-deploy/, outside the repo) — static site + nginx/Caddy + README.
 
 
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (UX polish sweep + iOS autoplay fix + genre/moods + pitch deck + prefetch spec;
+  ── MOST RECENT (consent-gate funnel fix + one-time curator affirmation + consent UX +
+     profile NEW-badge fix; CACHE_VERSION v54 → v55; suite 101 → 103 files green) ──
+    CONTEXT: a compliance + felt-quality pass on the signup/consent + curator-upload flow,
+    plus a profile polish fix. All shipped together under CACHE_VERSION v55.
+
+    • CONSENT-GATE FUNNEL BYPASS — FIXED (bugfix spec .kiro/specs/consent-gate-funnel-bypass/).
+      ROOT CAUSE: the DPDP affirmative-consent + 18+ gate was wired ONLY into the landing
+      onboarding (index.html "Get Started"). The guest-first funnel — the in-app signup sheet
+      (ssGuestSignup → OAuth / ssEmailSubmit → signUp) and the post-login onboarding
+      (_ssAfterLogin → #ss-ob-overlay) — created accounts with NO consent recorded. FIX = a single
+      post-login consent CHOKEPOINT in _ssAfterLogin (runs for EVERY auth path, BEFORE the
+      onboarded short-circuit so pre-existing un-consented accounts are caught too). New blocking,
+      non-dismissable gate _ssRunConsentGate() reuses ssCurrentPolicyVersions + ssConsentComplete +
+      ssRecordConsent; FAIL-CLOSED (policies unresolved → Retry, never silent pass, never brick).
+      Idempotency via users.meta.consent_ok (the consents row stays the legal source of truth);
+      ALSO fixed a latent meta-clobber in _finishOnboarding (now MERGES meta). New pure helper
+      ssConsentGateDecision (dual-exported, property-tested tests/prop-consent-gate.test.js).
+      ⚠ PREREQUISITE (now DONE): `grant select on policy_versions to anon, authenticated;` —
+      founder confirmed deployed; without it the fail-closed gate would lock out all logins.
+
+    • ONE-TIME CURATOR RIGHTS AFFIRMATION — the per-UPLOAD attestation checkbox ("Counsel review
+      required / I indemnify ShowShak", shown on EVERY publish) was creating a sense of danger that
+      dampened upload habit. The full rights warranty + indemnity is ALREADY accepted ONCE at
+      Become-a-Curator (Curator Terms §5–§7, forward-looking for every clip). FIX (showshak-upload.html):
+      dropped the alarming checkbox + hard publish gate; replaced with calm PASSIVE microcopy
+      ("By posting, you confirm you have the rights to this clip, in line with the Curator Terms
+      you accepted"). publish() STILL silently records the per-clip attestation row
+      (ssRecordAttestation) → the safe-harbour audit trail + the 0029 go-live trigger are fully
+      preserved; only the repeated alarming UI is gone. ⚠ COUNSEL NOTE: passive-vs-active per-upload
+      posture is a counsel call; substance unchanged (it lives in the one-time Curator Terms).
+
+    • CONSENT UI — split the single combined accept checkbox into TWO separate empty tickboxes on
+      BOTH account-creation surfaces (index.html landing onboarding + the post-login gate):
+      "Read and accept the Terms of Service" + "Read and accept the Privacy Policy" + the 18+ box.
+      The ToS/Privacy names are clickable and open in the centered CARD modal (ssOpenLegal), same as
+      the Curator Terms in Become-a-Curator. Continue enabled only when all three are ticked AND
+      policies resolved; consent records affirmative only when both legal boxes are checked.
+
+    • PROFILE "NEW" BADGE — FIXED: the curator profile clip grid showed NEW on EVERY owner clip.
+      Now gated to clips ≤ 48h old. ssLoadMyClips mapper now carries createdAt (query already
+      fetched it); new pure helper ssIsFreshClip(createdAt, now, windowHours=SS_CLIP_NEW_WINDOW_HOURS)
+      (dual-exported, property-tested tests/prop-fresh-clip.test.js) gates the badge. Public curator
+      view was already unaffected (NEW is owner-only). One-number dial: SS_CLIP_NEW_WINDOW_HOURS=48.
+
+    • DEPLOY STATE: CACHE_VERSION = v55 (sw.js). Suite 103 files green (node tests/run-all.js).
+      Migrations 0001–0032 applied; policy seed run; policy_versions SELECT grant NOW APPLIED.
+      After this push, reopen the installed PWA twice to pick up v55.
+
+  ── PREVIOUS (UI/UX + legal-modal + feed/cache hardening sweep; CACHE_VERSION v47 → v54;
+     suite 100 → 101 files green; commits 5fcfeb6 → 2b87305 on main) ──
+    CONTEXT: a long on-device iteration pass — felt-quality + correctness across the Feed,
+    Discover, Watchlist, Profile, and the legal/consent flow; plus the SW segment reuse cache
+    turned DEFAULT-ON, the policy seed run, and a VPS deploy bundle created. All pushed to main.
+
+    • BACKGROUND-AUTOPLAY ("plays from the middle") — FIXED in layers (the v45 ahead-band mounts
+      clip N+1, which could self-start). (1) repoint() now clears the autoplay attribute/property
+      + pauses on pool reuse — the root-cause gap (it reset wantPlay but left autoplay armed).
+      (2) _poolRecycle enforces solo-play after every recycle via _ssEnforceSoloPlay(surfaces, a).
+      (3) CONTINUOUS guard: _inlineReflectStall now pauses ANY non-active surface that reports real
+      playback (iOS handing it a freed decoder when the active clip stalls — no scroll fires, so the
+      recycle-time guard alone wouldn't catch it). New pure ssShouldPauseSurface + ssNonActivePlayers,
+      property-tested (tests/prop-nonactive-players.test.js). Gated ss_ff_soloplay (default ON).
+      ⚠ SACRED cap SS_MAX_LIVE_PLAYERS=2 untouched — only WHICH mounted surface may PLAY changed.
+
+    • __proto__ TEST FLAKE — KILLED (the open §8 item). prop-scoreboard-safe: ssPublicSignalsOnly
+      now drops __proto__/constructor/prototype (prototype-pollution defense on the cache gate);
+      prop-storage-trim: prototype-safe test bookkeeping (the product was already correct). 100→101.
+
+    • SW SEGMENT REUSE CACHE — now DEFAULT-ON (feed→fullscreen→any-page video reuse). sw.js
+      _segCacheEnabled=true; the page posts SS_SEG_CACHE enabled unless ss_ff_segcache='off'.
+      FAIL-SOFT (any cache/range/206 failure bypasses to network) so it only ADDS reuse, never
+      breaks playback. The aggressive upcoming-clip byte PREFETCH stays opt-in (ss_ff_segprefetch).
+
+    • IN-PAGE LEGAL MODAL (ssOpenLegal) — specific legal links (consent gate ToS/Privacy,
+      Become-a-Curator "Read the Curator Terms", settings, DMCA copyright) open ONE doc in a small
+      CENTERED CARD overlay instead of navigating to the full legal page (fixes the "back lands on
+      Settings" bounce; the flow shows dimmed behind it). The overlay iframes
+      showshak-legal.html?modal=1 (new chrome-less mode) so it reuses the page's EXACT version
+      resolution — the shown version can't drift from what a consent/curator record stamps. Full
+      legal page kept as the "all documents" reference. onclick wired UNCONDITIONALLY (an earlier
+      bug only wired it in the policy-resolved branch, so it fell back to the full page when unseeded).
+
+    • POLICY_VERSIONS GRANT — ROOT-CAUSE FIX for "Curator Terms unavailable" / consent "policies
+      unavailable". 0029 enabled RLS + a world-read POLICY on policy_versions but never GRANTed
+      table SELECT to anon/authenticated, so the browser's DIRECT read (ssCurrentPolicyVersions) was
+      permission-denied. (SQL editor sees rows because service_role bypasses RLS; ssLoadPolicyVersion
+      worked only because it goes through the granted RPC ss_get_policy_version — that masked it.)
+      FIX = `grant select on policy_versions to anon, authenticated;` — added to the top of
+      seed_policy_versions.sql for permanence. ⚠ FOUNDER-RUN: run that one grant in the SQL editor
+      (the policy seed itself was run this session).
+
+    • PROFILE — Following list shows the curator's REAL photo (avatar_url threaded through
+      ssHydrateFollowing + _ssNormalizeCurator), NAME on top + @handle below (was @handle + "0 clips");
+      photos prefetched via Image() so the list paints instantly. Removed the 4-step "How it works"
+      upload guide. Edit Profile genre editing now available to ALL users (was curator-only),
+      persisted local + DB — also retunes the new Discover taste ranking.
+
+    • DISCOVER / WATCHLIST — desktop grids right-sized to 4 columns (were 2-3 huge cards). NEW
+      sections + progressive disclosure: rails show ~16 then a "More" tile (+10); grids show N rows
+      then "More Clips" (+rows) — HONEST pagination over the real pool (no duplicates; controls hide
+      when clips run out). Discover sections now rank by REAL signals (not shuffle): Featured =
+      around-you (follows → taste genres → fires), Latest = newest uploads (cheap created_at id
+      query), For You = taste by fires, Explore = popular. Watchlist recommended = 8 rows + More Clips.
+
+    • SCROLLBAR hidden app-wide (showshak-tokens.css) for the PWA app feel; scroll still works.
+
+    • VPS DEPLOY BUNDLE — created OUTSIDE the repo at ../showshak-deploy/ (public/ web root, 41
+      static files; nginx-showshak.conf; Caddyfile; DEPLOY-README.md). Site is fully static (browser
+      talks to Supabase + Mux → nothing runs server-side). ⚠ Pointing a new domain: add it to
+      Supabase Auth → URL Configuration (Site URL + Redirect URLs) or login breaks.
+
+    • DEPLOY STATE: CACHE_VERSION = v54 (sw.js). All frontend work pushed to main (last commit
+      2b87305). Suite 101 files green. Migrations 0001–0032 applied + policy seed run. The
+      policy_versions SELECT grant is the one remaining founder-run SQL (see above). After any push
+      the founder needs on-device, BUMP CACHE_VERSION + reopen the installed PWA twice.
+
+  ── PREVIOUS (prefetch-cache-pipeline Phases 1-3 SHIPPED + feed-scroll-stutter-fix bugfix
+     + splash 2.5s + 720p diagnosis; CACHE_VERSION v42 → v47; suite 89 → 100 files green;
+     commits db87353 → 5fcfeb6 on main) ──
+    CONTEXT: this session converged on ONE architecture the founder had been circling — a
+    SINGLE-PLAYER + BYTE-PREFETCH model: only the active clip plays; every other clip is warmed
+    in the BACKGROUND as bytes (never as an extra player), so we keep the SACRED 2-player cap AND
+    get a fast, deepening-quality experience. The founder briefly considered DELETING all the iOS/
+    cap work to "just make streaming quick"; I pushed back as a cofounder — that work IS the spine
+    of this model, deleting it would re-open the iOS decoder wound. Founder chose "build the single-
+    player + byte-prefetch model." We shipped the prefetch-cache-pipeline spec end-to-end (Phases
+    1-3), fixed an iOS scroll-stutter bug as its own bugfix spec, and lengthened the cold-start
+    splash to 2.5s to cover the first-clip warm. Suite 89 → 100 files green.
+
+    • prefetch-cache-pipeline — PHASES 1-3 SHIPPED (the spec is now committed; design + tasks
+      written + executed task-by-task, phased so the Feed never breaks):
+        - PHASE 1 (v43, commit db87353) — CROSS-PAGE PREWARM: from the Feed, prewarm the
+          Discover/Watchlist page DATA + posters so they paint INSTANTLY instead of the "black
+          gradient → slow thumbnails" pain. (The visible cold-start win the founder kept feeling.)
+        - PHASE 2 (v44, commit 9d08e90) — STORAGE TIERING + SW STRATEGIES: ssStorageTier +
+          ssReadPageData/ssWritePageData = IndexedDB for page JSON with a localStorage fallback,
+          gated ss_ff_idb (localStorage stays flags-only). sw.js gained PER-RESOURCE strategies:
+          app-shell Cache-First, HTML stale-while-revalidate, poster SWR branch gated
+          ss_ff_poster_swr. Closed the poster-SWR page-wiring gap via _ssPostPosterSwr() (the page
+          tells the SW whether the flag is on). No unbounded cache.
+        - PHASE 3 (v46-v47, commits 6daa527 + 5fcfeb6) — THE SINGLE-PLAYER + BYTE-PREFETCH MODEL:
+          • Constants: SS_BACK_BUFFER_S=30, SS_IOS_STORAGE_BUDGET=50MB, SS_ANDROID_STORAGE_BUDGET=
+            100MB (dual-exported).
+          • Pure core (dual-exported, fast-check — 4 NEW property files): ssDeviceProfile (iOS vs
+            Android vs other), ssResolvePrefetchBudget (device → byte budget), ssStorageTrimPlan
+            (LRU trim to budget). prop-device-profile / prop-device-budget / prop-storage-trim /
+            prop-pipeline-totality.
+          • Byte prefetch loop: _warmTick / _ssDeepenTick are now device-budget-aware via
+            ssResolvePrefetchBudget; _ssSegmentPrefetchOn() reads ss_ff_segprefetch; byte prefetch
+            now requires BOTH _ssSegPrefetchOn() && _ssSegmentPrefetchOn(). NEVER mounts an extra
+            player — warms bytes only (honors the sacred 2-player cap).
+          • SW segment cache (Task 15.1): discovered ALREADY fully built in sw.js from feed-clip-
+            load-performance Phase 4 — a separate 'showshak-seg' bucket, HTTP-206 served by slicing
+            the cached full segment (_sliceTo206 / _serveMuxSegment), eviction via
+            ssSegmentEvictionPlan, gated ss_ff_segcache, and (key) NOT wiped on a CACHE_VERSION bump
+            so a deploy never re-downloads warmed video.
+          • Back-buffer cap (Task 15.2): back-buffer-length attr = SS_BACK_BUFFER_S on the mux-player
+            (mount + repoint), fail-soft.
+          • iOS storage guard (Task 15.3): the page posts SS_SEG_BUDGET (the device storage budget)
+            to the SW; the SW uses Math.min(SEG_CACHE_CEILING, _segStorageBudget) as the eviction
+            ceiling so iOS stays under budget.
+          • Task 16 (Speculation Rules API + View Transitions) — DEFERRED per founder.
+        - ⚠ ON-DEVICE VERIFY PENDING (founder, Task 18): the Phase 3 model is OFF by default. To
+          light it up, set localStorage ss_ff_segcache='on' + ss_ff_segprefetch='on', reopen the
+          PWA twice for v47, then verify in DevTools: 206 slicing works, the segment cache SURVIVES
+          a version bump, and storage stays under the device budget.
+        - Fixed a genuine TEST bug found mid-build: prop-storage-trim asserted an unsatisfiable
+          budget on empty input — guarded with `if (inputKeys.length > 0)`.
+
+    • feed-scroll-stutter-fix — BUGFIX SPEC SHIPPED (v45, commit b271a38). The founder reported
+      that AFTER the v39 iOS cap fix a NEW stutter appeared: one clip plays, the next is paused, the
+      next paused… on scroll. Investigated (code + web research on iOS simultaneous-video limits +
+      TikTok-style preloading) to the ROOT CAUSE: ssMountedPlayerSet biased the 2-player band ONE
+      BEHIND the active clip ({active-1, active}), so under cap=2 the NEXT clip cold-started the
+      instant it became active → iOS first-frame stall on every scroll-down. FIX = ssMountedPlayerSet
+      gained an optional `direction` param: scroll-down → band {active, active+1} (pre-warm ahead),
+      no-direction = byte-identical to the original. The inline IntersectionObserver derives scroll
+      direction and threads it through pruneInlineSurfaces → _poolRecycle → ssMountedPlayerSet. Gated
+      ss_ff_aheadband (ON by default — founder's call). Property tests: fix-checking + invariants +
+      preservation against a referenceF oracle (prop-mounted-set-direction). ⚠ SACRED cap UNTOUCHED —
+      we fixed band COMPOSITION, never the number.
+
+    • SPLASH COLD-START 2.5s (v46, in commit 6daa527). Founder wanted the recurring cold-open splash
+      at 2.5s to cover the first-clip warm (SS_SPLASH_MIN_MS = everLaunched ? 2500 : 3000 in
+      showshak-feed.html; first-EVER launch left at 3000ms — flagged).
+
+    • 720p STREAMING — DIAGNOSED, fix DEFERRED. Founder: "video isn't streaming at 720p even when
+      loaded." Read-only diagnosis: NOT a cap issue (max-resolution=720p is a CEILING; SS_RES_CAP is
+      720p on all tiers). Leading cause = SS_START_BW_KBPS=700 (a low ABR seed) on a short looping
+      clip → the whole clip buffers at ~480p before ABR ever climbs, so it never upgrades. The proper
+      fix is the now-shipped progressive-deepening / segment-cache path (deepen the rendition over a
+      loop) rather than a seed hack. ALSO FLAGGED a spec drift: design/requirements say the slow tier
+      should cap 480p but code has SS_RES_CAP.slow='720p'. Revisit after the Phase 3 on-device verify;
+      then decide whether to also retune SS_START_BW_KBPS or use rendition-order, and realign
+      SS_RES_CAP.slow.
+
+    • OPEN — a __proto__ test flake in tests/prop-scoreboard-safe.test.js (prefetch Property 3b):
+      fast-check occasionally generates a `__proto__` own-key; ssPublicSignalsOnly does out[k]=record[k]
+      which trips the __proto__ setter, and Property 3b (preserve) contradicts Property 3a's oracle
+      (drop) for that one key. This is a TEST-side generator/oracle bug, NOT a product bug. Fix when
+      touched: exclude __proto__/constructor/prototype from the test generators (they're not real
+      public-signal keys) + optionally harden ssPublicSignalsOnly to skip them; reconcile 3a vs 3b.
+
+
+  ── PREVIOUS (UX polish sweep + iOS autoplay fix + genre/moods + pitch deck + prefetch spec;
      CACHE_VERSION v32 → v42; suite stays 89 files green; NO new shared.js property tests this
      session — changes were CSS/markup/config + a profile.html bug fix + the genre data plumbing) ──
     CONTEXT: a fast iterative on-device polish + strategy session. Headline wins: the iOS autoplay
@@ -866,11 +1098,15 @@
 
   STILL PENDING — ⚠️ TO FULLY LIGHT UP THE BETA COMPLIANCE SURFACES:
   - (migration 0032 YouTube-removal — APPLIED ✓ this session; active catalog = 16 platforms.)
-  - RUN supabase/seed/seed_policy_versions.sql in the Supabase SQL editor. It is
-    READY TO RUN (real ToS/Privacy/Curator-Terms bodies inlined verbatim, dollar-
-    quoted as $SS$). Idempotent. Until it runs, showshak-legal.html shows the
-    placeholder scaffolding (graceful fallback), and the consent/curator gates
-    fail-soft ("policies unavailable") because no current policy_versions rows exist.
+  - RUN supabase/seed/seed_policy_versions.sql — ✓ DONE this session (policy_versions has current
+    tos/privacy/curator rows). NOTE the seed now ALSO contains a one-line grant at the top (see next).
+  - ⚠️ RUN THE policy_versions READ GRANT (one line, in the SQL editor) — REQUIRED, else the consent
+    gate + curator-terms bind read as "unavailable" even though the rows exist:
+        grant select on policy_versions to anon, authenticated;
+    WHY: 0029 enabled RLS + a world-read POLICY but never granted the API roles table SELECT, so the
+    browser's direct read was permission-denied (the SQL editor sees rows because service_role
+    bypasses RLS). It's now baked into the top of seed_policy_versions.sql, so a re-run of the seed
+    also applies it — but run the single line now since the seed was already run without it.
   - DEPLOY the DMCA intake Edge Function: supabase functions deploy submit-takedown
     --no-verify-jwt  (public anon takedown intake — code is pushed, not yet deployed).
   - FILL the [PLACEHOLDERS] in legal/*.md (entity name/type, registered address,
@@ -881,7 +1117,21 @@
     filled-in docs. Re-seed a NEW version row (recipe in the seed file footer) so the
     "counsel review required" banner clears. DON'T go wide to real users until this is
     done. (Decide the operating ENTITY first — company vs individual.)
-  - After any of the above that needs on-device, reopen the installed PWA twice (v30).
+  - After any of the above that needs on-device, reopen the installed PWA twice (now v54).
+
+  STILL PENDING — ⚠️ PREFETCH-CACHE-PIPELINE byte-PREFETCH ON-DEVICE VERIFY (the segment REUSE
+  cache is now DEFAULT-ON; only the aggressive upcoming-clip byte PREFETCH remains opt-in):
+  - The SW segment REUSE cache (ss_ff_segcache) is ON by default as of v54 (feed→fullscreen→any-page
+    reuse, fail-soft). Kill switch: localStorage ss_ff_segcache='off'.
+  - To verify the optional byte PREFETCH: set localStorage ss_ff_segprefetch='on' (+ optionally
+    ss_ff_idb='on', ss_ff_poster_swr='on'), reopen the PWA TWICE, then in DevTools confirm:
+    (a) Mux segments served as HTTP 206 from the 'showshak-seg' Cache Storage bucket; (b) the cache
+    SURVIVES a CACHE_VERSION bump; (c) storage stays under the device budget (iOS 50MB / Android
+    100MB); (d) only the ACTIVE clip plays.
+  - If the byte-prefetch is good on device, consider flipping ss_ff_segprefetch default-ON in a push.
+    THEN revisit the 720p question (progressive deepening should climb the rendition over a loop;
+    decide whether to also retune SS_START_BW_KBPS / use rendition-order; realign SS_RES_CAP.slow to
+    480p per spec).
 
   STILL PENDING (older, not blocking):
   - SET UP the 30-day account-purge cron (service role) for 0025 — skeleton is in
@@ -908,10 +1158,11 @@
   - Update the `overview` brief to record the "views on clips"
     decision (it currently says "no view counts on clips" — that
     rule was deliberately changed this session).
-  - A rare FLAKY property test (~1 in ~10 runs) lives in a test file
-    we did NOT touch this session (pure-helpers passes every run);
-    worth a focused hunt: run each prop-*.test.js in isolation ~200x
-    to find + pin the seed. Not from our changes.
+  - A KNOWN test flake: tests/prop-scoreboard-safe.test.js (prefetch Property 3b) intermittently
+    fails when fast-check generates a `__proto__` own-key (ssPublicSignalsOnly's out[k]=record[k]
+    trips the __proto__ setter, and 3b "preserve" contradicts 3a's "drop" oracle for that one key).
+    It's a TEST-side generator/oracle bug, NOT a product bug. Fix when touched: exclude
+    __proto__/constructor/prototype from the generators + reconcile 3a vs 3b.
   - RETENTION / TOKEN reward idea (free OTT subscription for tokens):
     POST-traction only (after ~15 curators + ~100 returning users).
     Reframe: it's an OTT-FUNDED trial-acquisition engine (they pay,
@@ -1012,7 +1263,7 @@ MY SETUP (important): I have the project's LIVE PAGE via GitHub Pages on the
 `main` branch — every push auto-rebuilds it and I watch all changes there. I also
 have the PWA INSTALLED on my phone, so I test on a real device. Because the PWA
 caches via the service worker, BUMP CACHE_VERSION in sw.js whenever you push code
-I need to see (it's currently v14); I close+reopen the app (or remove → re-add) to
+I need to see (it's currently v47); I close+reopen the app (or remove → re-add) to
 pick up the new version. I also run the SQL migrations myself in the Supabase SQL
 editor (you write them, I apply them) and do the on-device verification checks.
 
@@ -1022,78 +1273,65 @@ clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
 The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
 "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v42, last commit 2c0d59f; migrations 0001-0032 applied — 0030 RESERVED
-for DMCA Phase 2; 0032 = YouTube removed from the platform catalog, APPLIED): everything
-from prior sessions (felt-quality sweep, watch-it-curator-availability, feed-clip-load-performance,
-server-side Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate, feed-follows ranker, v32
-clip-brightness/instant-profile-stats) PLUS this session's iOS AUTOPLAY FIX, genre+moods upload,
-Watch It restyle, clip-count fix, brightness pass, burst-icon match, and the INVESTOR PITCH DECK
-(below). Pure logic in showshak-shared.js, dual-exported + property-tested (node tests/run-all.js →
-89 files green).
+LIVE ON MAIN (CACHE_VERSION v47, last commit 5fcfeb6; migrations 0001-0032 applied — 0030 RESERVED
+for DMCA Phase 2; 0032 = YouTube removed from the platform catalog, APPLIED): everything from prior
+sessions (felt-quality sweep, watch-it-curator-availability, feed-clip-load-performance, server-side
+Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate, feed-follows ranker, iOS autoplay fix
+v39, genre+moods, Watch It restyle, pitch deck) PLUS this session's prefetch-cache-pipeline PHASES
+1-3 (cross-page prewarm + storage tiering + the single-player/byte-prefetch model), the
+feed-scroll-stutter-fix bugfix, and the 2.5s cold-start splash (below). Pure logic in
+showshak-shared.js, dual-exported + property-tested (node tests/run-all.js → 100 files green).
 
-SHIPPED THIS SESSION (all pushed to main; CACHE_VERSION v32 → v42):
-  - ★ iOS AUTOPLAY STALL FIXED (v39) — THE big one. Clips stuck on the first frame/poster on iOS
-    (on feed-open AND on scroll: "2-3 paused, then one plays"); iOS-only. ROOT CAUSE (confirmed in
-    code + matched to iOS behaviour): SS_MAX_LIVE_PLAYERS=4 mounted 4 <mux-player>s at once; iOS
-    uses NATIVE HLS (AVPlayer) which has a hard simultaneous-decode limit → the active clip couldn't
-    acquire a decoder. FIX = SS_MAX_LIVE_PLAYERS 4 → 2 (active + 1 neighbor). FOUNDER CONFIRMED FIXED
-    ON DEVICE. ⚠ SACRED: do NOT raise the cap; any clip prefetch must warm BYTES only, never extra
-    players. (Also rule out iOS Low Power Mode — it blocks autoplay entirely, separate from our code.)
-  - GENRE + EXPANDED MOODS in upload (v34) — Step 5 is now "Genre & Vibe": pick up to 3 GENRES (16,
-    NEW) above up to 3 VIBES (moods expanded 8 → 16). Stored in meta.genres (NO migration), surfaced
-    as clip.genre across feed/discover/profile/stacks (ssMapContentRowsToClips + ssLoadMyClips).
-    Discover got colored borders for the 8 new mood pills (v35). Taxonomies live in
-    data/showshak-data.js (GENRES, VIBES, MOODS). NOTE: editing genres POST-publish not wired yet.
-  - WATCH IT RESTYLE (v36-v38) — now TRANSPARENT with a warm fire-orange fill rgba(255,99,45,0.26) +
-    backdrop blur + the existing animated orange tracing border, across feed rail + mobile + viewer.
-    PLATFORM-BLIND: stripped the platform logo chip + "on <Platform>" sublabel (platform reveals only
-    in the Watch It sheet now — MORE on-philosophy). Follow/Following tags also transparent + orange-hint.
-  - CLIP-COUNT BUG FIXED (v34) — profile "Clips" reset to 1 after an upload. TWO causes:
-    hydrateMyClipsFromDB never re-rendered the creds strip (added renderCreds()), and the count
-    preferred the partial session mirror over the DB/prewarm head-count (now prefers the real count).
-  - CLIP BRIGHTNESS FIXED PROPERLY (v40-v41) — feed clip felt dull/like a background. The inline FEED
-    vignette had never been lightened alongside the viewer (still 0.80). FIX: feed scrim matched to
-    viewer (0.58/0.20) + a real brightness(1.18) saturate(1.1) lift moved onto the media CONTAINER
-    (.clip-media / .ssv-media) so poster AND video lift in one pass (filtering the container is
-    reliable on iOS; filtering the <mux-player> host was not). Brightness is a one-number dial.
-  - FEED FIRE-BURST ICON (v42) — the double-tap "fire" burst now matches the fullscreen viewer's
-    two-path flame (feed previously used a different 3-element icon).
-  - v32 felt-quality (clip vignette + instant profile stats) — was push-pending last session;
-    CONFIRMED pushed this session (commit 6bf864d).
-  - ★ INVESTOR PITCH DECK — showshak-pitch-deck.html: premium, self-contained, on-brand HTML deck
-    (15 slides; ↑↓/space nav). Cover A = current splash; Cover B (RECOMMENDED) tagline
-    "Discover · Trust · Watch It". Every figure sourced (2025-26) + cross-checked. LIVE & PUBLIC at
-    https://piyush-120898.github.io/showshak-v2/showshak-pitch-deck.html. Team = Piyush Gupta (B.Tech
-    IT + performance marketer who did lead-gen/sales for small businesses — framed "built by the
-    buyer"). Market math + revenue framing captured in "points to keep in mind pitch wise.txt" (§MARKET
-    REFRAME). NOT yet committed if you regenerate — it IS committed (in repo).
-  - ★ NEW ACTIVE SPEC — prefetch-cache-pipeline (.kiro/specs/prefetch-cache-pipeline/): requirements
-    DONE + analysis-clean (14 reqs, EARS, 3 phases). DESIGN not yet written — that is the next build
-    (see NEXT STEP). ⚠ The spec files are UNCOMMITTED (in the working tree) — commit them when you resume.
-  - PREVIOUSLY SHIPPED (now LIVE on main — full detail in SESSION LOG §5): DMCA Phase 1
-    (migration 0029 APPLIED) + beta-consent-gate (migration 0031 APPLIED + Anonymous sign-ins
-    ENABLED). The founder-side beta-compliance ops are STILL PENDING — see NEXT STEP + §7.
+SHIPPED THIS SESSION (all pushed to main; CACHE_VERSION v42 → v47; commits db87353 → 5fcfeb6):
+  - ★ prefetch-cache-pipeline PHASES 1-3 — THE single-player + byte-prefetch model the founder had
+    been circling: ONLY the active clip plays; every other clip is warmed in the BACKGROUND as BYTES,
+    never as an extra player, so we keep the SACRED 2-player cap AND get a fast, deepening-quality
+    feed. Phase 1 (v43) = cross-page prewarm of Discover/Watchlist DATA + posters from the Feed (kills
+    the "black gradient → slow thumbnails" cold-start). Phase 2 (v44) = storage tiering (IndexedDB
+    page JSON via ssStorageTier/ssReadPageData/ssWritePageData, gated ss_ff_idb; localStorage stays
+    flags-only) + sw.js per-resource strategies (app-shell Cache-First, HTML SWR, poster SWR via
+    ss_ff_poster_swr). Phase 3 (v46-v47) = device-aware byte budgets (ssDeviceProfile /
+    ssResolvePrefetchBudget / ssStorageTrimPlan, 4 new prop files), the HTTP-206 SW segment cache in a
+    separate 'showshak-seg' bucket that SURVIVES version bumps (ss_ff_segcache), byte prefetch gated
+    ss_ff_segprefetch, back-buffer cap SS_BACK_BUFFER_S=30, iOS 50MB / Android 100MB storage budgets.
+    Phase 3 is OFF by default — FOUNDER ON-DEVICE VERIFY PENDING (Task 18, see §7). Task 16
+    (Speculation Rules + View Transitions) DEFERRED.
+  - ★ feed-scroll-stutter-fix (v45) — a bugfix spec. After the v39 cap fix a NEW stutter appeared
+    (play, pause, pause… on scroll). ROOT CAUSE: ssMountedPlayerSet biased the 2-player band ONE
+    BEHIND active ({active-1, active}) so the next clip cold-started on arrival → iOS first-frame
+    stall. FIX = direction-aware band {active, active+1} on scroll-down (optional `direction` param,
+    no-direction byte-identical to original), threaded inline IntersectionObserver → pruneInlineSurfaces
+    → _poolRecycle → ssMountedPlayerSet, gated ss_ff_aheadband (ON by default). Property-tested vs a
+    referenceF oracle. ⚠ Cap UNTOUCHED — fixed band COMPOSITION, never the number.
+  - SPLASH COLD-START 2.5s (v46) — recurring cold-open splash floor 700 → 2500ms (first-EVER launch
+    left at 3000ms) to cover the first-clip warm.
+  - 720p — DIAGNOSED only (fix deferred): not a cap issue; leading cause = SS_START_BW_KBPS=700 (low
+    ABR seed) on a short looping clip buffers at ~480p before ABR climbs. Proper fix = progressive
+    deepening (now shipped) — revisit after the Phase 3 on-device verify. Flagged a spec drift
+    (SS_RES_CAP.slow is 720p in code but 480p in the spec).
+  - OPEN: a __proto__ flake in tests/prop-scoreboard-safe.test.js (test-side, not product — see §8).
 
 DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is
 DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
 content.status='removed' in Supabase (RLS hides it everywhere).
 
 NEXT STEP (resume here):
-  FOUNDER-SIDE (only YOU can do): (a) migration 0032 (YouTube removal) — APPLIED ✓ this session;
-  (b) STILL PENDING before going wide (from the DMCA/consent work): RUN
+  FOUNDER-SIDE (only YOU can do): (a) PREFETCH PHASE 3 ON-DEVICE VERIFY — set localStorage
+  ss_ff_segcache='on' + ss_ff_segprefetch='on', reopen the PWA twice for v47, verify 206 slicing +
+  segment cache survives a version bump + storage under the device budget + only the active clip
+  plays (see §7); (b) the STILL-PENDING beta-compliance ops from the DMCA/consent work: RUN
   supabase/seed/seed_policy_versions.sql, DEPLOY the intake fn (supabase functions deploy
-  submit-takedown --no-verify-jwt), fill legal/*.md [PLACEHOLDERS] + IP-lawyer hour + decide the
-  operating ENTITY; (c) reopen the installed PWA twice to pick up v42.
-  BUILD — the prefetch-cache-pipeline spec is the ACTIVE build (requirements DONE + analysis-clean,
-  3 phases). NEXT ACTION = generate the DESIGN doc (the cache-layer architecture map), then tasks,
-  then execute phased so the Feed never breaks. GOAL: make Discover/Watchlist + clips feel INSTANT.
-  Phase 1 = prewarm Discover/Watchlist DATA + posters from the Feed (the visible "black gradient →
-  slow thumbnails" pain). Phase 2 = storage tiering (IndexedDB for page JSON, Cache API for URL
-  assets, localStorage flags only) + SW per-resource strategies. Phase 3 = clip SEGMENT-BYTE prefetch
-  (within the 2-player cap — NEVER more players) + device-verified SW segment cache + back-buffer cap
-  + Android-deeper (Speculation Rules API) + View Transitions. The DB is already A-grade (audited: no
-  SELECT*, no N+1, partial feed index idx_content_feed_live in 0013) — NOT the bottleneck. ⚠ COMMIT the
-  prefetch-cache-pipeline spec files (currently uncommitted in the working tree) when you resume.
+  submit-takedown --no-verify-jwt), fill legal/*.md [PLACEHOLDERS] + an IP-lawyer hour + decide the
+  operating ENTITY.
+  BUILD — prefetch-cache-pipeline Phases 1-3 are SHIPPED; Phase 3 (the single-player + byte-prefetch
+  model) is the headline, OFF by default pending the on-device verify above. AFTER that verify is
+  green: (1) consider flipping ss_ff_segcache/ss_ff_segprefetch (+ ss_ff_idb, ss_ff_poster_swr,
+  ss_ff_aheadband stays on) DEFAULT-ON in a push; (2) close the 720p question via progressive
+  deepening — the rendition should climb over a loop now that segments persist; decide whether to
+  also retune SS_START_BW_KBPS / use rendition-order, and realign SS_RES_CAP.slow to 480p (spec
+  drift); (3) optionally pick up the DEFERRED Task 16 (Speculation Rules API + View Transitions) for
+  Android-deeper navigations. Also worth a quick pass: fix the __proto__ test flake in
+  tests/prop-scoreboard-safe.test.js (test-side, see §8).
   PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
   Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
 

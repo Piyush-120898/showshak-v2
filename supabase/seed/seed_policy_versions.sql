@@ -20,6 +20,18 @@
 -- ═══════════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────────
+-- GRANT READ ACCESS (fixes "Curator Terms unavailable")
+-- ───────────────────────────────────────────────────────────────
+-- 0029 enabled RLS + a world-read policy on policy_versions but never granted
+-- the API roles table-level SELECT. An RLS policy only filters rows for a role
+-- that ALREADY has the table privilege, so the browser's direct read
+-- (ssCurrentPolicyVersions -> from('policy_versions').select(...)) was
+-- permission-denied -> the consent gate + curator-terms bind resolved as
+-- "unavailable". SELECT only (never insert/update) keeps the table read-only for
+-- ordinary users; RLS still hides soft-deleted rows. Idempotent.
+grant select on policy_versions to anon, authenticated;
+
+-- ───────────────────────────────────────────────────────────────
 -- TERMS OF SERVICE  (doc='tos' ← legal/terms-of-service.md)
 -- ───────────────────────────────────────────────────────────────
 insert into policy_versions (doc, version, effective_date, body, is_current)
