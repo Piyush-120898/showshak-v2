@@ -2163,7 +2163,22 @@ function openBecomeCurator() {
   document.getElementById('bc-bio').value = '';
   // Reset the Curator Terms notice + link to their default (pre-resolution) state.
   const tn = document.getElementById('bc-terms-notice'); if (tn) tn.style.display = 'none';
-  const tl = document.getElementById('bc-terms-link'); if (tl) tl.setAttribute('href', 'showshak-legal.html?doc=curator');
+  const tl = document.getElementById('bc-terms-link');
+  if (tl) {
+    tl.setAttribute('href', 'showshak-legal.html?doc=curator');
+    // Open the Curator Terms in the in-page modal — UNCONDITIONALLY. Reads
+    // boundCurator live (null before/without the policy seed → modal shows the
+    // current/placeholder version). Must NOT depend on the seed being run. href
+    // stays as a no-JS fallback to the full legal page.
+    tl.onclick = function (e) {
+      if (typeof ssOpenLegal === 'function') {
+        if (e && e.preventDefault) e.preventDefault();
+        ssOpenLegal('curator', boundCurator || undefined);
+        return false;
+      }
+      return true;
+    };
+  }
   // Prefill handle from the existing profile handle (minus the @)
   const h = document.getElementById('bc-handle');
   if (h) h.value = (PROFILE.handle || '').replace(/^@/, '');
@@ -2187,16 +2202,9 @@ async function bcBindCuratorTerms() {
       : { ok: false };
     if (res && res.ok && res.curator && res.curator.version) {
       boundCurator = res.curator.version;                 // bind ONCE (Req 9.3)
-      // Open the EXACT bound version in the in-page legal modal (no navigation →
-      // you stay in the flow). href stays as a no-JS fallback to the full page.
-      if (link) {
-        link.setAttribute('href', 'showshak-legal.html?doc=curator&v=' + encodeURIComponent(boundCurator));
-        link.onclick = function (e) {
-          if (e && e.preventDefault) e.preventDefault();
-          if (typeof ssOpenLegal === 'function') ssOpenLegal('curator', boundCurator);
-          return false;
-        };
-      }
+      // href fallback carries the bound version; the modal onclick (wired in
+      // openBecomeCurator) reads boundCurator live, so it works seeded or not.
+      if (link) link.setAttribute('href', 'showshak-legal.html?doc=curator&v=' + encodeURIComponent(boundCurator));
       if (notice) notice.style.display = 'none';
     } else {
       boundCurator = null;                                // unresolved — no bind (Req 9.4)

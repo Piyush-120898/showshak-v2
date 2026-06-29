@@ -1089,6 +1089,12 @@ async function obResolvePolicies() {
   const status   = document.getElementById('consent-policy-status');
   const tosLink   = document.getElementById('consent-tos-link');
   const privLink  = document.getElementById('consent-privacy-link');
+  // Open the requested policy in the in-page modal — UNCONDITIONALLY (works even
+  // before/without policy resolution; the modal shows the current/placeholder
+  // version, and the bound version is read live if/when it resolves). href stays
+  // as a no-JS fallback to the full legal page.
+  if (tosLink)  tosLink.onclick  = function (e) { if (typeof ssOpenLegal === 'function') { if (e&&e.preventDefault) e.preventDefault(); ssOpenLegal('tos', obBoundTos || undefined); return false; } return true; };
+  if (privLink) privLink.onclick = function (e) { if (typeof ssOpenLegal === 'function') { if (e&&e.preventDefault) e.preventDefault(); ssOpenLegal('privacy', obBoundPrivacy || undefined); return false; } return true; };
   obPoliciesResolved = false;
   obBoundTos = null;
   obBoundPrivacy = null;
@@ -1107,10 +1113,6 @@ async function obResolvePolicies() {
     obPoliciesResolved = true;
     if (tosLink)  tosLink.href  = 'showshak-legal.html?doc=tos&v='     + encodeURIComponent(obBoundTos);
     if (privLink) privLink.href = 'showshak-legal.html?doc=privacy&v=' + encodeURIComponent(obBoundPrivacy);
-    // Open the EXACT bound version in the in-page modal (no navigation away from
-    // onboarding). href stays as a no-JS fallback to the full legal page.
-    if (tosLink)  tosLink.onclick  = function (e) { if (e&&e.preventDefault) e.preventDefault(); if (typeof ssOpenLegal === 'function') ssOpenLegal('tos', obBoundTos); return false; };
-    if (privLink) privLink.onclick = function (e) { if (e&&e.preventDefault) e.preventDefault(); if (typeof ssOpenLegal === 'function') ssOpenLegal('privacy', obBoundPrivacy); return false; };
     if (status) { status.style.display = 'none'; status.textContent = ''; }
   } else {
     if (status) {
