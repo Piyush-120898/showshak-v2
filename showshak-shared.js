@@ -4167,7 +4167,7 @@ var SS_LEGAL_TITLES = {
       'background:rgba(0,0,0,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:24px;}' +
     '#ss-legal-overlay.open{display:flex;animation:ssLegalFade .18s ease both;}' +
     '@keyframes ssLegalFade{from{opacity:0}to{opacity:1}}' +
-    '#ss-legal-modal{width:100%;max-width:640px;height:min(82vh,720px);background:var(--bg2,#13131A);' +
+    '#ss-legal-modal{width:100%;max-width:560px;height:min(80vh,680px);background:var(--bg2,#13131A);' +
       'border:1px solid var(--border,rgba(255,255,255,0.07));border-radius:18px;overflow:hidden;' +
       'display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,0.6);animation:ssLegalUp .22s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) both;}' +
     '@keyframes ssLegalUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}' +
@@ -4177,7 +4177,7 @@ var SS_LEGAL_TITLES = {
       'background:rgba(255,255,255,0.06);border:1px solid var(--border,rgba(255,255,255,0.07));color:var(--white,#fff);cursor:pointer;font-size:16px;line-height:1;-webkit-tap-highlight-color:transparent;transition:background .15s;}' +
     '.ss-legal-modal-close:hover{background:rgba(255,255,255,0.12);}' +
     '#ss-legal-frame{flex:1;width:100%;border:0;background:var(--bg,#0B0B0F);}' +
-    '@media (max-width:600px){#ss-legal-overlay{padding:0;}#ss-legal-modal{max-width:none;height:100%;border-radius:0;}}';
+    '@media (max-width:600px){#ss-legal-overlay{padding:20px 14px;}#ss-legal-modal{height:80vh;}}';
   document.head.appendChild(s);
   var ov = document.createElement('div');
   ov.id = 'ss-legal-overlay';
