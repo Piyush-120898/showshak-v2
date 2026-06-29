@@ -149,5 +149,50 @@ if (typeof ss.ssNonActivePlayers !== 'function') {
   });
 }
 
+/* ── ssShouldPauseSurface — the CONTINUOUS solo-play guard ───────────────────
+   A non-active surface that reports real playback must be paused at once; the
+   active surface must NEVER be flagged for pause. */
+if (typeof ss.ssShouldPauseSurface !== 'function') {
+  failed++;
+  console.log('  \u2717 ssShouldPauseSurface is not exported');
+} else {
+  const g = ss.ssShouldPauseSurface;
+
+  prop('Guard 1: never pauses the active surface (any playing state)', () => {
+    fc.assert(fc.property(fc.integer({ min: -3, max: 50 }), fc.anything(), (active, playing) => {
+      assert(g(active, active, playing) === false,
+        `active index ${show(active)} must never be paused (playing=${show(playing)})`);
+      return true;
+    }), { numRuns: ITER });
+  });
+
+  prop('Guard 2: pauses a non-active surface iff it is actually playing', () => {
+    const idxArb = fc.integer({ min: -3, max: 50 });
+    fc.assert(fc.property(idxArb, idxArb, (i, active) => {
+      if (i === active) return true;                 // covered by Guard 1
+      assert(g(i, active, true) === true,  `non-active ${show(i)} playing → must pause`);
+      assert(g(i, active, false) === false, `non-active ${show(i)} not playing → must NOT pause`);
+      return true;
+    }), { numRuns: ITER });
+  });
+
+  prop('Guard 3: total + boolean (coerces any playing value, never throws)', () => {
+    fc.assert(fc.property(fc.anything(), fc.anything(), fc.anything(), (i, active, playing) => {
+      let r;
+      try { r = g(i, active, playing); }
+      catch (e) { throw new Error(`threw on (${show(i)},${show(active)},${show(playing)}): ${e.message}`); }
+      assert(r === true || r === false, `must return a boolean, got ${show(r)}`);
+      return true;
+    }), { numRuns: ITER });
+  });
+
+  prop('Guard 4 (literals): only-active-plays invariant', () => {
+    assert(g(1, 0, true)  === true,  'non-active playing → pause');
+    assert(g(0, 0, true)  === false, 'active playing → keep');
+    assert(g(1, 0, false) === false, 'non-active idle → keep');
+    assert(g(2, -1, true) === true,  'no active clip → any playing surface is paused');
+  });
+}
+
 console.log('\n' + (failed ? `FAILED: ${failed} propert${failed === 1 ? 'y' : 'ies'}` : 'ALL PASSED'));
 process.exit(failed ? 1 : 0);

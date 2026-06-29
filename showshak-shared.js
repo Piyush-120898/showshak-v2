@@ -4144,6 +4144,77 @@ function _ssvBuildList(clicked, list) {
   return [start, ...related, ...rest];
 }
 
+/* ════════════════════════════════════════════════
+   ── IN-PAGE LEGAL MODAL (ssOpenLegal) ────────────
+   Opens ONE legal document in a small overlay on the current screen instead of
+   navigating to the full legal page. The body is an iframe of
+   showshak-legal.html?modal=1&doc=<doc>[&v=<version>], so it reuses the legal
+   page's EXACT version resolution + rendering (single source of truth) — the
+   shown version can never drift from what a consent/curator record stamps.
+   Used app-wide (consent gate, Become-a-Curator terms, settings, footer); the
+   full legal page stays as the browsable "all documents" reference.
+   ════════════════════════════════════════════════ */
+var SS_LEGAL_TITLES = {
+  tos: 'Terms of Service', privacy: 'Privacy Policy', curator: 'Curator Terms',
+  copyright: 'Copyright & DMCA Policy', community: 'Community Guidelines'
+};
+(function _injectLegalModal() {
+  if (typeof document === 'undefined' || document.getElementById('ss-legal-overlay')) return;
+  var s = document.createElement('style');
+  s.id = 'ss-legal-modal-style';
+  s.textContent =
+    '#ss-legal-overlay{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;' +
+      'background:rgba(0,0,0,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:24px;}' +
+    '#ss-legal-overlay.open{display:flex;animation:ssLegalFade .18s ease both;}' +
+    '@keyframes ssLegalFade{from{opacity:0}to{opacity:1}}' +
+    '#ss-legal-modal{width:100%;max-width:640px;height:min(82vh,720px);background:var(--bg2,#13131A);' +
+      'border:1px solid var(--border,rgba(255,255,255,0.07));border-radius:18px;overflow:hidden;' +
+      'display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,0.6);animation:ssLegalUp .22s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) both;}' +
+    '@keyframes ssLegalUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}' +
+    '.ss-legal-modal-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border,rgba(255,255,255,0.07));flex-shrink:0;}' +
+    '.ss-legal-modal-title{flex:1;min-width:0;font-family:var(--font-display,sans-serif);font-size:20px;letter-spacing:1px;color:var(--white,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+    '.ss-legal-modal-close{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(255,255,255,0.06);border:1px solid var(--border,rgba(255,255,255,0.07));color:var(--white,#fff);cursor:pointer;font-size:16px;line-height:1;-webkit-tap-highlight-color:transparent;transition:background .15s;}' +
+    '.ss-legal-modal-close:hover{background:rgba(255,255,255,0.12);}' +
+    '#ss-legal-frame{flex:1;width:100%;border:0;background:var(--bg,#0B0B0F);}' +
+    '@media (max-width:600px){#ss-legal-overlay{padding:0;}#ss-legal-modal{max-width:none;height:100%;border-radius:0;}}';
+  document.head.appendChild(s);
+  var ov = document.createElement('div');
+  ov.id = 'ss-legal-overlay';
+  ov.innerHTML =
+    '<div id="ss-legal-modal" role="dialog" aria-modal="true" aria-label="Legal document">' +
+      '<div class="ss-legal-modal-head">' +
+        '<span class="ss-legal-modal-title" id="ss-legal-title">Legal</span>' +
+        '<button class="ss-legal-modal-close" type="button" aria-label="Close" onclick="ssCloseLegal()">\u2715</button>' +
+      '</div>' +
+      '<iframe id="ss-legal-frame" title="Legal document" loading="lazy"></iframe>' +
+    '</div>';
+  ov.addEventListener('click', function (e) { if (e.target === ov) ssCloseLegal(); });
+  document.body.appendChild(ov);
+})();
+function _ssLegalEsc(e) { if (e && (e.key === 'Escape' || e.keyCode === 27)) ssCloseLegal(); }
+function ssOpenLegal(doc, version) {
+  var ov = document.getElementById('ss-legal-overlay');
+  if (!ov) return;
+  var d = (typeof doc === 'string' && SS_LEGAL_TITLES[doc]) ? doc : 'tos';
+  var src = 'showshak-legal.html?modal=1&doc=' + encodeURIComponent(d);
+  if (version) src += '&v=' + encodeURIComponent(version);
+  var frame = document.getElementById('ss-legal-frame');
+  if (frame) frame.src = src;
+  var title = document.getElementById('ss-legal-title');
+  if (title) title.textContent = SS_LEGAL_TITLES[d];
+  ov.classList.add('open');
+  try { document.addEventListener('keydown', _ssLegalEsc); } catch (e) {}
+}
+function ssCloseLegal() {
+  var ov = document.getElementById('ss-legal-overlay');
+  if (ov) ov.classList.remove('open');
+  var frame = document.getElementById('ss-legal-frame');
+  if (frame) { try { frame.src = 'about:blank'; } catch (e) {} }   // stop load + reset
+  try { document.removeEventListener('keydown', _ssLegalEsc); } catch (e) {}
+}
+if (typeof window !== 'undefined') { window.ssOpenLegal = ssOpenLegal; window.ssCloseLegal = ssCloseLegal; }
+
 /* ── Inject viewer CSS once ─────────────────────── */
 (function _injectClipViewerCSS() {
   const s = document.createElement('style');
@@ -4785,7 +4856,20 @@ function _inlineEvalStall() {
    affordance. Playing → clear it at once; not-playing → re-check after a short
    debounce so normal buffering/seek/loop never flashes the icon. */
 function _inlineReflectStall(i, playing) {
-  if (i !== _inlineActiveIdx) return;
+  // CONTINUOUS SOLO-PLAY GUARD: a non-active surface must NEVER be playing. If
+  // one reports REAL playback (e.g. iOS handed it a decoder freed when the active
+  // clip stalled — no scroll / setActive fires in that case, so the recycle-time
+  // _ssEnforceSoloPlay never runs), pause it AT ONCE so only the on-screen clip
+  // ever plays and you never arrive on a clip already mid-playback. Gated
+  // ss_ff_soloplay (default ON) — same switch as the recycle-time enforcement.
+  if (ssShouldPauseSurface(i, _inlineActiveIdx, playing)) {
+    if (!_ssFeatureOff('soloplay')) {
+      var s = _inlineSurfaces[i];
+      if (s && typeof s.pause === 'function') { try { s.pause(); } catch (e) {} }
+    }
+    return;
+  }
+  if (i !== _inlineActiveIdx) return;   // non-active + not playing → nothing to do
   if (playing) {
     clearTimeout(_inlineStallTimer);
     var icon = document.getElementById('pause-icon-' + i);
@@ -5094,6 +5178,17 @@ function ssNonActivePlayers(activeIdx, count) {
   if (n <= 0) return out;
   for (var i = 0; i < n; i++) if (i !== activeIdx) out.push(i);
   return out;
+}
+
+/* ssShouldPauseSurface(surfaceIdx, activeIdx, playing) — PURE. The continuous
+   solo-play guard: a mounted surface that reports REAL playback must be paused
+   the instant it is NOT the active clip. Returns true iff it is playing AND it
+   is not the active index (so the active clip is never paused, and a non-active
+   surface that the OS started on its own — e.g. iOS handing it a decoder freed
+   when the active clip stalled — is caught even when no scroll/setActive fires).
+   Total: coerces `playing` to boolean; any non-equal index ⇒ non-active. */
+function ssShouldPauseSurface(surfaceIdx, activeIdx, playing) {
+  return !!playing && surfaceIdx !== activeIdx;
 }
 
 /* Solo the active clip: PAUSE + mute every mounted surface EXCEPT the active one.
@@ -6412,12 +6507,17 @@ function _ssPostSegWindow(host) {
       var budget = ssResolvePrefetchBudget(prof, ssNetworkTier(_connEffectiveType())).storageBudget;
       ctrl.postMessage({ type: 'SS_SEG_BUDGET', budget: budget });
     } catch (e) { /* best-effort */ }
-    // The SW Segment_Cache is OPT-IN (off by default) until its range/206 path
-    // is validated on-device — with it off, the PWA delivers Mux exactly like
-    // the website (no SW interception). Enable on-device with
-    // localStorage ss_ff_segcache='on'.
-    var segOn = false;
-    try { segOn = (typeof localStorage !== 'undefined' && localStorage) && localStorage.getItem('ss_ff_segcache') === 'on'; } catch (e) { segOn = false; }
+    // The SW Segment_Cache (cross-page video REUSE: a clip warmed in the feed is
+    // replayed instantly in fullscreen / any page) is ON by default. It is
+    // FAIL-SOFT — on any cache/range/206 failure the SW bypasses to a normal
+    // network fetch (exactly the website's behaviour), so enabling it can only
+    // ADD reuse, never break playback. Reversible on-device with
+    // localStorage ss_ff_segcache='off' (kill switch). NOTE: this is the REUSE
+    // cache only; the aggressive upcoming-clip byte PREFETCH stays opt-in behind
+    // ss_ff_segprefetch (see _ssSegmentPrefetchOn) since that is what previously
+    // saturated the stream.mux.com pool.
+    var segOn = true;
+    try { segOn = !((typeof localStorage !== 'undefined' && localStorage) && localStorage.getItem('ss_ff_segcache') === 'off'); } catch (e) { segOn = true; }
     if (!segOn) { ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: false }); return; }
     ctrl.postMessage({ type: 'SS_SEG_CACHE', enabled: true });
     var isInline  = (host === 'INLINE');
@@ -9974,6 +10074,7 @@ if (typeof window !== 'undefined') {
   window.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   window.ssMountedPlayerSet = ssMountedPlayerSet;
   window.ssNonActivePlayers = ssNonActivePlayers;
+  window.ssShouldPauseSurface = ssShouldPauseSurface;
   window.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   window.ssPoolPlan = ssPoolPlan;
   window.ssNetworkTier = ssNetworkTier;
@@ -10021,6 +10122,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.ssShouldFetchNextWindow = ssShouldFetchNextWindow;
   module.exports.ssMountedPlayerSet = ssMountedPlayerSet;
   module.exports.ssNonActivePlayers = ssNonActivePlayers;
+  module.exports.ssShouldPauseSurface = ssShouldPauseSurface;
   module.exports.ssShouldShowTapToPlay = ssShouldShowTapToPlay;
   module.exports.ssResolveSurfaceMuted = ssResolveSurfaceMuted;
   module.exports.ssPoolPlan = ssPoolPlan;

@@ -23,7 +23,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v51';
+var CACHE_VERSION = 'v52';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -47,7 +47,7 @@ var SEG_CACHE_CEILING = 200 * 1024 * 1024;    // ~200 MB LRU-by-bytes ceiling
 // eviction algorithm). Fail-soft.
 var _segStorageBudget = SEG_CACHE_CEILING;
 var SEG_WINDOW = { ahead: 5, behind: 5 };     // eviction eligibility window (clips around active)
-var _segCacheEnabled = false;                 // OFF by default — Phase 4 is OPT-IN (page posts enable when ss_ff_segcache='on') until the 206 path is validated on-device
+var _segCacheEnabled = true;                  // ON by default — cross-page video REUSE (feed→fullscreen→any page). FAIL-SOFT: any cache/range/206 failure bypasses to network (website behaviour), so it can only add reuse, never break playback. Page can disable via ss_ff_segcache='off'. The aggressive byte PREFETCH stays separately opt-in (ss_ff_segprefetch).
 var _segWindow = { ids: [], activeIdx: 0 };   // ordered playback ids + active index (page-supplied)
 var _segIndex = {};                           // href → { key, bytes, lastUsed, clipDistance }
 var _segEvictScheduled = false;

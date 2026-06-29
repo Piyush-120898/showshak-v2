@@ -537,6 +537,7 @@ function showConfirmation(ref) {
 /* ── Navigation ── */
 function goPolicy(e) {
   if (e && e.preventDefault) e.preventDefault();
+  if (typeof ssOpenLegal === 'function') { ssOpenLegal('copyright'); return; }
   if (typeof ssNavigate === 'function') ssNavigate('showshak-legal.html?doc=copyright');
   else location.href = 'showshak-legal.html?doc=copyright';
 }

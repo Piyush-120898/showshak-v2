@@ -14,8 +14,19 @@
 <link rel="stylesheet" href="showshak-sidebar.css">
 <link rel="stylesheet" href="showshak-mobile-nav.css">
 <link rel="stylesheet" href="showshak-components.css">
+<script>/* modal mode: set the flag before paint so the page chrome never flashes inside the in-page legal modal */try{if(new URLSearchParams(location.search).get('modal')==='1')document.documentElement.classList.add('ss-legal-modal');}catch(e){}</script>
 <style>
 html, body { overflow: hidden; }
+
+/* In-page modal mode (?modal=1, loaded in the ssOpenLegal iframe): drop all page
+   chrome and show ONLY the requested document, edge-to-edge in the iframe. */
+html.ss-legal-modal #ss-nav,
+html.ss-legal-modal .legal-head,
+html.ss-legal-modal .doc-tabs { display: none !important; }
+html.ss-legal-modal .layout { left: 0 !important; }
+html.ss-legal-modal .legal-scroll { padding-bottom: 16px !important; }
+html.ss-legal-modal .wrap { padding-top: 6px; }
+html.ss-legal-modal .doc { padding-top: 8px; }
 
 .layout {
   position: fixed; inset: 0; left: var(--sidebar-collapsed);
