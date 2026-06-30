@@ -473,3 +473,36 @@ PITCH DECK (showshak-pitch-deck.html — built this session; LIVE/public):
     returning + first Watch-It conversion data," not "bet on the revenue model today".
   - BEFORE any investor send: get the neutrality/data language + India legal posture
     a counsel read (same discipline as legal/*.md).
+
+
+═══════════════════════════════════════════════════════════════
+  STATUS UPDATE (current — keep in sync with COFOUNDER-HANDOFF.txt)
+═══════════════════════════════════════════════════════════════
+  As of CACHE_VERSION v59 (COFOUNDER-HANDOFF.txt is the authoritative live state):
+
+  - THE DATA/NEUTRALITY MONETIZATION THESIS above is now reflected in the PRODUCT'S
+    LEGAL DOCS. The Privacy Policy carries an explicit "Aggregated & De-Identified
+    Data" clause (create/use/share aggregate, audience-level insights; no
+    re-identification) plus a DORMANT advertising/monetisation clause that only
+    activates behind a new policy version + fresh consent (DPDP purpose limitation).
+    legal/data-monetisation-principles.md captures the "sell the mirror, never the
+    spy report" rules so the public docs, the product, and THIS deck never
+    contradict each other. All legal text is DRAFT pending IP-counsel review.
+
+  - HOW THE BIG PLATFORMS ACTUALLY MONETIZE DATA (verified by reading Google + Meta
+    privacy policies in full): they do NOT sell raw personal data — both say so
+    explicitly. They monetize via (a) INTERNAL ad-matching (the advertiser never
+    receives the raw data) and (b) AGGREGATED / DE-IDENTIFIED measurement + insights
+    reporting to partners. Our neutral, cross-platform version of that exact lawful
+    pattern is the moat — frame it that way to investors, never as "we sell user
+    data."
+
+  - THE AI COFOUNDER PERSONA now carries a FUNDRAISING & PITCH-DECK STRATEGIST lens
+    (how VCs/angels screen pre-seed/seed in the first 2-3 minutes; show-don't-tell,
+    one idea per slide, bottom-up market math, the fewest slides that earn the next
+    meeting). Use it when iterating showshak-pitch-deck.html.
+
+  - HONEST VERDICT (UNCHANGED): the round is unlocked by COLD-START PROOF
+    (~15-20 curators, 300-500 clips, ~1000-1500 returning users) + the IP-lawyer hour
+    + the operating-entity decision — NOT by more deck polish. Prove the loop, then
+    raise on the traction.

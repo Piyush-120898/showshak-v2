@@ -148,14 +148,17 @@ Closest references for mental model:
       Phase 2 (admin/workflow) is deferred post-raise. FEED-FOLLOWS is SHIPPED
       (commit 05afc86): a tiered, trust-weighted ranker (ssRankFeed, behind the
       unchanged ssLoadClips, flat-feed fallback + ss_ff_ranker kill switch) surfaces
-      followed curators first. LATEST (CACHE_VERSION v42): the iOS autoplay stall is
-      FIXED (SS_MAX_LIVE_PLAYERS 4→2 — iOS native-HLS decoder limit; SACRED, never
-      raise); genre selection + a 16-mood set landed in upload (meta.genres, no
-      migration); the Watch It button is now transparent fire-orange + platform-blind;
-      and an investor PITCH DECK shipped (showshak-pitch-deck.html, live/public). The
-      ACTIVE build is the prefetch-cache-pipeline spec (requirements done; design next)
-      to make Discover/Watchlist + clips feel instant. See COFOUNDER-HANDOFF.txt for the
-      live detail.
+      followed curators first. LATEST (CACHE_VERSION v59): prefetch-cache-pipeline
+      Phases 1-3 + the SW segment-reuse cache (default-on) shipped; the iOS autoplay
+      stall + scroll-stutter were fixed (SS_MAX_LIVE_PLAYERS=2 — SACRED, never raise);
+      consent + 18+ is now MANDATORY and fail-closed for every account; the legal docs
+      were expanded to in-depth drafts and seeded into policy_versions (version
+      1.1-draft, counsel review + placeholders still pending); the normal-user profile
+      leads with Following (History = coming soon); and Discover gained a By-Genre
+      filter. An investor PITCH DECK is live (showshak-pitch-deck.html). The remaining
+      gate is the beta-compliance finish line (deploy submit-takedown, fill legal
+      placeholders + decide the entity + IP-lawyer review) plus cold-start proof. See
+      COFOUNDER-HANDOFF.txt for the authoritative live detail.
   ────────────────────────────────────────────────────────────────
 
   PLANNED BACKEND (historical — now BUILT, see status update above):
