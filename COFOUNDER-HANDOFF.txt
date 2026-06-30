@@ -192,7 +192,43 @@
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (legal-docs deep expansion + legal-modal iframe bugfix; CACHE_VERSION v55 → v56) ──
+  ── MOST RECENT (policy seed published + legal-page scroll fix + consent-mandatory confirm +
+     profile tabs + Discover genre filter; CACHE_VERSION v56 → v59) ──
+    CONTEXT: finished the legal/compliance loop and did three founder-requested product tweaks.
+    All pushed to main; suite 103 files green.
+
+    • POLICY SEED PUBLISHED — the expanded legal drafts are now live in policy_versions at version
+      '1.1-draft' (so showshak-legal.html + the consent gate render the real expanded text, with the
+      "counsel review required" banner still up while [PLACEHOLDERS] remain). Generated verbatim from
+      legal/*.md by data/_gen_policy_seed.js → seed_policy_versions.sql. Fixed a uq_policy_current
+      duplicate-key error: the seed now inserts the new version is_current=false, then deactivates the
+      prior current row and activates the new one in separate steps (idempotent on re-run).
+
+    • CONSENT IS MANDATORY (confirmed + locked) — founder chose "keep guest browsing; consent required
+      at signup." So consent + 18+ is fail-closed for EVERY account (the consent-gate-funnel-bypass
+      chokepoint), and guests may still browse before signup. No code change needed beyond the prior fix.
+
+    • LEGAL-PAGE SCROLL FIX (v57) — the doc-name tabs were position:sticky with no background, so body
+      text scrolled under them and overlapped, and they collided with the header at top:0. Now the top
+      bar is solid and shows the ACTIVE doc name; the all-names tab row is non-sticky and scrolls away.
+      Modal mode unaffected.
+
+    • PROFILE TABS (v58→v59) — normal-user profile now shows Following (wired, DEFAULT tab) first and
+      History second; History keeps its existing "✨ COMING SOON" empty state (no watch-history source
+      wired yet). defaultTabFor('user') → 'following'.
+
+    • DISCOVER "BY GENRE" FILTER (v58) — added a genre pill row (mirrors the mood pills) that filters
+      clips by curator-picked clip.genre (= meta.genres). Genre was already saved at upload (Genre
+      shown above Vibe) and free-text search already matched it; this adds browse-by-genre. ⚠ Clips
+      uploaded before genre selection (or with genre skipped) have no genre and won't appear under a
+      genre — optional one-time backfill from the linked TMDB content_genres would fix that.
+
+    • DEPLOY STATE: CACHE_VERSION = v59 (sw.js), last commit 363fc27. Suite 103 files green. Migrations
+      0001-0032 applied; policy_versions seeded at '1.1-draft'; policy_versions SELECT grant APPLIED.
+      Remaining founder-run (see NEXT STEP): deploy submit-takedown, fill legal placeholders + entity +
+      counsel, then re-seed final version.
+
+  ── PREVIOUS (legal-docs deep expansion + legal-modal iframe bugfix; CACHE_VERSION v55 → v56) ──
     CONTEXT: a legal-advisor pass — researched Google + Meta privacy policies and the Vimeo
     Terms of Service in full (TikTok is India-banned/unfetchable), then expanded all legal/*.md
     drafts to in-depth, clause-by-clause documents; plus fixed a consent-gate legal-modal bug.
@@ -1127,27 +1163,22 @@
   (0030 is RESERVED for DMCA Phase 2 — not created yet.)
 
   STILL PENDING — ⚠️ TO FULLY LIGHT UP THE BETA COMPLIANCE SURFACES:
-  - (migration 0032 YouTube-removal — APPLIED ✓ this session; active catalog = 16 platforms.)
-  - RUN supabase/seed/seed_policy_versions.sql — ✓ DONE this session (policy_versions has current
-    tos/privacy/curator rows). NOTE the seed now ALSO contains a one-line grant at the top (see next).
-  - ⚠️ RUN THE policy_versions READ GRANT (one line, in the SQL editor) — REQUIRED, else the consent
-    gate + curator-terms bind read as "unavailable" even though the rows exist:
-        grant select on policy_versions to anon, authenticated;
-    WHY: 0029 enabled RLS + a world-read POLICY but never granted the API roles table SELECT, so the
-    browser's direct read was permission-denied (the SQL editor sees rows because service_role
-    bypasses RLS). It's now baked into the top of seed_policy_versions.sql, so a re-run of the seed
-    also applies it — but run the single line now since the seed was already run without it.
-  - DEPLOY the DMCA intake Edge Function: supabase functions deploy submit-takedown
-    --no-verify-jwt  (public anon takedown intake — code is pushed, not yet deployed).
-  - FILL the [PLACEHOLDERS] in legal/*.md (entity name/type, registered address,
-    [CITY] for jurisdiction, grievance/copyright/support emails, Grievance Officer
-    name, effective date, version, website URL). Use REAL monitored inboxes for the
-    grievance + copyright emails from day one (an unreachable Grievance Officer is
-    the classic IT-Rules failure). Then book ONE IP/tech-lawyer hour to bless the
-    filled-in docs. Re-seed a NEW version row (recipe in the seed file footer) so the
-    "counsel review required" banner clears. DON'T go wide to real users until this is
-    done. (Decide the operating ENTITY first — company vs individual.)
-  - After any of the above that needs on-device, reopen the installed PWA twice (now v54).
+  - (migration 0032 YouTube-removal — APPLIED ✓; active catalog = 16 platforms.)
+  - policy_versions SEED — ✓ DONE. Now at version '1.1-draft' (the EXPANDED legal drafts), generated
+    by data/_gen_policy_seed.js → seed_policy_versions.sql, applied successfully.
+  - policy_versions READ GRANT (`grant select on policy_versions to anon, authenticated;`) — ✓ DONE
+    (founder-applied; also baked into the seed top for permanence).
+  - ⚠️ DEPLOY the DMCA intake Edge Function: supabase functions deploy submit-takedown
+    --no-verify-jwt  (public anon takedown intake — code is pushed, NOT yet deployed; the in-app
+    takedown form can't file a notice until this is live — safe-harbour-critical).
+  - ⚠️ FILL the [PLACEHOLDERS] in legal/*.md (entity name/type, registered address, [CITY] for
+    jurisdiction, grievance/copyright/support emails, Grievance Officer name, effective date,
+    version, website URL). Use REAL monitored inboxes for grievance + copyright from day one (an
+    unreachable Grievance Officer is the classic IT-Rules failure). DECIDE the operating ENTITY
+    first (company vs sole proprietor). Then book ONE IP/tech-lawyer hour, bump VERSION in
+    data/_gen_policy_seed.js, re-run it, and re-apply the seed so the "counsel review required"
+    banner clears. DON'T go wide to real users until this is done.
+  - After any of the above that needs on-device, reopen the installed PWA twice (now v59).
 
   STILL PENDING — ⚠️ PREFETCH-CACHE-PIPELINE byte-PREFETCH ON-DEVICE VERIFY (the segment REUSE
   cache is now DEFAULT-ON; only the aggressive upcoming-clip byte PREFETCH remains opt-in):
@@ -1230,24 +1261,35 @@ the next big tech, and I need you all-in on it with me, not as an
 assistant but as the partner who owns this with me.
 
 WHO YOU ARE ON THIS TEAM (bring all of it to every reply):
-  • A SEASONED STARTUP OPERATOR — you have built and scaled real products,
-    so you think in wedges, three-sided cold-start, retention loops, and
-    sequencing. You know what actually moves the needle pre-traction vs
-    what's a distraction, you do the cost/market math out loud, and you
-    protect focus and runway. You tell me when something is premature.
+  • A SEASONED STARTUP OPERATOR — you have built and scaled real products, so you
+    think in wedges, three-sided cold-start, retention loops, and sequencing. You
+    know what actually moves the needle pre-traction vs what's a distraction, you do
+    the cost/market math out loud, you protect focus and runway, and you tell me when
+    something is premature.
   • A SHARP MARKET & CUSTOMER STRATEGIST — you carry real insight about the
-    streaming-discovery space and our launch market (India): the
-    fragmentation pain, curators-not-influencers, the monetization ladder
-    (promoted clips → UA/CPA → cross-platform data), the neutrality moat,
-    and the legal/DMCA existential risk. You know what investors will probe
-    and what real users actually feel, and you frame decisions that way.
-  • A GREAT ENGINEER — deep, hands-on technical execution. You write clean,
-    correct, property-tested code, you respect the existing architecture and
-    the sacred product rules, you read the code before you change it, and
-    you ship working software — verified, not sketches.
-  • AN HONEST PARTNER — no stale, generic, or yes-man answers. Push back with
-    real reasoning, correct me when I'm wrong (respectfully), protect the
-    product's soul, and make every credit and every second return huge value.
+    streaming-discovery space and our launch market (India): the fragmentation pain,
+    curators-not-influencers, the monetization ladder (promoted clips → UA/CPA →
+    cross-platform data), the neutrality moat, and the legal/DMCA existential risk.
+    You know what real users actually feel, and you frame every decision that way.
+  • A FUNDRAISING & PITCH-DECK STRATEGIST — you think like the investor on the other
+    side of the table. You have deep, real knowledge of how VCs and angels actually
+    screen pre-seed/seed startups and what makes them lean in or pass in the first
+    2-3 minutes: founder-market fit, a sharp wedge, a credible "why now", the single
+    strongest traction signal, honest bottom-up market math (not a vanity TAM),
+    defensibility/moat, and a clean, specific ask. You know how a winning deck is
+    actually built — show-don't-tell, one idea per slide, a tight narrative arc, no
+    negations and no risk-dumping, and the FEWEST slides that earn the next meeting —
+    and you craft every word for maximum conviction with minimal clutter. You turn
+    our wedge + cold-start proof into a story investors want to bet on, and you tell
+    me the honest truth about what is fundable right now vs what still needs proof.
+  • A GREAT ENGINEER — deep, hands-on technical execution. You write clean, correct,
+    property-tested code, you respect the existing architecture and the sacred product
+    rules, you read the code before you change it, and you ship working software —
+    verified, not sketches.
+  • AN HONEST PARTNER — no stale, generic, or yes-man answers. Push back with real
+    reasoning, correct me when I'm wrong (respectfully), protect the product's soul,
+    and make every credit and every second return huge value. We are betting our
+    lives on this — act like it.
 
 HOW YOU DEBUG (learned rule): when a bug could have more than one cause,
 don't stop at the first thing you fix — check the other candidates too,
@@ -1293,7 +1335,7 @@ MY SETUP (important): I have the project's LIVE PAGE via GitHub Pages on the
 `main` branch — every push auto-rebuilds it and I watch all changes there. I also
 have the PWA INSTALLED on my phone, so I test on a real device. Because the PWA
 caches via the service worker, BUMP CACHE_VERSION in sw.js whenever you push code
-I need to see (it's currently v47); I close+reopen the app (or remove → re-add) to
+I need to see (it's currently v59); I close+reopen the app (or remove → re-add) to
 pick up the new version. I also run the SQL migrations myself in the Supabase SQL
 editor (you write them, I apply them) and do the on-device verification checks.
 
@@ -1303,67 +1345,72 @@ clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
 The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
 "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v47, last commit 5fcfeb6; migrations 0001-0032 applied — 0030 RESERVED
-for DMCA Phase 2; 0032 = YouTube removed from the platform catalog, APPLIED): everything from prior
-sessions (felt-quality sweep, watch-it-curator-availability, feed-clip-load-performance, server-side
-Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate, feed-follows ranker, iOS autoplay fix
-v39, genre+moods, Watch It restyle, pitch deck) PLUS this session's prefetch-cache-pipeline PHASES
-1-3 (cross-page prewarm + storage tiering + the single-player/byte-prefetch model), the
-feed-scroll-stutter-fix bugfix, and the 2.5s cold-start splash (below). Pure logic in
-showshak-shared.js, dual-exported + property-tested (node tests/run-all.js → 100 files green).
+LIVE ON MAIN (CACHE_VERSION v59, last commit 363fc27; migrations 0001-0032 applied — 0030 RESERVED
+for DMCA Phase 2): everything from prior sessions (felt-quality sweep, watch-it-curator-availability,
+feed-clip-load-performance, server-side Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate,
+feed-follows ranker, iOS autoplay fix v39, genre+moods, Watch It restyle, pitch deck,
+prefetch-cache-pipeline Phases 1-3, SW segment-reuse cache default-on, background-autoplay fix,
+in-page legal modal) PLUS this stretch's legal-docs deep expansion + consent/compliance hardening +
+profile/Discover changes (below). Pure logic in showshak-shared.js, dual-exported + property-tested
+(node tests/run-all.js → 103 files green).
 
-SHIPPED THIS SESSION (all pushed to main; CACHE_VERSION v42 → v47; commits db87353 → 5fcfeb6):
-  - ★ prefetch-cache-pipeline PHASES 1-3 — THE single-player + byte-prefetch model the founder had
-    been circling: ONLY the active clip plays; every other clip is warmed in the BACKGROUND as BYTES,
-    never as an extra player, so we keep the SACRED 2-player cap AND get a fast, deepening-quality
-    feed. Phase 1 (v43) = cross-page prewarm of Discover/Watchlist DATA + posters from the Feed (kills
-    the "black gradient → slow thumbnails" cold-start). Phase 2 (v44) = storage tiering (IndexedDB
-    page JSON via ssStorageTier/ssReadPageData/ssWritePageData, gated ss_ff_idb; localStorage stays
-    flags-only) + sw.js per-resource strategies (app-shell Cache-First, HTML SWR, poster SWR via
-    ss_ff_poster_swr). Phase 3 (v46-v47) = device-aware byte budgets (ssDeviceProfile /
-    ssResolvePrefetchBudget / ssStorageTrimPlan, 4 new prop files), the HTTP-206 SW segment cache in a
-    separate 'showshak-seg' bucket that SURVIVES version bumps (ss_ff_segcache), byte prefetch gated
-    ss_ff_segprefetch, back-buffer cap SS_BACK_BUFFER_S=30, iOS 50MB / Android 100MB storage budgets.
-    Phase 3 is OFF by default — FOUNDER ON-DEVICE VERIFY PENDING (Task 18, see §7). Task 16
-    (Speculation Rules + View Transitions) DEFERRED.
-  - ★ feed-scroll-stutter-fix (v45) — a bugfix spec. After the v39 cap fix a NEW stutter appeared
-    (play, pause, pause… on scroll). ROOT CAUSE: ssMountedPlayerSet biased the 2-player band ONE
-    BEHIND active ({active-1, active}) so the next clip cold-started on arrival → iOS first-frame
-    stall. FIX = direction-aware band {active, active+1} on scroll-down (optional `direction` param,
-    no-direction byte-identical to original), threaded inline IntersectionObserver → pruneInlineSurfaces
-    → _poolRecycle → ssMountedPlayerSet, gated ss_ff_aheadband (ON by default). Property-tested vs a
-    referenceF oracle. ⚠ Cap UNTOUCHED — fixed band COMPOSITION, never the number.
-  - SPLASH COLD-START 2.5s (v46) — recurring cold-open splash floor 700 → 2500ms (first-EVER launch
-    left at 3000ms) to cover the first-clip warm.
-  - 720p — DIAGNOSED only (fix deferred): not a cap issue; leading cause = SS_START_BW_KBPS=700 (low
-    ABR seed) on a short looping clip buffers at ~480p before ABR climbs. Proper fix = progressive
-    deepening (now shipped) — revisit after the Phase 3 on-device verify. Flagged a spec drift
-    (SS_RES_CAP.slow is 720p in code but 480p in the spec).
-  - OPEN: a __proto__ flake in tests/prop-scoreboard-safe.test.js (test-side, not product — see §8).
+SHIPPED RECENTLY (all pushed to main; CACHE_VERSION v54 → v59):
+  - ★ CONSENT now MANDATORY + FAIL-CLOSED for EVERY account (consent-gate-funnel-bypass bugfix): a
+    single post-login chokepoint (_ssAfterLogin → _ssRunConsentGate) enforces DPDP consent + 18+ on
+    EVERY auth path (in-app OAuth/email sheet, returning login, AND pre-existing un-consented
+    accounts). Idempotency via users.meta.consent_ok; pure ssConsentGateDecision (property-tested,
+    fail-closed). Guests can still browse before signup (founder's explicit choice). Prereq grant
+    `grant select on policy_versions to anon, authenticated;` APPLIED.
+  - ★ LEGAL DOCS expanded to in-depth, clause-by-clause drafts (privacy / tos / curator / copyright /
+    community + new legal/data-monetisation-principles.md), grounded in Google + Meta privacy
+    policies + Vimeo ToS read in full, overlaid on India DPDP + IT-Rules. The Privacy Policy carries
+    the AGGREGATED/DE-IDENTIFIED-DATA monetisation clause (the neutrality/"sell the mirror" strategy,
+    done DPDP-correctly). SEEDED into policy_versions at version '1.1-draft' via a generator
+    (data/_gen_policy_seed.js) + idempotent seed (seed_policy_versions.sql). STILL DRAFT —
+    [PLACEHOLDERS] + counsel review pending.
+  - ★ One-time curator rights affirmation: dropped the alarming per-UPLOAD attestation checkbox (it
+    dampened upload habit); publish() STILL silently records the per-clip attestation (the 0029
+    go-live trigger + safe-harbour audit trail are fully intact). Substance lives in the one-time
+    Curator Terms.
+  - Consent UI: separate ToS + Privacy tickboxes + the 18+ box; the ToS/Privacy links open the
+    in-page CARD modal (ssOpenLegal).
+  - Legal-modal iframe bug FIXED: showshak-legal.html in the ?modal=1 iframe ran the full shared.js
+    lifecycle → recursed the consent gate inside the card + misfired the portrait lock. New
+    _ssIsEmbeddedDocViewer() makes ssPortraitLock + _ssAfterLogin early-return when embedded.
+  - Legal page scroll fix: solid top bar shows the ACTIVE doc name; the all-names tab row is
+    non-sticky (no more text overlapping the names on scroll).
+  - Profile (normal user): Following (wired, DEFAULT tab) first, History (COMING SOON) second.
+  - Discover: new "By Genre" filter row (pills) filtering by curator-picked clip.genre. Genre is
+    saved to meta.genres at upload (Genre shown above Vibe) and free-text search already matched it;
+    NOTE old clips with no genre won't appear under a genre (optional backfill below).
 
-DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is
-DEFERRED to post-raise — at 500 clips a takedown is actioned by flipping
-content.status='removed' in Supabase (RLS hides it everywhere).
+DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is DEFERRED to post-raise
+— at beta scale a takedown is actioned by flipping content.status='removed' in Supabase (RLS hides
+it everywhere). 0030 is RESERVED for it.
 
 NEXT STEP (resume here):
-  FOUNDER-SIDE (only YOU can do): (a) PREFETCH PHASE 3 ON-DEVICE VERIFY — set localStorage
-  ss_ff_segcache='on' + ss_ff_segprefetch='on', reopen the PWA twice for v47, verify 206 slicing +
-  segment cache survives a version bump + storage under the device budget + only the active clip
-  plays (see §7); (b) the STILL-PENDING beta-compliance ops from the DMCA/consent work: RUN
-  supabase/seed/seed_policy_versions.sql, DEPLOY the intake fn (supabase functions deploy
-  submit-takedown --no-verify-jwt), fill legal/*.md [PLACEHOLDERS] + an IP-lawyer hour + decide the
-  operating ENTITY.
-  BUILD — prefetch-cache-pipeline Phases 1-3 are SHIPPED; Phase 3 (the single-player + byte-prefetch
-  model) is the headline, OFF by default pending the on-device verify above. AFTER that verify is
-  green: (1) consider flipping ss_ff_segcache/ss_ff_segprefetch (+ ss_ff_idb, ss_ff_poster_swr,
-  ss_ff_aheadband stays on) DEFAULT-ON in a push; (2) close the 720p question via progressive
-  deepening — the rendition should climb over a loop now that segments persist; decide whether to
-  also retune SS_START_BW_KBPS / use rendition-order, and realign SS_RES_CAP.slow to 480p (spec
-  drift); (3) optionally pick up the DEFERRED Task 16 (Speculation Rules API + View Transitions) for
-  Android-deeper navigations. Also worth a quick pass: fix the __proto__ test flake in
-  tests/prop-scoreboard-safe.test.js (test-side, see §8).
-  PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER
-  Spotify/Apple, NEVER a copyrighted "use this song" library (inducement).
+  FOUNDER-SIDE (only YOU can do) — the beta-compliance finish line:
+    (a) DEPLOY the DMCA intake fn:  supabase functions deploy submit-takedown --no-verify-jwt
+        (code is pushed, NOT yet deployed — the in-app takedown form can't file a notice until this
+        is live; this is safe-harbour-critical).
+    (b) DECIDE the operating ENTITY (private limited company vs sole proprietor) + jurisdiction city.
+    (c) FILL the legal/*.md [PLACEHOLDERS] (entity name/type, registered address, city, the three
+        monitored inboxes grievance/copyright/support, Grievance Officer name, version, effective
+        date, URL); get an IP-lawyer hour; then bump VERSION in data/_gen_policy_seed.js, re-run it,
+        and re-apply the seed (clears the "counsel review required" banner).
+    (d) Optional on-device: byte-PREFETCH verify (set ss_ff_segprefetch='on') — the segment REUSE
+        cache is already default-on.
+  BUILD (deferred / optional, post-compliance or post-raise):
+    (1) 720p question + SS_RES_CAP.slow spec-drift realign to 480p, after the byte-prefetch verify.
+    (2) prefetch Task 16 (Speculation Rules + View Transitions) + pwa-black-screen-load Phase 3.
+    (3) DMCA Phase 2 (admin/workflow/counter-notice UI; tasks 11-18) — post-raise.
+    (4) Optional genre backfill for OLD clips (derive from the linked TMDB content_genres) so they
+        become genre-searchable too.
+  THE REAL GATE (non-code, from our own strategy): cold-start proof — ~15-20 curators, 300-500
+  clips, ~1000-1500 returning users. Everything above serves this. Then raise on that traction
+  (the deck is live: showshak-pitch-deck.html — apply the FUNDRAISING & PITCH-DECK STRATEGIST lens).
+  PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER Spotify/Apple, NEVER a
+  copyrighted "use this song" library (inducement).
 
 Do NOT relitigate locked player decisions (no MP4, no CDN swap, no player swap,
 no unbounded memory cache; ONE behaviour for iOS+Android, recycled player pool;
