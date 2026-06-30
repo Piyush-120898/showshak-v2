@@ -49,7 +49,7 @@ html.ss-legal-modal .doc { padding-top: 8px; }
 /* Sticky header with back */
 .legal-head {
   position: sticky; top: 0; z-index: 20;
-  background: rgba(11,11,15,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 14px; padding: 16px 24px;
 }
@@ -63,13 +63,17 @@ html.ss-legal-modal .doc { padding-top: 8px; }
 }
 .legal-back:hover { background: rgba(255,255,255,0.1); }
 .legal-back:active { transform: scale(0.92); }
-.legal-head-title { font-family: var(--font-display); font-size: 26px; letter-spacing: 1.5px; color: var(--white); }
+.legal-head-titles { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.legal-head-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--gray2); }
+.legal-head-title { font-family: var(--font-display); font-size: 23px; letter-spacing: 1px; color: var(--white); line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .legal-head-title em { color: var(--red); font-style: normal; }
 
-/* Doc tabs */
+/* Doc tabs — the full list of document names. NOT sticky: they sit at the top of
+   the scroll area and scroll away, leaving only the solid header (with the active
+   doc name) pinned, so body text never overlaps the names. */
 .doc-tabs {
   display: flex; gap: 8px; flex-wrap: wrap;
-  padding: 20px 0 4px; position: sticky; top: 0;
+  padding: 18px 0 10px;
 }
 .doc-tab {
   padding: 9px 15px; border-radius: 100px; font-size: 12.5px; font-weight: 700;
@@ -168,7 +172,10 @@ html.ss-legal-modal .doc { padding-top: 8px; }
     <div class="legal-back" id="back-btn" onclick="legalBack()" aria-label="Back">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </div>
-    <div class="legal-head-title">Show<em>Shak</em> Legal</div>
+    <div class="legal-head-titles">
+      <div class="legal-head-eyebrow">ShowShak Legal</div>
+      <div class="legal-head-title" id="legal-head-doc">Legal</div>
+    </div>
   </div>
 
   <div class="legal-scroll">
@@ -443,6 +450,8 @@ function selectDoc(doc) {
    body, and degrades to the marked placeholder scaffolding when no row exists. */
 async function renderDoc(doc) {
   const cfg = DOCS[doc];
+  const headDoc = document.getElementById('legal-head-doc');
+  if (headDoc) headDoc.innerHTML = cfg.title;   // solid top bar shows the active doc when scrolled
   const tabs = document.getElementById('doc-tabs');
   const host = document.getElementById('doc');
   if (tabs) tabs.innerHTML = tabsHtml(doc);
