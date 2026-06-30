@@ -402,7 +402,7 @@ Copyright: **[COPYRIGHT_EMAIL]** (see the Copyright Policy).
 
 *ShowShak is an open beta operated in India. This document is a draft pending review
 by qualified Indian legal counsel and is not legal advice.*
-$SS$, true
+$SS$, false
 where not exists (select 1 from policy_versions where doc='tos' and version='1.1-draft');
 
 -- ───────────────────────────────────────────────────────────────
@@ -821,7 +821,7 @@ review by qualified Indian legal counsel and is not legal advice. The DPDP Act,
 2023 and DPDP Rules, 2025 (notified 13 November 2025) are being brought into force
 in phases — substantive notice/consent/rights obligations and penalties commence
 around May 2027 — and we will adjust this Policy as those obligations commence.*
-$SS$, true
+$SS$, false
 where not exists (select 1 from policy_versions where doc='privacy' and version='1.1-draft');
 
 -- ───────────────────────────────────────────────────────────────
@@ -1074,7 +1074,7 @@ Copyright: **[COPYRIGHT_EMAIL]** (see the Copyright Policy).
 
 *ShowShak is an open beta operated in India. This document is a draft pending review
 by qualified Indian legal counsel and is not legal advice.*
-$SS$, true
+$SS$, false
 where not exists (select 1 from policy_versions where doc='curator' and version='1.1-draft');
 
 -- ───────────────────────────────────────────────────────────────
@@ -1260,7 +1260,7 @@ Prior versions are retained and identifiable by version label.
 by qualified Indian legal counsel and is not legal advice. The Rule 75 process
 described here should be confirmed with counsel before launch, including the
 registered details of the person/officer to receive notices.*
-$SS$, true
+$SS$, false
 where not exists (select 1 from policy_versions where doc='copyright' and version='1.1-draft');
 
 -- ───────────────────────────────────────────────────────────────
@@ -1439,18 +1439,26 @@ date. Prior versions are retained and identifiable by version label.
 
 *ShowShak is an open beta operated in India. This document is a draft pending review
 by qualified Indian legal counsel and is not legal advice.*
-$SS$, true
+$SS$, false
 where not exists (select 1 from policy_versions where doc='community' and version='1.1-draft');
 
 -- ───────────────────────────────────────────────────────────────
 -- REPOINT is_current → make ONLY version '1.1-draft' current per doc.
+-- Two steps per doc (deactivate others, THEN activate this one) so we never
+-- transiently have two current rows for a doc — which the partial unique index
+-- uq_policy_current forbids. Idempotent: re-running matches zero rows.
 -- (Prior version rows are retained for audit; just deactivated.)
 -- ───────────────────────────────────────────────────────────────
 update policy_versions set is_current = false where doc='tos' and version <> '1.1-draft' and is_current;
+update policy_versions set is_current = true  where doc='tos' and version  = '1.1-draft' and not is_current;
 update policy_versions set is_current = false where doc='privacy' and version <> '1.1-draft' and is_current;
+update policy_versions set is_current = true  where doc='privacy' and version  = '1.1-draft' and not is_current;
 update policy_versions set is_current = false where doc='curator' and version <> '1.1-draft' and is_current;
+update policy_versions set is_current = true  where doc='curator' and version  = '1.1-draft' and not is_current;
 update policy_versions set is_current = false where doc='copyright' and version <> '1.1-draft' and is_current;
+update policy_versions set is_current = true  where doc='copyright' and version  = '1.1-draft' and not is_current;
 update policy_versions set is_current = false where doc='community' and version <> '1.1-draft' and is_current;
+update policy_versions set is_current = true  where doc='community' and version  = '1.1-draft' and not is_current;
 
 -- Reload PostgREST so reads see the new rows immediately.
 notify pgrst, 'reload schema';

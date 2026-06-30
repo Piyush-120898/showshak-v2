@@ -78,7 +78,7 @@ for (const [doc, file, label] of DOCS) {
 -- ───────────────────────────────────────────────────────────────
 insert into policy_versions (doc, version, effective_date, body, is_current)
 select '${doc}', '${VERSION}', date '${EFFECTIVE_DATE}',
-       ${DELIM}${body}${DELIM}, true
+       ${DELIM}${body}${DELIM}, false
 where not exists (select 1 from policy_versions where doc='${doc}' and version='${VERSION}');
 `;
 }
@@ -86,11 +86,15 @@ where not exists (select 1 from policy_versions where doc='${doc}' and version='
 out += `
 -- ───────────────────────────────────────────────────────────────
 -- REPOINT is_current → make ONLY version '${VERSION}' current per doc.
+-- Two steps per doc (deactivate others, THEN activate this one) so we never
+-- transiently have two current rows for a doc — which the partial unique index
+-- uq_policy_current forbids. Idempotent: re-running matches zero rows.
 -- (Prior version rows are retained for audit; just deactivated.)
 -- ───────────────────────────────────────────────────────────────
 `;
 for (const [doc] of DOCS) {
   out += `update policy_versions set is_current = false where doc='${doc}' and version <> '${VERSION}' and is_current;\n`;
+  out += `update policy_versions set is_current = true  where doc='${doc}' and version  = '${VERSION}' and not is_current;\n`;
 }
 
 out += `
