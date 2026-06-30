@@ -178,6 +178,24 @@ html, body { overflow: hidden; }
 }
 .mood-row::-webkit-scrollbar { display: none; }
 
+/* ── Genre filter pills (browse clips by curator-picked genre) ── */
+.genre-row {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  margin: 0 -28px; padding-left: 28px; padding-right: 28px;
+}
+.genre-row::-webkit-scrollbar { display: none; }
+.genre-pill {
+  flex-shrink: 0; cursor: pointer; white-space: nowrap;
+  padding: 9px 18px; border-radius: 100px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.2px;
+  color: var(--gray); background: var(--bg2); border: 1.5px solid var(--border);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.genre-pill:hover { color: var(--white); border-color: rgba(255,255,255,0.18); }
+.genre-pill.active { color: #fff; background: var(--red); border-color: var(--red); }
+
 .mood-pill {
   display: inline-flex; align-items: center;
   padding: 9px 20px; border-radius: 100px;
@@ -540,6 +558,7 @@ html, body { overflow: hidden; }
   .discover-header { padding: calc(18px + env(safe-area-inset-top, 0px)) 16px 0; }
   .discover-body   { padding: 20px 16px; padding-bottom: calc(var(--mobile-nav-h) + 24px); }
   .mood-row     { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .genre-row    { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .clips-row    { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .platform-row { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .foryou-grid  { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -589,6 +608,12 @@ html, body { overflow: hidden; }
         <div class="sec-sub">· what are you feeling?</div>
       </div>
       <div class="mood-row" id="mood-row"></div>
+
+      <div class="sec-head">
+        <div class="sec-title">By <em>Genre</em></div>
+        <div class="sec-sub">· pick a category</div>
+      </div>
+      <div class="genre-row" id="genre-row"></div>
 
       <div class="sec-head">
         <div class="sec-title">Featured<em> Clips</em></div>
@@ -666,7 +691,7 @@ let PLATFORMS = [];
 async function discoverLoadRealClips(){ var base=(typeof ssLoadClips==="function")?await ssLoadClips(50):[]; if(!base.length)return false; CLIPS=ssClipsForDiscover(base); return true; }
 
 let recentSearches = ['thriller clips','feel good','kdrama'];
-let activeMood = null, activePlatform = null;
+let activeMood = null, activePlatform = null, activeGenre = null;
 
 /* ── CURATOR DIRECTORY ──────────────────────────────
    Search profile results show CURATORS ONLY — never normal user
@@ -783,6 +808,37 @@ function toggleMood(i, el, mood) {
     document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
     el.classList.add('active');
     showResultsView(CLIPS.filter(c => c.mood.includes(mood.label)), mood.label + ' clips');
+  }
+}
+
+/* ── Genre filter (browse clips by curator-picked genre = clip.genre/meta.genres) ── */
+function buildGenreFilter() {
+  const row = document.getElementById('genre-row');
+  if (!row) return;
+  const list = (typeof SSData !== 'undefined' && Array.isArray(SSData.genres)) ? SSData.genres : [];
+  row.innerHTML = '';
+  list.forEach((g, i) => {
+    const pill = document.createElement('div');
+    pill.className = 'genre-pill';
+    pill.textContent = g;
+    pill.addEventListener('click', () => toggleGenreFilter(i, pill, g));
+    row.appendChild(pill);
+  });
+}
+
+function toggleGenreFilter(i, el, label) {
+  if (activeGenre === i) {
+    activeGenre = null;
+    document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
+    _ssClearResultsHistory();
+    showDefaultView();
+  } else {
+    activeGenre = i;
+    document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    const lc = String(label).toLowerCase();
+    const matched = CLIPS.filter(c => Array.isArray(c.genre) && c.genre.some(g => String(g).toLowerCase() === lc));
+    showResultsView(matched, label + ' clips');
   }
 }
 
@@ -1184,8 +1240,9 @@ function showDefaultView() {
   document.getElementById('default-view').classList.remove('hidden');
   document.getElementById('results-view').classList.remove('visible');
   document.getElementById('no-results').classList.remove('visible');
-  activeMood = null; activePlatform = null;
+  activeMood = null; activePlatform = null; activeGenre = null;
   document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.plat-chip').forEach(c => c.classList.remove('active'));
 }
 
@@ -1268,7 +1325,7 @@ async function _discInit(){
   MOODS = SSData.moods;
   PLATFORMS = SSData.discoverPlatforms();
   CURATORS = SSData.discoverCurators();
-  function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); buildLatest(); buildExplore(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
+  function _discBuildAll(){ var _sh=document.getElementById('ss-shell'); if(_sh)_sh.remove(); buildMoods(); buildGenreFilter(); buildFeatured(); buildPlatforms(); buildPlatformClips(); buildForYou(); buildLatest(); buildExplore(); ssSyncAllSaveBtns(); if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(document); }
   // 1) Instant shell — paint last session's real clips from cache (or the mock
   //    defaults) right away so the grids are never empty during the DB fetch.
   //    ssReadPageData is ASYNC (IndexedDB tier when ss_ff_idb is on, localStorage
