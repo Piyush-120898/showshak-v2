@@ -48,7 +48,7 @@ that contain the same essential information.
 
 2.1. Send copyright complaints to our designated contact:
 
-- **Attn:** Copyright / Grievance Officer — [GRIEVANCE_OFFICER_NAME]
+- **Attn:** Copyright / Grievance Officer — Piyush Gupta
 - **Email:** [COPYRIGHT_EMAIL]
 - **In-app form:** [WEBSITE_URL]showshak-dmca.html
 - **Address:** [REGISTERED_ADDRESS], India
@@ -148,7 +148,7 @@ including by making groundless, vexatious, or repetitive submissions.
 
 For copyright complaints and any grievance about our handling of them, contact:
 
-- **Grievance Officer:** [GRIEVANCE_OFFICER_NAME]
+- **Grievance Officer:** Piyush Gupta
 - **Designation:** Grievance Officer
 - **Email:** [GRIEVANCE_EMAIL] (copyright matters: **[COPYRIGHT_EMAIL]**)
 - **Address:** [REGISTERED_ADDRESS], India

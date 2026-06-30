@@ -301,7 +301,7 @@ law or third-party right. This Section survives termination.
 In accordance with Rule 3(2) of the IT Rules 2021, the Grievance Officer for ShowShak
 is:
 
-- **Name:** [GRIEVANCE_OFFICER_NAME]
+- **Name:** Piyush Gupta
 - **Designation:** Grievance Officer
 - **Email:** [GRIEVANCE_EMAIL]
 - **Address:** [REGISTERED_ADDRESS], India

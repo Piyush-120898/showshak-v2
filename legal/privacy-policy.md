@@ -386,7 +386,7 @@ the DPDP Rules.
 
 In accordance with the IT Rules 2021 and the DPDP Act, you may contact:
 
-- **Grievance Officer:** [GRIEVANCE_OFFICER_NAME]
+- **Grievance Officer:** Piyush Gupta
 - **Designation:** Grievance Officer
 - **Email:** [GRIEVANCE_EMAIL]
 - **Address:** [REGISTERED_ADDRESS], India

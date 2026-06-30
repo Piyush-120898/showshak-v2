@@ -151,7 +151,7 @@ material) may lead to immediate termination, regardless of the strike count.
 
 If you believe an enforcement action was a mistake, contact our Grievance Officer:
 
-- **Grievance Officer:** [GRIEVANCE_OFFICER_NAME]
+- **Grievance Officer:** Piyush Gupta
 - **Designation:** Grievance Officer
 - **Email:** [GRIEVANCE_EMAIL]
 - **Address:** [REGISTERED_ADDRESS], India

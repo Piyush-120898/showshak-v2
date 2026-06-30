@@ -203,7 +203,7 @@ contact our **Grievance Officer**, who **acknowledges every complaint within 24 
 and **resolves it within 15 days** of receipt, as required by Rule 3(2) of the IT
 Rules 2021:
 
-- **Grievance Officer:** [GRIEVANCE_OFFICER_NAME]
+- **Grievance Officer:** Piyush Gupta
 - **Designation:** Grievance Officer
 - **Email:** [GRIEVANCE_EMAIL] (copyright matters: **[COPYRIGHT_EMAIL]**)
 - **Address:** [REGISTERED_ADDRESS], India
