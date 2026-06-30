@@ -243,7 +243,7 @@ function paintSplash(canvas){
   drawWordmark(ctx, cx, y, wmSize, story ? 8 : 6);
   y += (story ? 70 : 56);
 
-  centerText(ctx, 'SWIPE · DISCOVER · WATCH', cx, y, (story ? 30 : 26) + "px 'DM Sans', sans-serif", GRAY2, story ? 7 : 6);
+  centerText(ctx, 'DISCOVER · TRUST · WATCH IT', cx, y, (story ? 30 : 26) + "px 'DM Sans', sans-serif", GRAY2, story ? 7 : 6);
   y += (story ? 150 : 120);
 
   drawComingSoon(ctx, cx, y, story ? 46 : 40, story ? 6 : 5);
@@ -280,7 +280,7 @@ function paintTitleSlide(canvas){
   drawWordmark(ctx, cx, y, wmSize, S*0.0075);
   y += gapWmTag + tag;
 
-  centerText(ctx, 'SWIPE · DISCOVER · WATCH', cx, y, tag + "px 'DM Sans', sans-serif", GRAY2, S*0.0065);
+  centerText(ctx, 'DISCOVER · TRUST · WATCH IT', cx, y, tag + "px 'DM Sans', sans-serif", GRAY2, S*0.0065);
 
   const footer = (document.getElementById('footerTxt').value || '').trim();
   if (footer){
