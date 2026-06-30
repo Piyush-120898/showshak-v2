@@ -108,6 +108,20 @@ ul.clean li .em{font-weight:500}
   .map{height:440px}
   .foot{position:static;margin-top:24px}
 }
+
+/* PRINT / PDF — each slide becomes one 16:9 landscape page, dark theme preserved.
+   Use the browser's "Save as PDF" (landscape) or headless print-to-pdf. */
+@media print{
+  @page{ size:1280px 720px; margin:0; }
+  html,body{ background:#0B0B0F !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .deck{ height:auto; overflow:visible; scroll-snap-type:none; display:block; }
+  .slide{ min-height:720px; height:720px; width:1280px; page-break-after:always; break-after:page; border-bottom:none; padding:64px 96px; overflow:hidden; }
+  .slide.cover{ justify-content:center; }
+  .slide:last-child{ page-break-after:auto; break-after:auto; }
+  .progress,.hint{ display:none !important; }
+  .slide-num{ bottom:20px; right:28px; }
+  .foot{ position:absolute; bottom:18px; left:96px; margin-top:0; }
+}
 </style>
 </head>
 <body>
@@ -163,7 +177,7 @@ ul.clean li .em{font-weight:500}
     <h2>The moment is here.</h2>
     <div class="grid3">
       <div class="card"><div class="big">148M</div><h3>Choice broke</h3><p>148M paying streaming subscriptions in India, fragmented across 15+ platforms and 13+ languages. Deciding what to watch is genuinely overwhelming.</p></div>
-      <div class="card"><div class="big">67%</div><h3>Trust moved to people</h3><p>Viewers 18–34 now rank a person they follow as their most trusted source — ahead of search and ahead of the platform's own algorithm.</p></div>
+      <div class="card"><div class="big">67%</div><h3>Trust moved to people</h3><p>Trust in creators hit 67% — and viewers 18–34 now rank creator recommendations their single most trusted source, surpassing search for the first time.</p></div>
       <div class="card"><div class="big">AI race</div><h3>The giant confirmed it</h3><p>JioHotstar + OpenAI shipped ChatGPT discovery to fix "what to watch." The #1 player is paying to solve our exact problem — with a machine guess, where we bring human trust.</p></div>
     </div>
     <p class="lead" style="margin-top:28px">India drove nearly <span class="em">half of the world's subscription-app install growth</span> in 2026. The demand is here, now.</p>
@@ -224,7 +238,7 @@ ul.clean li .em{font-weight:500}
       <div class="card"><h3>Watch It</h3><p>One tap to the right platform, in your region. Private. Instant.</p></div>
       <div class="card"><h3>Follow &amp; Stacks</h3><p>Build a roster of curators you trust, and collect what's next.</p></div>
     </div>
-    <p class="lead" style="margin-top:30px"><span class="em">Shipped and live as an installable app</span> — real curators, real clips, real Watch-It taps, fully property-tested. The engineering risk is already behind us.</p>
+    <p class="lead" style="margin-top:30px"><span class="em">Shipped and live as an installable app</span> — real curators, real clips, real Watch-It taps, rigorously tested. The engineering risk is already behind us.</p>
   </div>
   <div class="slide-num">07</div>
 </section>
@@ -236,12 +250,12 @@ ul.clean li .em{font-weight:500}
     <h2>We sell intent —<br>at the moment of taste.</h2>
     <div class="ladder">
       <div class="rung"><div class="idx">1</div><div><div class="rt">Promoted clips · native title marketing</div><div class="rd">Studios fund curators to clip new titles. Looks organic, demand-independent, recurring with every release.</div></div><span class="tag">Core</span></div>
-      <div class="rung"><div class="idx">2</div><div><div class="rt">Performance acquisition for streamers</div><div class="rd">Pre-sold subscribers at peak desire. Streamers pay ~$89 to acquire one — we deliver warmer, cheaper.</div></div><span class="tag">Headline</span></div>
+      <div class="rung"><div class="idx">2</div><div><div class="rt">Performance acquisition for streamers</div><div class="rd">Pre-sold subscribers at peak desire — delivered warmer and cheaper than a streamer's own cold ads.</div></div><span class="tag">Headline</span></div>
       <div class="rung"><div class="idx">3</div><div><div class="rt">Cross-platform taste intelligence</div><div class="rd">Each platform's mirror of the open market. High-margin, compounding, and ours alone to hold.</div></div><span class="tag">Moat</span></div>
       <div class="rung"><div class="idx">4</div><div><div class="rt">Premium + curator monetization</div><div class="rd">Power-user tools and creator revenue — diversified, recurring, first-party.</div></div><span class="tag">Later</span></div>
     </div>
   </div>
-  <div class="foot">Netflix subscriber acquisition cost ~$89 (Spyro-Soft, 2026). Healthy LTV:CAC ≥ 3:1 (a16z).</div>
+  <div class="foot">Subscriber-acquisition cost runs into the tens of dollars (Netflix ~$89, US benchmark — Spyro-Soft 2026); India's is lower, but the cheaper-channel logic holds. Healthy LTV:CAC ≥ 3:1 (a16z).</div>
   <div class="slide-num">08</div>
 </section>
 
@@ -281,7 +295,7 @@ ul.clean li .em{font-weight:500}
     <div class="kicker">Team</div>
     <h2>Built by the buyer.</h2>
     <div class="grid2">
-      <div class="card"><h3>Piyush Gupta — Founder</h3><p>B.Tech (IT) and a performance marketer — managed <span class="em">₹1 cr+ in Google Ads spend</span> driving leads and sales for businesses, then built this entire live, property-tested product solo.</p></div>
+      <div class="card"><h3>Piyush Gupta — Founder</h3><p>B.Tech (IT) and a performance marketer — managed <span class="em">₹1 cr+ in Google Ads spend</span> driving leads and sales for businesses, then built this entire live, rigorously tested product solo.</p></div>
       <div class="card"><h3>Bringing on</h3><p>Streaming-industry partnerships to turn Watch-It proof into platform revenue, and senior engineering for multi-region scale.</p></div>
     </div>
     <p class="lead" style="margin-top:28px">ShowShak's customer is a performance marketer buying attention. <span class="em">I've been that buyer — I know exactly what converts and what they'll pay for.</span></p>
