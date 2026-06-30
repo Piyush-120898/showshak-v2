@@ -1788,10 +1788,10 @@ function renderTabs() {
       <button class="tab ${t==='primary'?'active':''}" onclick="switchTab('primary')">Clips <span class="tab-c">${myClipsCount()}</span></button>
       <button class="tab ${t==='stacks'?'active':''}" onclick="switchTab('stacks')">Shared Stacks <span class="tab-c">${publicCollectionCount()}</span></button>`;
   } else {
-    // Normal user: Following only. History is deferred (not introduced yet),
-    // so we don't surface a History tab. Following is the default tab.
+    // Normal user: Following (wired, default) first, then History (coming soon).
     bar.innerHTML = `
-      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${followingCount()}</span></button>`;
+      <button class="tab ${t==='following'?'active':''}" onclick="switchTab('following')">Following <span class="tab-c">${followingCount()}</span></button>
+      <button class="tab ${t==='history'?'active':''}" onclick="switchTab('history')">History</button>`;
   }
 }
 function switchTab(t) {
