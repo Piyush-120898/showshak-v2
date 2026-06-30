@@ -11,17 +11,22 @@
 
 ## What these documents are
 
-Four canonical policy documents, written as the single source of truth for
-ShowShak's legal surfaces. The in-app page `showshak-legal.html` renders these
+Canonical policy documents, written as the single source of truth for ShowShak's
+legal surfaces. The in-app page `showshak-legal.html` renders the user-facing ones
 (today as placeholder copy; once counsel signs off, seed the final text into the
-`policy_versions` table — see the `dmca-moderation-scaffolding` spec).
+`policy_versions` table — see the `dmca-moderation-scaffolding` spec). All were
+expanded to in-depth, clause-by-clause drafts (2026) using the architecture of
+mature platform documents (Google + Meta privacy policies; Vimeo Terms of Service)
+overlaid on the India statutory requirements.
 
 | File | Surface (`showshak-legal.html?doc=`) | Governs |
 |---|---|---|
-| `terms-of-service.md` | `tos` | The agreement to use ShowShak; curator responsibility + attestation; 18+; beta terms |
-| `privacy-policy.md` | `privacy` | What personal data we collect, why, who processes it, your DPDP rights |
+| `terms-of-service.md` | `tos` | The agreement to use ShowShak; curator responsibility; 18+; beta terms; disputes + boilerplate |
+| `privacy-policy.md` | `privacy` | What personal data we collect, why, how we share it, aggregated/de-identified data, your DPDP rights |
+| `curator-terms.md` | `curator` | One-time curator acceptance; licence; rights warranty; per-clip attestation record; promoted-clip future |
 | `copyright-policy.md` | `copyright` | Notice-and-takedown (Copyright Rules 2013 Rule 75 + IT Act §79); Grievance Officer; repeat-infringer |
-| `community-guidelines.md` | `community` | Acceptable use; prohibited content (IT Rules 2021 Rule 3(1)(b)); repeat-infringer policy |
+| `community-guidelines.md` | `community` | Acceptable use; prohibited content (IT Rules 2021 Rule 3(1)(b)); code of conduct; repeat-infringer policy |
+| `data-monetisation-principles.md` | (internal; optional public summary) | The aggregate-only / neutrality monetisation principles that keep the docs, product, and pitch consistent |
 
 ## Legal basis (India) — what each document rests on
 
@@ -63,10 +68,13 @@ ShowShak's legal surfaces. The in-app page `showshak-legal.html` renders these
   lever that actually controls content risk.
 - **Non-commercial during beta.** There is no payment, subscription, advertising,
   or monetisation in the product today. We do not sell personal data.
-- **Neutral host / creator responsibility.** Curators upload their own clips and
-  **attest** at upload that they hold the rights to the video and audio and
-  accept responsibility + indemnity (enforced in the database — no clip goes
-  live without a recorded attestation).
+- **Neutral host / creator responsibility.** Curators upload their own clips. They
+  accept the **Curator Terms once** (warranting they hold the rights to the video
+  and audio of every clip they post), and ShowShak **records a per-clip attestation
+  automatically at publish** (enforced in the database — no clip goes live without a
+  recorded attestation). The alarming per-upload checkbox was retired in favour of
+  calm passive microcopy + the silent per-clip record, so upload habit is not
+  dampened while the safe-harbour audit trail is fully preserved.
 - **No music feature** during beta (a copyrighted-music library would risk
   inducement and is deliberately excluded).
 

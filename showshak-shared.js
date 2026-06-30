@@ -50,6 +50,27 @@ document.body.insertAdjacentHTML('afterbegin', SS_MARK_SVG);
 
 
 /* ════════════════════════════════════════════════
+   EMBEDDED DOC-VIEWER GUARD
+   ─────────────────────────────────────────────────
+   showshak-legal.html is loaded inside an IFRAME by the in-page legal modal
+   (ssOpenLegal, ?modal=1) so it can reuse this file's policy-version resolution
+   helpers. But that iframe is ONLY a document viewer — it must NOT run the app
+   lifecycle (portrait lock, post-login consent chokepoint, chrome injection),
+   or the consent gate would recurse inside the card and the rotate-to-portrait
+   overlay would misfire in the small iframe viewport. This returns true when we
+   are running embedded (in an iframe) and/or in the chrome-less legal-modal mode.
+════════════════════════════════════════════════ */
+function _ssIsEmbeddedDocViewer() {
+  try {
+    if (typeof window !== 'undefined' && window.self !== window.top) return true;   // inside any iframe
+    if (typeof document !== 'undefined' && document.documentElement &&
+        document.documentElement.classList.contains('ss-legal-modal')) return true; // ?modal=1 chrome-less mode
+  } catch (e) { return true; }   // cross-origin frame access throw → treat as embedded (safe)
+  return false;
+}
+if (typeof window !== 'undefined') { window._ssIsEmbeddedDocViewer = _ssIsEmbeddedDocViewer; }
+
+/* ════════════════════════════════════════════════
    PORTRAIT LOCK
    ─────────────────────────────────────────────────
    ShowShak is a vertical-clip product → portrait ONLY. The manifest
@@ -64,6 +85,7 @@ document.body.insertAdjacentHTML('afterbegin', SS_MARK_SVG);
 (function ssPortraitLock() {
   try {
     if (typeof document === 'undefined' || !document.body) return;
+    if (_ssIsEmbeddedDocViewer()) return;   // never lock inside the legal-modal iframe
     if (document.getElementById('ss-rotate')) return;
     var css =
       '@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse){' +
@@ -7552,6 +7574,9 @@ function _ssvSetupObserver(feed) {
   /* ── Entry point: called once after a fresh login ── */
   window._ssAfterLogin = async function () {
     if (!window.ssDB || !_ssCanQuery()) { return; }
+    // Never run the post-login lifecycle (consent chokepoint, onboarding) inside
+    // the legal-modal iframe — it would recurse the consent gate inside the card.
+    if (typeof _ssIsEmbeddedDocViewer === 'function' && _ssIsEmbeddedDocViewer()) return;
     const user = window.ssCurrentUser && window.ssCurrentUser();
     if (!user) return;
     _obUser = user;

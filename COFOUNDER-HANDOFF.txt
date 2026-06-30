@@ -192,7 +192,37 @@
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (consent-gate funnel fix + one-time curator affirmation + consent UX +
+  ── MOST RECENT (legal-docs deep expansion + legal-modal iframe bugfix; CACHE_VERSION v55 → v56) ──
+    CONTEXT: a legal-advisor pass — researched Google + Meta privacy policies and the Vimeo
+    Terms of Service in full (TikTok is India-banned/unfetchable), then expanded all legal/*.md
+    drafts to in-depth, clause-by-clause documents; plus fixed a consent-gate legal-modal bug.
+
+    • LEGAL DOCS — EXPANDED IN DEPTH (legal/*.md, DRAFT — counsel review required; NOT yet seeded
+      into policy_versions, so the live legal page still shows placeholder copy until the founder
+      seeds the final text). privacy-policy.md (21 sections: definitions, full "how we share"
+      taxonomy, AGGREGATED/DE-IDENTIFIED-DATA + advertising-status monetisation clauses matching the
+      neutrality strategy + DPDP purpose-limitation, cookies, automated processing, consent/withdraw
+      + Consent Manager, breach notification, rights+duties). terms-of-service.md (acceptance + order
+      of precedence, acceptable-use split, disclaimers, liability, indemnity, informal-resolution-first
+      disputes, full boilerplate). curator-terms.md (RECONCILED to the shipped model: one-time
+      acceptance + automatic per-clip attestation record, no repeated checkbox; licence scope +
+      moral-rights note; promoted-clip future). copyright-policy.md + community-guidelines.md
+      (expanded notice/counter-notice/strikes + per-category content rules). NEW
+      data-monetisation-principles.md (internal: aggregate-only / neutrality commitments so docs +
+      product + pitch stay consistent). README updated. ⚠ Founder still to: fill [PLACEHOLDERS]
+      (entity/address/city/emails/officer/version/date/URL), get counsel review, and seed final text.
+
+    • LEGAL-MODAL IFRAME BUG — FIXED. The consent gate's ToS/Privacy links open showshak-legal.html
+      ?modal=1 in an iframe, but that page loaded the full shared.js lifecycle, so INSIDE the iframe:
+      (1) the post-login consent chokepoint (_ssAfterLogin → _ssRunConsentGate) re-fired (logged in,
+      consent not yet recorded) → the card showed "accept the policy" again instead of the doc; and
+      (2) the portrait-lock overlay misfired in the small iframe viewport ("rotate to portrait" while
+      already portrait). FIX = new _ssIsEmbeddedDocViewer() (true in an iframe / ?modal=1 chrome-less
+      mode); ssPortraitLock and _ssAfterLogin now early-return when embedded. Version-resolution
+      helpers still run, so the card shows the exact stamped version. Top-level pages unaffected.
+      Suite 103 files green. CACHE_VERSION v55 → v56.
+
+  ── PREVIOUS (consent-gate funnel fix + one-time curator affirmation + consent UX +
      profile NEW-badge fix; CACHE_VERSION v54 → v55; suite 101 → 103 files green) ──
     CONTEXT: a compliance + felt-quality pass on the signup/consent + curator-upload flow,
     plus a profile polish fix. All shipped together under CACHE_VERSION v55.
