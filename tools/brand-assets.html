@@ -141,6 +141,26 @@ function centerText(ctx, text, cx, y, font, color, spacing){
   ctx.restore();
 }
 
+/* Tagline "DISCOVER · TRUST · WATCH IT" with TRUST in brand red, centered as one
+   unit (mirrors drawWordmark: measure segments, draw left-aligned from center). */
+function drawTaglineTrust(ctx, cx, y, font, spacing){
+  ctx.save();
+  ctx.font = font;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  try { ctx.letterSpacing = (spacing||0) + 'px'; } catch(e){}
+  const parts = [
+    { t: 'DISCOVER · ', c: GRAY2 },
+    { t: 'TRUST',       c: RED   },
+    { t: ' · WATCH IT', c: GRAY2 }
+  ];
+  const widths = parts.map(p => ctx.measureText(p.t).width);
+  const total = widths.reduce((a, b) => a + b, 0);
+  let x = cx - total / 2;
+  parts.forEach((p, i) => { ctx.fillStyle = p.c; ctx.fillText(p.t, x, y); x += widths[i]; });
+  ctx.restore();
+}
+
 /* Wordmark SHOW + SHAK (SHAK in red), centered as one unit, with spacing. */
 function drawWordmark(ctx, cx, y, size, spacing){
   ctx.save();
@@ -243,7 +263,7 @@ function paintSplash(canvas){
   drawWordmark(ctx, cx, y, wmSize, story ? 8 : 6);
   y += (story ? 70 : 56);
 
-  centerText(ctx, 'DISCOVER · TRUST · WATCH IT', cx, y, (story ? 30 : 26) + "px 'DM Sans', sans-serif", GRAY2, story ? 7 : 6);
+  drawTaglineTrust(ctx, cx, y, (story ? 30 : 26) + "px 'DM Sans', sans-serif", story ? 7 : 6);
   y += (story ? 150 : 120);
 
   drawComingSoon(ctx, cx, y, story ? 46 : 40, story ? 6 : 5);
@@ -280,7 +300,7 @@ function paintTitleSlide(canvas){
   drawWordmark(ctx, cx, y, wmSize, S*0.0075);
   y += gapWmTag + tag;
 
-  centerText(ctx, 'DISCOVER · TRUST · WATCH IT', cx, y, tag + "px 'DM Sans', sans-serif", GRAY2, S*0.0065);
+  drawTaglineTrust(ctx, cx, y, tag + "px 'DM Sans', sans-serif", S*0.0065);
 
   const footer = (document.getElementById('footerTxt').value || '').trim();
   if (footer){
