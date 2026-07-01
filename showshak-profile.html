@@ -467,7 +467,7 @@ html, body { overflow: hidden; }
 .g-proc-badge { color: #FFB020; border-color: rgba(255,176,32,0.42); }
 
 /* Clips / Fires grid */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 @media (max-width: 560px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 9px; } }
 .g-card { cursor: pointer; position: relative; transition: transform 0.2s var(--ease-spring); -webkit-tap-highlight-color: transparent; }
 .g-card:hover { transform: translateY(-5px); }
@@ -497,6 +497,10 @@ html, body { overflow: hidden; }
 .follow-meta { font-size: 11px; color: var(--gray2); font-weight: 500; }
 .btn-following { padding: 8px 16px; border-radius: 100px; flex-shrink: 0; background: transparent; border: 1.5px solid rgba(255,255,255,0.1); color: var(--gray); font-family: var(--font-body); font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
 .btn-following:hover { border-color: var(--border2); color: var(--red2); }
+/* Following-list progressive disclosure (10 → +20 → all) */
+.follow-more { display: block; width: 100%; margin-top: 14px; padding: 12px; border-radius: 100px; background: transparent; border: 1.5px solid var(--border); color: var(--gray); font-family: var(--font-body); font-size: 13px; font-weight: 700; letter-spacing: 0.2px; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; -webkit-tap-highlight-color: transparent; }
+.follow-more:hover { border-color: var(--border2); color: var(--red2); background: rgba(234,59,50,0.04); }
+.follow-more:active { transform: scale(0.99); }
 
 /* Analytics */
 .an-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
@@ -2082,6 +2086,17 @@ function _prefetchFollowingAvatars(rows) {
   } catch (e) { /* prefetch is best-effort — never block the render */ }
 }
 
+/* Following-list progressive disclosure (Req: don't dump the whole list).
+   Shows FOLLOW_STEP_1 rows, then "View more" reveals up to FOLLOW_STEP_2, then
+   "View all" reveals everything. Resets to the first page on a fresh page load
+   (this is an MPA — navigating away and back reloads the page, re-initialising
+   followingCap). Small lists (<= a step) simply show no button. */
+const FOLLOW_STEP_1 = 10;
+const FOLLOW_STEP_2 = 30;
+let followingCap = FOLLOW_STEP_1;
+function followingMore() { followingCap = FOLLOW_STEP_2; renderFollowing(); }
+function followingAll()  { followingCap = Infinity;      renderFollowing(); }
+
 async function renderFollowing() {
   const el = document.getElementById('following');
   if (!el) return;
@@ -2110,7 +2125,11 @@ async function renderFollowing() {
   }
   // Small HTML/attribute escaper for the curator name (free text) + photo URL.
   const _e = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-  el.innerHTML = merged.map(f=>{
+  // Clamp the cap to the list and slice to the currently-visible page.
+  const total = merged.length;
+  if (followingCap > total) followingCap = total;
+  const visible = merged.slice(0, followingCap);
+  el.innerHTML = visible.map(f=>{
     const avStyle = f.avatar
       ? `background-image:url('${_e(f.avatar)}');background-size:cover;background-position:center;`
       : `background:${f.color}`;
@@ -2125,6 +2144,12 @@ async function renderFollowing() {
       <button class="btn-following" onclick="unfollowFromList('${f.handle}', this)">Following</button>
     </div>`;
   }).join('');
+  // Footer control: "View more" at the first page, then "View all", then nothing.
+  if (total > visible.length) {
+    el.innerHTML += (followingCap < FOLLOW_STEP_2)
+      ? `<button class="follow-more" onclick="followingMore()">View more</button>`
+      : `<button class="follow-more" onclick="followingAll()">View all (${total})</button>`;
+  }
   if (typeof ssWireCuratorLinks === 'function') ssWireCuratorLinks(el);
 }
 function unfollowFromList(handle, btn) {

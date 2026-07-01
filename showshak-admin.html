@@ -86,6 +86,11 @@ html, body { overflow: hidden; }
 .vtoggle { flex-shrink: 0; padding: 8px 16px; border-radius: 100px; border: 1.5px solid var(--border); background: transparent; color: var(--gray); font-family: var(--font-body); font-weight: 700; font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
 .vtoggle.on { background: var(--red); border-color: var(--red); color: #fff; }
 .vtoggle:disabled { opacity: 0.5; cursor: default; }
+.cur-link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; -webkit-tap-highlight-color: transparent; }
+.cur-link:hover .cur-name { color: var(--red2); }
+.cur-open { font-size: 11px; color: var(--gray2); font-weight: 400; }
+.cur-more { display: block; width: 100%; margin-top: 14px; padding: 12px; border-radius: 100px; background: transparent; border: 1.5px solid var(--border); color: var(--gray); font-family: var(--font-body); font-size: 13px; font-weight: 700; cursor: pointer; transition: border-color .15s, color .15s, background .15s; -webkit-tap-highlight-color: transparent; }
+.cur-more:hover { border-color: var(--border2); color: var(--red2); background: rgba(234,59,50,0.04); }
 
 /* Access gate / loading */
 .adm-gate { text-align: center; padding: 60px 20px; color: var(--gray); }
@@ -299,24 +304,49 @@ async function doReject(appId) {
 }
 
 /* ── Curators list + Make-Verified ── */
+/* Curators list pagination: show CUR_STEP_1, then "View more" (→ CUR_STEP_2),
+   then "View all". Resets on reload. */
+const CUR_STEP_1 = 50;
+const CUR_STEP_2 = 150;
+let curCap = CUR_STEP_1;
+function curMore() { curCap = CUR_STEP_2; renderCurators(); }
+function curAll()  { curCap = Infinity;   renderCurators(); }
+
 async function renderCurators() {
   const host = document.getElementById('adm-curators');
   const list = (typeof ssAdminListCurators === 'function') ? await ssAdminListCurators() : [];
   document.getElementById('adm-curators-count').textContent = list.length;
   if (!list.length) { host.innerHTML = '<div class="adm-empty">No curators yet.</div>'; return; }
-  host.innerHTML = list.map((u) => {
-    const handle = u.username ? ('@' + String(u.username).replace(/^@/, '')) : '';
+
+  const total = list.length;
+  if (curCap > total) curCap = total;
+  const visible = list.slice(0, curCap);
+
+  host.innerHTML = visible.map((u) => {
+    const uname = String(u.username || '').replace(/^@/, '');
+    const handle = uname ? ('@' + uname) : '';
     const verified = u.verified === true;
+    // Open the curator's PUBLIC profile in a new tab so you can review their
+    // uploads before verifying — without losing your place in the console.
+    const profHref = uname ? `showshak-profile.html?face=public&curator=${encodeURIComponent(uname)}` : '#';
     return `
       <div class="cur-row">
-        <div class="card-av" style="width:40px;height:40px;font-size:18px;${u.avatar_url ? `background-image:url('${esc(u.avatar_url)}')` : ''}">${u.avatar_url ? '' : esc(initial(handle || u.name))}</div>
-        <div class="cur-info">
-          <div class="cur-name">${esc(u.name || handle || 'Curator')}${verified ? '<span class="cur-vbadge">VERIFIED</span>' : ''}</div>
-          <div class="cur-handle">${esc(handle)}</div>
-        </div>
+        <a class="cur-link" href="${esc(profHref)}" target="_blank" rel="noopener" title="Open ${esc(handle)}'s profile">
+          <div class="card-av" style="width:40px;height:40px;font-size:18px;${u.avatar_url ? `background-image:url('${esc(u.avatar_url)}')` : ''}">${u.avatar_url ? '' : esc(initial(handle || u.name))}</div>
+          <div class="cur-info">
+            <div class="cur-name">${esc(u.name || handle || 'Curator')}${verified ? '<span class="cur-vbadge">VERIFIED</span>' : ''}<span class="cur-open">↗</span></div>
+            <div class="cur-handle">${esc(handle)}</div>
+          </div>
+        </a>
         <button class="vtoggle ${verified ? 'on' : ''}" id="vt-${esc(u.id)}" onclick="doVerify('${esc(u.id)}', ${verified ? 'false' : 'true'})">${verified ? 'Verified' : 'Make verified'}</button>
       </div>`;
   }).join('');
+
+  if (total > visible.length) {
+    host.innerHTML += (curCap < CUR_STEP_2)
+      ? `<button class="cur-more" onclick="curMore()">View more</button>`
+      : `<button class="cur-more" onclick="curAll()">View all (${total})</button>`;
+  }
 }
 
 async function doVerify(userId, on) {
