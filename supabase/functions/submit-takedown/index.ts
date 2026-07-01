@@ -112,6 +112,20 @@ function wellFormed(notice: unknown): { ok: boolean; missing: string[] } {
 // is not exported, mirroring the mux-webhook test posture).
 export { wellFormed };
 
+// Derive a stable, PRIVACY-SAFE per-client key from the request IP for rate
+// limiting: SHA-256(salt | ip) truncated to 32 hex chars. The raw IP is NEVER
+// stored (DPDP-minded). Returns '' when no IP is resolvable → limiter fail-open.
+async function ipKey(req: Request): Promise<string> {
+  const xff = req.headers.get("x-forwarded-for") || "";
+  const ip = (xff.split(",")[0] || req.headers.get("cf-connecting-ip") ||
+              req.headers.get("x-real-ip") || "").trim();
+  if (!ip) return "";
+  const salt = Deno.env.get("RATE_SALT") || "showshak-rate-v1";
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + "|" + ip));
+  return Array.from(new Uint8Array(buf)).slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // CORS preflight.
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -127,6 +141,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (raw.length > MAX_BODY_BYTES) {
     return json({ error: "payload_too_large" }, 413);
   }
+
+  // 1b) RATE LIMIT — this endpoint is public, so cap per client (default
+  //     10/hour) to protect the safe-harbour moderation queue from floods.
+  //     Keyed on a HASHED IP (raw IP never stored). Runs through the
+  //     ss_rate_allow SECURITY DEFINER RPC (migration 0037). FAIL-OPEN: a
+  //     limiter error or an unresolvable IP never blocks a legitimate notice.
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { auth: { persistSession: false } },
+  );
+  try {
+    const subject = await ipKey(req);
+    if (subject) {
+      const { data: allowed, error: rlErr } = await supabase.rpc("ss_rate_allow", {
+        p_bucket: "takedown",
+        p_subject: subject,
+        p_limit: 10,
+        p_window_seconds: 3600,
+      });
+      if (!rlErr && allowed === false) {
+        return json({ ok: false, error: "rate_limited" }, 429);
+      }
+    }
+  } catch (_e) { /* fail-open — never block a legit notice on a limiter hiccup */ }
 
   // 2) Tolerate malformed JSON → 400, create nothing.
   let notice: unknown;
@@ -146,12 +185,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // 4) On ok → call ss_submit_complaint (SECURITY DEFINER). The RPC
   //    re-validates a THIRD time and does the insert + 'received' audit
   //    append atomically, returning only { confirmation_ref } (Req 3.5).
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { auth: { persistSession: false } },
-  );
-
+  //    (Reuses the anon client created for the rate-limit step above.)
   const { data, error } = await supabase.rpc("ss_submit_complaint", {
     payload: notice,
   });

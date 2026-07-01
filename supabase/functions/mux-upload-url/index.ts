@@ -44,6 +44,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return json({ error: "unauthorized" }, 401);
 
+  // 1b) RATE LIMIT — minting a Mux upload URL costs money, so cap per curator
+  //     (default 20/hour). Runs through the ss_rate_allow SECURITY DEFINER RPC
+  //     (migration 0037) keyed on the caller's user id. FAIL-OPEN: a transient
+  //     RPC error never blocks a legitimate curator.
+  try {
+    const { data: allowed, error: rlErr } = await supabase.rpc("ss_rate_allow", {
+      p_bucket: "mux_upload",
+      p_subject: user.id,
+      p_limit: 20,
+      p_window_seconds: 3600,
+    });
+    if (!rlErr && allowed === false) {
+      return json({ error: "rate_limited" }, 429);
+    }
+  } catch (_e) { /* fail-open — never block a legit upload on a limiter hiccup */ }
+
   // 2) MINT a Mux direct-upload (secret used only inside createDirectUpload).
   const appOrigin = Deno.env.get("APP_ORIGIN") ?? "*";
   let mux: { data: { id: string; url: string } };
