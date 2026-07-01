@@ -10626,3 +10626,72 @@ ssOnMuteChange(function (muted) {
   // Keep the inline feed's per-frame mute buttons in sync too.
   if (typeof _inlinePaintMuteBtns === 'function') _inlinePaintMuteBtns();
 });
+
+
+/* ═══════════════════════════════════════════════════════════════
+   SUPPORT — feedback + problem-report submission (Settings › Support).
+   ─────────────────────────────────────────────────────────────
+   Pure builder (Node-testable, never throws) + impure fire-and-forget
+   insert (window-only, fail-soft, guest-safe). Writes to the `feedback`
+   table (migration 0033): RLS lets anyone INSERT but nobody read via the
+   API, so submissions are private to the operator (read in the Supabase
+   dashboard / service_role). Mirrors the ssRecord* recorder pattern.
+   ═══════════════════════════════════════════════════════════════ */
+var SS_FEEDBACK_MAX = 2000;                     // hard max chars (DB backstops at 4000)
+var SS_FEEDBACK_KINDS = ['feedback', 'problem'];
+
+/* Pure: normalize + validate a support submission. Coerces junk, never throws.
+   Returns { ok, kind, validKind, message, email, length, overMax, payload }.
+   - kind must be 'feedback' | 'problem' (else ok:false).
+   - message: TRIMMED; ok iff 1..SS_FEEDBACK_MAX.
+   - email: optional; kept only if it looks like an email, else '' — NEVER blocks ok.
+   - payload: the exact row to insert (kind, message, email|null, meta). */
+function ssBuildFeedbackSubmission(kind, message, opts) {
+  opts = (opts && typeof opts === 'object') ? opts : {};
+  var k = String(kind == null ? '' : kind);
+  var validKind = SS_FEEDBACK_KINDS.indexOf(k) !== -1;
+  var msg = String(message == null ? '' : message).trim();
+  var length = msg.length;
+  var overMax = length > SS_FEEDBACK_MAX;
+  var ok = validKind && length >= 1 && length <= SS_FEEDBACK_MAX;
+
+  var emailRaw = String(opts.email == null ? '' : opts.email).trim();
+  // Loose, permissive check — advisory only; a bad email is dropped, never blocks.
+  var email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : '';
+
+  var meta = (opts.meta && typeof opts.meta === 'object') ? opts.meta : {};
+
+  return {
+    ok: ok, kind: k, validKind: validKind, message: msg, email: email,
+    length: length, overMax: overMax,
+    payload: { kind: k, message: msg, email: email || null, meta: meta }
+  };
+}
+
+/* Impure: submit a support message. Fail-soft, guest-safe (anon INSERT).
+   Returns Promise<{ ok, reason }> where reason ∈ kind|empty|toolong|offline|db|error.
+   Never throws. Window-only — NOT in module.exports. */
+async function ssSubmitFeedback(kind, message, opts) {
+  try {
+    var built = ssBuildFeedbackSubmission(kind, message, opts);
+    if (!built.ok) {
+      return { ok: false, reason: !built.validKind ? 'kind' : (built.overMax ? 'toolong' : 'empty') };
+    }
+    if (typeof window === 'undefined' || !window.ssDB) return { ok: false, reason: 'offline' };
+    var res = await window.ssDB.from('feedback').insert(built.payload);
+    if (res && res.error) { console.warn('ShowShak feedback:', res.error.message); return { ok: false, reason: 'db' }; }
+    return { ok: true };
+  } catch (e) { return { ok: false, reason: 'error' }; }
+}
+
+if (typeof window !== 'undefined') {
+  window.ssBuildFeedbackSubmission = ssBuildFeedbackSubmission;
+  window.ssSubmitFeedback = ssSubmitFeedback;
+  window.SS_FEEDBACK_MAX = SS_FEEDBACK_MAX;
+  window.SS_FEEDBACK_KINDS = SS_FEEDBACK_KINDS;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports.ssBuildFeedbackSubmission = ssBuildFeedbackSubmission;
+  module.exports.SS_FEEDBACK_MAX = SS_FEEDBACK_MAX;
+  module.exports.SS_FEEDBACK_KINDS = SS_FEEDBACK_KINDS;
+}
