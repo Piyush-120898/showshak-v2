@@ -192,7 +192,45 @@
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (investor-deck overhaul + go-to-market collateral + support/feedback wiring +
+  ── MOST RECENT (curator-application-approval SHIPPED end-to-end + profile/admin polish +
+     API rate limiting; CACHE_VERSION v66 → v70; last commit d732880) ──
+    CONTEXT: built the curator-application-approval feature across its 3 phases, shipped two rounds of
+    profile/admin polish, and added lightweight API rate limiting. Suite 108 files green
+    (node tests/run-all.js). Migrations 0034–0037 authored AND applied + verified in Supabase.
+
+    • CURATOR-APPLICATION-APPROVAL — SHIPPED (replaces the instant Become-a-Curator role-flip with a
+      MANUAL REVIEW flow). Phase 1 (0034): `curator_application` table + `users.is_admin` + refined
+      `ss_is_admin()` (now honours the per-user flag) + `ss_submit_curator_application` RPC + a PRIVATE
+      `review-clips` Storage bucket. The profile "Become a Curator" CTA is now a 4-STEP APPLICATION FORM
+      (info → taste+genres → social link + optional review-only clip → Curator Terms) → calm confirmation
+      → status panel (pending / reapply / approved). NO client-side role flip anywhere; the onboarding
+      patch is now ROLE-FREE. Phase 2 (0035): append-only `curator_application_log` + admin-only
+      SECURITY DEFINER RPCs `ss_approve_application` / `ss_reject_application` / `ss_set_curator_verified`
+      (each atomic: mutation + one audit row) + NEW `showshak-admin.html` console (gated to is_admin;
+      pending/rejected lists + curators list with Make-Verified; curator rows link to their public
+      profile for pre-verify review). Phase 3 (0036): RLS PUBLISH GATE — only `role='curator'` may insert
+      `content`; the 0020 auto-promote trigger DROPPED; two-badge rendering via pure `ssResolveBadge`
+      (profile pill reads CURATOR vs VERIFIED CURATOR; verified flame on feed/viewer/discover/watchlist);
+      grandfathering (existing curators keep posting, never prompted — satisfied by the role-driven owner
+      face). Four pure property-tested helpers (ssValidateCuratorApplication / ssCuratorAppTransition /
+      ssResolveBadge / ssIsAdminActor). ADMIN BOOTSTRAP done: @gpiyush791 has is_admin=true.
+    • PROFILE + ADMIN POLISH (v70): Following tab PROGRESSIVE DISCLOSURE (10 → +20 → all; auto-resets on
+      page load; no buttons for short lists) on the user + curator profiles; admin curators list uses the
+      same pattern (50 → +100 → all); each admin curator row LINKS to their public profile (new tab);
+      profile clips grid now 4-per-row on desktop (was 3, matches Discover/Watchlist).
+    • API RATE LIMITING (0037 — BACKEND ONLY, no cache bump): `rate_events` + `ss_rate_allow`
+      (fixed-window, FAIL-OPEN) SECURITY DEFINER limiter. `mux-upload-url` capped 20 upload-URL mints/hr
+      per curator (protects the Mux bill); `submit-takedown` capped 10 notices/hr per client keyed on a
+      HASHED IP (raw IP never stored — DPDP); `ss_submit_curator_application` rejects duplicate-pending
+      (DB-level Req 7.3) + caps 5/user/day. Founder applied 0037, redeployed both fns, set RATE_SALT.
+      Feedback-insert throttling DEFERRED (cosmetic spam, low stakes). submit-takedown is NOW DEPLOYED
+      (redeployed for the rate limit) — the old §0b DMCA-intake blocker is resolved.
+    • DEPLOY STATE: CACHE_VERSION = v70 (sw.js), last commit d732880. Suite 108 files green. Migrations
+      0034–0037 applied + verified (verify script: supabase/maintenance/verify_curator_migrations.sql).
+      0030 still reserved for DMCA Phase 2. ⚠ 0033_feedback status UNCONFIRMED — apply it if Send
+      Feedback / Report a Problem should persist (harmless if already applied — idempotent).
+
+  ── PREVIOUS (investor-deck overhaul + go-to-market collateral + support/feedback wiring +
      India-only settings + role-driven profile + curator-application-approval SPEC; CACHE_VERSION
      v59 → v66; last commit c31b94d) ──
     CONTEXT: a long final-polish + go-to-market stretch. All frontend pushed to main; suite green
@@ -1414,7 +1452,7 @@ MY SETUP (important): I have the project's LIVE PAGE via GitHub Pages on the
 `main` branch — every push auto-rebuilds it and I watch all changes there. I also
 have the PWA INSTALLED on my phone, so I test on a real device. Because the PWA
 caches via the service worker, BUMP CACHE_VERSION in sw.js whenever you push code
-I need to see (it's currently v66); I close+reopen the app (or remove → re-add) to
+I need to see (it's currently v70); I close+reopen the app (or remove → re-add) to
 pick up the new version. I also run the SQL migrations myself in the Supabase SQL
 editor (you write them, I apply them) and do the on-device verification checks.
 
@@ -1426,17 +1464,21 @@ India. The plan: prove the loop (~15-20 curators, 300-500 clips, ~1000-1500 user
 that traction and buy a real legal team. The site is PUBLIC; we control risk by limiting the curator
 (upload) side, NOT by a "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v66, last commit c31b94d; migrations 0001-0033 authored, 0001-0032 applied,
-⚠ 0033_feedback NOT yet applied — 0030 RESERVED
-for DMCA Phase 2): everything from prior sessions (felt-quality sweep, watch-it-curator-availability,
-feed-clip-load-performance, server-side Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate,
-feed-follows ranker, iOS autoplay fix v39, genre+moods, Watch It restyle, pitch deck,
-prefetch-cache-pipeline Phases 1-3, SW segment-reuse cache default-on, background-autoplay fix,
-in-page legal modal) PLUS this stretch's legal-docs deep expansion + consent/compliance hardening +
-profile/Discover changes (below). Pure logic in showshak-shared.js, dual-exported + property-tested
-(node tests/run-all.js → 104 files green).
+LIVE ON MAIN (CACHE_VERSION v70, last commit d732880; migrations 0001-0037 authored; 0034-0037 applied
++ verified this stretch (0001-0032 already applied; ⚠ 0033_feedback status UNCONFIRMED — apply if Send
+Feedback/Report should persist, idempotent); 0030 RESERVED for DMCA Phase 2): everything from prior
+sessions (felt-quality sweep, watch-it-curator-availability, feed-clip-load-performance, server-side Mux
+trim, portrait lock, DMCA Phase 1 + beta-consent-gate, feed-follows ranker, iOS autoplay fix v39,
+genre+moods, Watch It restyle, pitch deck, prefetch-cache-pipeline Phases 1-3, SW segment-reuse cache
+default-on, background-autoplay fix, in-page legal modal, legal-docs deep expansion, consent/compliance
+hardening) PLUS this stretch: the CURATOR-APPLICATION-APPROVAL feature end-to-end (manual review →
+admin console showshak-admin.html → approve/reject/verify → two badges → RLS publish gate; migrations
+0034-0036), profile/admin polish (Following progressive disclosure, 4-col profile grid, admin curator
+pagination + profile links), and lightweight API RATE LIMITING (migration 0037; mux-upload-url +
+submit-takedown + application dedupe). submit-takedown is now DEPLOYED. Pure logic in
+showshak-shared.js, dual-exported + property-tested (node tests/run-all.js → 108 files green).
 
-SHIPPED THIS SESSION (v59 → v66; last commit c31b94d — full detail in SESSION LOG):
+SHIPPED PRIOR SESSION (v59 → v66; last commit c31b94d — full detail in SESSION LOG):
   - Investor PITCH DECK fully rebuilt (showshak-pitch-deck.html): research-backed, one-idea-per-slide,
     single cover, 13 slides; India-anchored problem stats; ₹ market sizing; de-risked ₹1 crore pre-seed
     ask tied to a proof milestone; print CSS → landscape PDF + a native editable PPTX generator
@@ -1499,19 +1541,13 @@ DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is DE
 it everywhere). 0030 is RESERVED for it.
 
 NEXT STEP (resume here):
-  IMMEDIATE FOUNDER-RUN (unblocks work already shipped this session):
-    (0a) APPLY migration 0033_feedback.sql in the Supabase SQL editor — until then Send Feedback +
-         Report a Problem fail soft (the `feedback` table doesn't exist yet). Read submissions in the
-         Supabase Table Editor.
-    (0b) DEPLOY the DMCA intake fn:  supabase functions deploy submit-takedown --no-verify-jwt
-         (code pushed + form fully wired; still NOT deployed — safe-harbour-critical).
-  NEXT BUILD (spec written + validated, NOT yet implemented): curator-application-approval — manual
-    curator review (4-step application → admin console → approve/reject/verify), two badges (Curator +
-    Verified), review-only reference clip in a private bucket, RLS publish gate. Spec at
-    .kiro/specs/curator-application-approval/ (requirements + design + tasks, phased). Start Phase 1:
-    author + you apply migration 0034, create the private `review-clips` Storage bucket + policies, and
-    run the one-time `update users set is_admin=true where username='<you>'`. Consider Phase 1 only
-    (get applications flowing) before Phase 2/3 — cold-start recruitment still outranks features.
+  CURATOR-APPLICATION-APPROVAL is DONE and live (migrations 0034-0037 applied; admin console works;
+  @gpiyush791 is admin). Nothing is blocking the beta loop — apply → review → approve → publish works.
+  OPTIONAL FOUNDER-RUN (only if not already done):
+    (0a) Confirm 0033_feedback.sql is applied (Send Feedback / Report a Problem persist to `feedback`).
+         Harmless to re-run — idempotent.
+    (0b) Optional migration-file hygiene: drop the trailing `notify pgrst, 'reload schema';` from
+         0034-0037 to stop the cosmetic "couldn't load" flash in the SQL editor (no correctness change).
   PITCH — fill before sending to any investor: the real ROAS number (team slide), a live contact email,
     and the app link (the [link] / [₹__] placeholders in the deck + pitch/ talk-track + cold-email).
   FOUNDER-SIDE (beta-compliance finish line):
@@ -1520,16 +1556,14 @@ NEXT STEP (resume here):
         monitored inboxes grievance/copyright/support, version, effective date, URL — Grievance Officer
         name = Piyush Gupta is already filled); get an IP-lawyer hour; then bump VERSION in
         data/_gen_policy_seed.js, re-run it, and re-apply the seed (clears the "counsel review" banner).
-    (c) Optional on-device: byte-PREFETCH verify (set ss_ff_segprefetch='on') — the segment REUSE
-        cache is already default-on.
   BUILD (deferred / optional, post-compliance or post-raise):
-    (1) 720p question + SS_RES_CAP.slow spec-drift realign to 480p, after the byte-prefetch verify.
-    (2) prefetch Task 16 (Speculation Rules + View Transitions) + pwa-black-screen-load Phase 3.
-    (3) DMCA Phase 2 (admin/workflow/counter-notice UI; tasks 11-18) — post-raise.
-    (4) Optional genre backfill for OLD clips (derive from the linked TMDB content_genres) so they
-        become genre-searchable too.
+    (1) Feedback-insert rate limiting (deferred from the 0037 pass — cosmetic spam, low stakes).
+    (2) 720p question + SS_RES_CAP.slow spec-drift realign to 480p; prefetch Task 16 (Speculation Rules
+        + View Transitions) + pwa-black-screen-load Phase 3; optional genre backfill for OLD clips.
+    (3) DMCA Phase 2 (admin/workflow/counter-notice UI; tasks 11-18) — post-raise. 0030 reserved.
   THE REAL GATE (non-code, from our own strategy): cold-start proof — ~15-20 curators, 300-500
-  clips, ~1000-1500 returning users. Everything above serves this. Then raise on that traction
+  clips, ~1000-1500 returning users. The product now has the full front door for this (the curator
+  application flow + admin review). Everything above serves this. Then raise on that traction
   (the deck is live: showshak-pitch-deck.html — apply the FUNDRAISING & PITCH-DECK STRATEGIST lens).
   PARKED (post-traction): MUSIC — royalty-free only (Pixabay/Jamendo), NEVER Spotify/Apple, NEVER a
   copyrighted "use this song" library (inducement).
