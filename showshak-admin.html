@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ShowShak — Curator Review</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B0B0F">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://koqfxgrlwczlizfopmwa.supabase.co" crossorigin>
+<link rel="stylesheet" href="showshak-tokens.css">
+<link rel="stylesheet" href="showshak-sidebar.css">
+<link rel="stylesheet" href="showshak-mobile-nav.css">
+<link rel="stylesheet" href="showshak-components.css">
+<style>
+html, body { overflow: hidden; }
+
+.layout {
+  position: fixed; inset: 0; left: var(--sidebar-collapsed);
+  display: flex; flex-direction: column; background: var(--bg); overflow: hidden;
+  transition: left 0.3s var(--ease-smooth);
+}
+@media (max-width: 700px) { .layout { left: 0; } }
+
+.adm-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--bg4) transparent;
+}
+.adm-scroll::-webkit-scrollbar { width: 3px; }
+.adm-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+@media (max-width: 700px) { .adm-scroll { padding-bottom: calc(var(--mobile-nav-h) + 8px); } }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 26px 24px 80px; }
+@media (max-width: 700px) { .wrap { padding: 20px 16px 48px; } }
+
+.adm-title { font-family: var(--font-display); font-size: 34px; letter-spacing: 1.5px; color: var(--white); line-height: 1; }
+.adm-title em { color: var(--red); font-style: normal; }
+.adm-lede { color: var(--gray); font-size: 13.5px; margin: 8px 0 22px; line-height: 1.5; }
+
+.adm-sec-t { font-family: var(--font-display); font-size: 18px; letter-spacing: 1.5px; color: var(--white); margin: 26px 0 12px; display: flex; align-items: center; gap: 9px; }
+.adm-sec-t em { color: var(--red); font-style: normal; }
+.adm-count { font-size: 11px; font-weight: 700; color: var(--gray2); background: var(--bg3); border-radius: 100px; padding: 2px 9px; }
+
+.adm-empty { color: var(--gray2); font-size: 13px; padding: 14px 2px; }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; }
+.card.rej { opacity: 0.72; }
+.card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.card-av { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 20px; color: #fff; background: var(--bg4); background-size: cover; background-position: center; }
+.card-id { flex: 1; min-width: 0; }
+.card-name { font-size: 15px; font-weight: 700; color: var(--white); }
+.card-handle { font-size: 12px; color: var(--gray2); font-weight: 600; }
+.card-when { font-size: 11px; color: var(--gray2); }
+
+.card-row { font-size: 13px; color: var(--gray); margin: 6px 0; line-height: 1.5; word-break: break-word; }
+.card-row b { color: var(--white); font-weight: 600; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.card-tag { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.82); background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 100px; padding: 3px 10px; }
+.card-link { color: var(--red); font-weight: 600; text-decoration: none; word-break: break-all; }
+.card-link:hover { text-decoration: underline; }
+
+.clip-box { margin: 10px 0; }
+.clip-box video { width: 100%; max-width: 260px; border-radius: 12px; border: 1px solid var(--border); display: block; }
+
+.card-actions { display: flex; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+.abtn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 100px; cursor: pointer; font-family: var(--font-body); font-size: 13px; font-weight: 700; border: 1.5px solid transparent; transition: transform 0.12s, background 0.15s, border-color 0.15s; -webkit-tap-highlight-color: transparent; }
+.abtn:active { transform: scale(0.97); }
+.abtn:disabled { opacity: 0.5; cursor: default; }
+.abtn-approve { background: var(--red); color: #fff; }
+.abtn-approve:hover:not(:disabled) { background: var(--red2); }
+.abtn-reject { background: transparent; border-color: rgba(255,255,255,0.16); color: var(--gray); }
+.abtn-reject:hover:not(:disabled) { border-color: var(--border2); color: var(--red2); }
+.abtn-ghost { background: rgba(234,59,50,0.1); border-color: var(--border2); color: var(--red); }
+.abtn-ghost:hover:not(:disabled) { background: rgba(234,59,50,0.18); }
+
+/* Curators list + verified toggle */
+.cur-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.cur-row:last-child { border-bottom: none; }
+.cur-info { flex: 1; min-width: 0; }
+.cur-name { font-size: 14px; font-weight: 700; color: var(--white); display: flex; align-items: center; gap: 7px; }
+.cur-vbadge { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; color: var(--red); border: 1px solid var(--border2); border-radius: 100px; padding: 1px 7px; }
+.cur-handle { font-size: 12px; color: var(--gray2); font-weight: 600; }
+.vtoggle { flex-shrink: 0; padding: 8px 16px; border-radius: 100px; border: 1.5px solid var(--border); background: transparent; color: var(--gray); font-family: var(--font-body); font-weight: 700; font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+.vtoggle.on { background: var(--red); border-color: var(--red); color: #fff; }
+.vtoggle:disabled { opacity: 0.5; cursor: default; }
+
+/* Access gate / loading */
+.adm-gate { text-align: center; padding: 60px 20px; color: var(--gray); }
+.adm-gate .g-t { font-family: var(--font-display); font-size: 26px; letter-spacing: 1px; color: var(--white); margin-bottom: 8px; }
+.adm-gate .g-s { font-size: 13.5px; line-height: 1.6; max-width: 340px; margin: 0 auto; }
+.adm-gate a { color: var(--red); font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<!-- SHARED CHROME (sidebar + mobile nav) — injected by showshak-shared.js -->
+<div id="ss-nav" data-no-sheet></div>
+
+<div class="layout">
+  <div class="adm-scroll">
+    <div class="wrap">
+      <!-- Access gate / loading (default) -->
+      <div class="adm-gate" id="adm-gate">
+        <div class="g-t">Curator Review</div>
+        <div class="g-s" id="adm-gate-msg">Checking access…</div>
+      </div>
+
+      <!-- Console (revealed only for an admin) -->
+      <div id="adm-console" style="display:none">
+        <div class="adm-title">Curator <em>review</em></div>
+        <p class="adm-lede">Every curator is personally reviewed. Approve to grant curator status, reject to decline (they can reapply), and mark trusted curators as verified.</p>
+
+        <div class="adm-sec-t">New / Pending <span class="adm-count" id="adm-pending-count">0</span></div>
+        <div id="adm-pending"></div>
+
+        <div class="adm-sec-t">Rejected <span class="adm-count" id="adm-rejected-count">0</span></div>
+        <div id="adm-rejected"></div>
+
+        <div class="adm-sec-t">Curators <span class="adm-count" id="adm-curators-count">0</span></div>
+        <div id="adm-curators"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="showshak-supabase.js"></script>
+<script defer src="showshak-shared.js"></script>
+
+<script>
+/* ════════════════════════════════════════════════
+   ADMIN CONSOLE — curator-application-approval Phase 2
+   Gated to is_admin. RLS is the real boundary: even if the client gate is
+   bypassed, the lists come back empty and every mutation RPC is a no-op for a
+   non-admin. All mutations run through the admin-only SECURITY DEFINER RPCs.
+════════════════════════════════════════════════ */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function initial(s) { s = String(s || '').replace(/^@/, ''); return (s.charAt(0) || '?').toUpperCase(); }
+function fmtWhen(iso) {
+  try { const d = new Date(iso); if (isNaN(d)) return ''; return d.toLocaleDateString(undefined, { day:'numeric', month:'short' }) + ', ' + d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }); }
+  catch (e) { return ''; }
+}
+function toast(m) { if (typeof ssToast === 'function') ssToast(m); }
+
+/* Wait until the Supabase client is attached (showshak-supabase.js). */
+function whenReady() {
+  return new Promise((resolve) => {
+    let n = 0;
+    (function poll() {
+      if (window.ssDB) return resolve(true);
+      if (n++ > 60) return resolve(false);   // ~6s cap; fail soft
+      setTimeout(poll, 100);
+    })();
+  });
+}
+
+function showGate(msg, html) {
+  const g = document.getElementById('adm-gate');
+  const c = document.getElementById('adm-console');
+  if (c) c.style.display = 'none';
+  if (g) g.style.display = 'block';
+  const m = document.getElementById('adm-gate-msg');
+  if (m) m.innerHTML = html ? msg : esc(msg);
+}
+function showConsole() {
+  const g = document.getElementById('adm-gate');
+  const c = document.getElementById('adm-console');
+  if (g) g.style.display = 'none';
+  if (c) c.style.display = 'block';
+}
+
+async function initAdmin() {
+  const ok = await whenReady();
+  if (!ok || !window.ssDB) { showGate('Couldn’t reach the server. Please try again.'); return; }
+
+  // Resolve the signed-in user + their is_admin flag (RLS backstops this).
+  let user = null;
+  try { const r = await window.ssDB.auth.getUser(); user = r && r.data && r.data.user; } catch (e) {}
+  if (!user) {
+    showGate('Please <a href="#" onclick="if(window.ssOpenSignup)ssOpenSignup(\'login\');return false;">log in</a> as a reviewer to view this page.', true);
+    return;
+  }
+  let isAdmin = false;
+  try {
+    const r = await window.ssDB.from('users').select('is_admin').eq('id', user.id).single();
+    isAdmin = !!(r && r.data && r.data.is_admin === true);
+  } catch (e) { isAdmin = false; }
+  if (!isAdmin) { showGate('This area is for reviewers only.'); return; }
+
+  showConsole();
+  await Promise.all([renderPending(), renderRejected(), renderCurators()]);
+}
+
+/* ── New / Pending ── */
+async function renderPending() {
+  const host = document.getElementById('adm-pending');
+  const apps = (typeof ssAdminListApplications === 'function') ? await ssAdminListApplications('pending') : [];
+  document.getElementById('adm-pending-count').textContent = apps.length;
+  if (!apps.length) { host.innerHTML = '<div class="adm-empty">No applications waiting. 🎬</div>'; return; }
+  host.innerHTML = apps.map((a) => applicationCard(a, true)).join('');
+}
+
+/* ── Rejected (record, read-only) ── */
+async function renderRejected() {
+  const host = document.getElementById('adm-rejected');
+  const apps = (typeof ssAdminListApplications === 'function') ? await ssAdminListApplications('rejected') : [];
+  document.getElementById('adm-rejected-count').textContent = apps.length;
+  if (!apps.length) { host.innerHTML = '<div class="adm-empty">Nothing here yet.</div>'; return; }
+  host.innerHTML = apps.map((a) => applicationCard(a, false)).join('');
+}
+
+function applicationCard(a, pending) {
+  const info = a.applicant_info || {};
+  const cinfo = a.curator_info || {};
+  const name = info.name || info.username || 'Applicant';
+  const handle = info.username ? ('@' + String(info.username).replace(/^@/, '')) : '';
+  const genres = Array.isArray(a.genres) ? a.genres : [];
+  const bio = cinfo.bio || '';
+  const link = a.social_link || '';
+  const linkHref = /^https?:\/\//i.test(link) ? link : ('https://' + link);
+  const hasClip = !!a.reference_clip_path;
+  const clipBox = hasClip
+    ? `<div class="clip-box" id="clip-${a.id}">
+         <button class="abtn abtn-ghost" onclick="loadClip('${esc(a.id)}','${esc(a.reference_clip_path)}')">▶ Load sample clip</button>
+       </div>`
+    : '';
+  const actions = pending
+    ? `<div class="card-actions">
+         <button class="abtn abtn-approve" id="ap-${a.id}" onclick="doApprove('${esc(a.id)}')">Approve → Curator</button>
+         <button class="abtn abtn-reject" id="rj-${a.id}" onclick="doReject('${esc(a.id)}')">Reject</button>
+       </div>`
+    : '';
+  return `
+    <div class="card ${pending ? '' : 'rej'}" id="card-${esc(a.id)}">
+      <div class="card-head">
+        <div class="card-av">${esc(initial(handle || name))}</div>
+        <div class="card-id">
+          <div class="card-name">${esc(name)}</div>
+          <div class="card-handle">${esc(handle)}</div>
+        </div>
+        <div class="card-when">${esc(fmtWhen(a.created_at))}</div>
+      </div>
+      ${bio ? `<div class="card-row"><b>Bio:</b> ${esc(bio)}</div>` : ''}
+      ${genres.length ? `<div class="card-tags">${genres.map((g) => `<span class="card-tag">${esc(g)}</span>`).join('')}</div>` : ''}
+      ${link ? `<div class="card-row"><b>Link:</b> <a class="card-link" href="${esc(linkHref)}" target="_blank" rel="noopener">${esc(link)}</a></div>` : ''}
+      ${clipBox}
+      ${actions}
+    </div>`;
+}
+
+/* Fetch a short-lived signed URL for the private review clip and play it inline. */
+async function loadClip(appId, path) {
+  const box = document.getElementById('clip-' + appId);
+  if (!box) return;
+  box.innerHTML = '<div class="adm-empty">Loading…</div>';
+  const url = (typeof ssAdminReferenceClipUrl === 'function') ? await ssAdminReferenceClipUrl(path) : null;
+  if (!url) { box.innerHTML = '<div class="adm-empty">Couldn’t load the clip.</div>'; return; }
+  box.innerHTML = '<video controls playsinline preload="metadata" src="' + esc(url) + '"></video>';
+}
+
+async function doApprove(appId) {
+  const btn = document.getElementById('ap-' + appId);
+  const rj = document.getElementById('rj-' + appId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+  if (rj) rj.disabled = true;
+  const res = (typeof ssApproveApplication === 'function') ? await ssApproveApplication(appId) : { ok: false };
+  if (res && res.ok) {
+    toast('🔥 Approved — they’re a curator now');
+    const card = document.getElementById('card-' + appId); if (card) card.remove();
+    await Promise.all([renderPending(), renderCurators()]);
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Approve → Curator'; }
+    if (rj) rj.disabled = false;
+    toast('Couldn’t approve — please try again');
+  }
+}
+
+async function doReject(appId) {
+  const btn = document.getElementById('rj-' + appId);
+  const ap = document.getElementById('ap-' + appId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Rejecting…'; }
+  if (ap) ap.disabled = true;
+  const res = (typeof ssRejectApplication === 'function') ? await ssRejectApplication(appId) : { ok: false };
+  if (res && res.ok) {
+    toast('Application rejected');
+    await Promise.all([renderPending(), renderRejected()]);
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Reject'; }
+    if (ap) ap.disabled = false;
+    toast('Couldn’t reject — please try again');
+  }
+}
+
+/* ── Curators list + Make-Verified ── */
+async function renderCurators() {
+  const host = document.getElementById('adm-curators');
+  const list = (typeof ssAdminListCurators === 'function') ? await ssAdminListCurators() : [];
+  document.getElementById('adm-curators-count').textContent = list.length;
+  if (!list.length) { host.innerHTML = '<div class="adm-empty">No curators yet.</div>'; return; }
+  host.innerHTML = list.map((u) => {
+    const handle = u.username ? ('@' + String(u.username).replace(/^@/, '')) : '';
+    const verified = u.verified === true;
+    return `
+      <div class="cur-row">
+        <div class="card-av" style="width:40px;height:40px;font-size:18px;${u.avatar_url ? `background-image:url('${esc(u.avatar_url)}')` : ''}">${u.avatar_url ? '' : esc(initial(handle || u.name))}</div>
+        <div class="cur-info">
+          <div class="cur-name">${esc(u.name || handle || 'Curator')}${verified ? '<span class="cur-vbadge">VERIFIED</span>' : ''}</div>
+          <div class="cur-handle">${esc(handle)}</div>
+        </div>
+        <button class="vtoggle ${verified ? 'on' : ''}" id="vt-${esc(u.id)}" onclick="doVerify('${esc(u.id)}', ${verified ? 'false' : 'true'})">${verified ? 'Verified' : 'Make verified'}</button>
+      </div>`;
+  }).join('');
+}
+
+async function doVerify(userId, on) {
+  const btn = document.getElementById('vt-' + userId);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const res = (typeof ssSetCuratorVerified === 'function') ? await ssSetCuratorVerified(userId, on) : { ok: false };
+  if (res && res.ok) {
+    toast(on ? '✓ Marked verified' : 'Verification removed');
+  } else {
+    toast('Couldn’t update — please try again');
+  }
+  await renderCurators();
+}
+
+document.addEventListener('DOMContentLoaded', initAdmin);
+</script>
+
+</body>
+</html>

@@ -718,10 +718,11 @@ function rebuildCuratorsFromClips() {
         username: uname, name: uname,
         letter: cr.letter || uname.charAt(0).toUpperCase(),
         bg: cr.bg || '#EA3B32', avatar: cr.avatar || null,
-        isCurator: true, verified: false,
+        isCurator: true, verified: !!cr.verified,
         clips: 0, clipCount: 0, totalFires: 0
       };
     }
+    if (cr.verified) map[uname].verified = true;   // any verified clip → verified curator
     map[uname].clips++; map[uname].clipCount++;
     map[uname].totalFires += (c.fires || 0);
   });
@@ -758,7 +759,7 @@ function clipCardHTML(clip, size = 'lg') {
         ${playEl}
         <div style="position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;gap:5px">
           <div data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}" style="width:${avSize};height:${avSize};border-radius:50%;border:1.5px solid rgba(255,255,255,0.35);display:flex;align-items:center;justify-content:center;font-size:${avFont};font-weight:700;color:#fff;flex-shrink:0;background:${clip.creator.bg}">${clip.creator.letter}</div>
-          <span data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}" style="font-size:${handleFont};font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,0.8)">@${clip.creator.name}</span>
+          <span data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}" style="font-size:${handleFont};font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,0.8)">@${clip.creator.name}</span>${ssVerifiedBadgeHTML(clip.creator)}
         </div>
       </div>
       <div class="${capClass}">
@@ -1219,7 +1220,7 @@ function showResultsView(clips, label, curators) {
         ${clip.poster ? `<img src="${clip.poster}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''}
       </div>
       <div class="result-clip-info">
-        <div class="result-clip-creator" data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}">@${clip.creator.name}</div>
+        <div class="result-clip-creator" data-curator="${clip.creator.name}" data-curator-name="${clip.creator.name}" data-curator-letter="${clip.creator.letter}" data-curator-bg="${clip.creator.bg}">@${clip.creator.name}${ssVerifiedBadgeHTML(clip.creator)}</div>
         <div class="result-clip-caption">${clip.caption}</div>
         <div class="result-clip-tags">
           ${clip.genre.map(g=>`<span class="result-clip-tag">${g}</span>`).join('')}

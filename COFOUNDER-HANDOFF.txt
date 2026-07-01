@@ -192,7 +192,75 @@
 ───────────────────────────────────────────────────────────────
   5. SESSION LOG (most recent first; all pushed to main)
 ───────────────────────────────────────────────────────────────
-  ── MOST RECENT (policy seed published + legal-page scroll fix + consent-mandatory confirm +
+  ── MOST RECENT (investor-deck overhaul + go-to-market collateral + support/feedback wiring +
+     India-only settings + role-driven profile + curator-application-approval SPEC; CACHE_VERSION
+     v59 → v66; last commit c31b94d) ──
+    CONTEXT: a long final-polish + go-to-market stretch. All frontend pushed to main; suite green
+    (104 files, incl. the new prop-feedback). No shared.js logic regressions.
+
+    • INVESTOR PITCH DECK — fully REBUILT (showshak-pitch-deck.html) from web research on legendary
+      first-raise decks (Airbnb/Sequoia) + how VCs screen pre-seed/seed in 2026 (DocSend 2.5-min rule,
+      the 9-dimension IC scorecard, never-put-risks-in-the-deck, SOM-not-vanity-TAM, milestone-tied
+      ask). Now ONE cover, 13 slides, one idea each. India-anchored PROBLEM stats (16-min discovery
+      pain, 69% frustrated, 148M paying subs — verified: LiveMint 2025, Accenture, FICCI-EY/Ormax);
+      MARKET in ₹ for India (₹6,000-10,000cr TAM → ₹2,000-4,000cr SAM → ₹200-400cr SOM) with $ secondary
+      + global $50B in $; de-risked ₹1 crore pre-seed ASK tied to a proof milestone (50-100 curators
+      posting weekly + 2,000-3,000 returning + first Watch-It conversion data → first OTT deal
+      conversations); $89 CAC labelled a US benchmark (India lower); "rigorously tested" (de-jargoned
+      from "property-tested"). Added @media print CSS → clean landscape PDF, and a NATIVE editable PPTX
+      generator (pitch/build-deck-pptx.js via pptxgenjs; dark gradient bg + logo baked in as images so
+      it renders + presents correctly everywhere) → ShowShak-Pitch-Deck.pptx (13 slides). ⚠ still
+      [PLACEHOLDER]: the ROAS number (team slide), a live contact email, the app [link].
+    • PITCH COLLATERAL (new pitch/ folder): showshak-investor-talk-track.md (slide-by-slide meeting
+      script + "what the investor is silently asking" per slide + 10 rehearsed hard-Q&A + delivery
+      rules + the one-line to leave in their mind); showshak-cold-email.md (short human subject lines +
+      2 email bodies + follow-up + personalisation checklist; link-don't-attach the deck);
+      showshak-curator-outreach.md (DM + email + the "India's own platform" mission hook + HARD RULE:
+      never promise income — "first in line when we monetise" is the ceiling).
+    • LEGAL: Piyush Gupta filled as Grievance Officer / copyright contact across all 5 policy .md docs
+      (privacy/tos/curator/copyright/community). Emails/entity/address/version still [PLACEHOLDER].
+    • SPLASH TAGLINE → "Discover · Trust · Watch It" everywhere (index landing splash, feed in-app
+      #ss-splash, footer, loading curtain, tools/brand-assets.html canvas), with "Trust" in brand red
+      (#EA3B32). Old "Swipe · Discover · Watch" fully removed. The OS-level launch frame (iOS solid-dark
+      PNGs / Android icon+name) has no tagline by design — nothing to change there.
+    • SUPPORT WIRED (were toast stubs): Help center/FAQ (in-app <details> accordion, ~9 Q&A), Send
+      Feedback + Report a Problem (Report auto-captures page/UA/viewport) → new `feedback` table
+      (migration 0033_feedback.sql — ⚠ FOUNDER MUST APPLY; RLS insert anon+auth, read service_role
+      only). Pure ssBuildFeedbackSubmission + impure ssSubmitFeedback (fail-soft, guest-safe),
+      property-tested (tests/prop-feedback.test.js). Read submissions in the Supabase Table Editor.
+    • DMCA TAKEDOWN FORM — investigated: it is ALREADY fully wired end-to-end (showshak-dmca.html →
+      ssDmcaNoticeWellFormed gate → ssSubmitTakedown → submit-takedown Edge Function → ss_submit_complaint
+      RPC → complaints + moderation_log → confirmation ref). The ONLY blocker is founder DEPLOYING the
+      fn. No code needed.
+    • SETTINGS honesty pass: Region → India-only locked (+ "more regions coming soon"); App language →
+      English-only locked (+ coming soon); Notifications → a "Coming soon" card (mock preference toggles
+      removed). Confirmed My Platforms IS DB-wired (togglePlatform upserts/deletes user_subscriptions
+      for signed-in users; guests local-only). Notifications feature (in-app inbox / digest / push)
+      consciously PARKED post-traction — it doesn't move the cold-start gate.
+    • PROFILE + SETTINGS — wired to the REAL persisted role: removed the dev "Preview as" 3-way face
+      switcher (+ the ?face= override) and the "Curator mode (prototype)" toggle. Faces now purely
+      role/context-driven — normal user → user profile (Edit only); curator → owner cockpit (Edit +
+      Share + View-as-public, with a new "Back to your profile" button); ?curator= → public trust
+      surface. Settings creator block gated strictly by ssResolveMyRole (authoritative promote AND
+      demote). Become-a-Curator is the only path to curator now (no fake toggling).
+    • DATA RESET — supabase/maintenance/reset_data.sql: TRUNCATE all user/operational tables, KEEP the
+      seeds (policy_versions/platforms/genres/moods) so the consent gate + filters survive; + a playbook
+      for wiping Auth users, Storage buckets, and Mux assets. For a clean fresh-start beta.
+    • NEW SPEC — curator-application-approval (.kiro/specs/curator-application-approval/; requirements +
+      design + tasks, all Kiro-format-clean; NOT yet implemented). Replaces the instant Become-a-Curator
+      role-flip AND removes the migration-0020 auto-promote-on-post trigger, with a MANUAL-REVIEW flow:
+      4-step application → pending (no role change) → admin console (showshak-admin.html, gated by a new
+      users.is_admin flag) → Approve/Reject/Make-Verified via admin-only SECURITY DEFINER RPCs → two
+      badges (Curator + Verified). Reference clip is REVIEW-ONLY in a private `review-clips` Storage
+      bucket (never a content row / Mux id / feed). RLS PUBLISH GATE so only role='curator' can post.
+      Grandfathers existing curators. Phased additive migrations 0034→0036 (founder-applied). Four pure
+      property-tested helpers (validator/state-machine/badge-resolver/admin-authorizer). THE NEXT BUILD.
+    • DEPLOY STATE: CACHE_VERSION = v66 (sw.js), last commit c31b94d. Suite 104 files green. Migrations
+      0001-0033 authored; 0001-0032 applied; ⚠ 0033_feedback NOT yet applied. 0030 reserved for DMCA
+      Phase 2. Founder-run queue: apply 0033_feedback, deploy submit-takedown, then the
+      curator-application-approval build (0034+) + fill the pitch ROAS/email/link + legal placeholders.
+
+  ── PREVIOUS (policy seed published + legal-page scroll fix + consent-mandatory confirm +
      profile tabs + Discover genre filter; CACHE_VERSION v56 → v59) ──
     CONTEXT: finished the legal/compliance loop and did three founder-requested product tweaks.
     All pushed to main; suite 103 files green.
@@ -1314,6 +1382,8 @@ where we are:
   - showshak-shared.js  (the heart of the app)
   - .kiro/specs/ — stack-sharing + stack-folder-view (both SHIPPED; read as
     reference for the patterns + where new specs go)
+  - .kiro/specs/curator-application-approval/ (requirements + design + tasks — the NEXT BUILD)
+  - pitch/ — investor talk-track, cold email, curator outreach (go-to-market collateral)
 
 Sacred rules you must never break: Creator-first/title hidden until
 Watch It; Fire = the like; Watch It must feel frictionless & private;
@@ -1331,28 +1401,68 @@ so the Feed never breaks; small contained fixes you just do directly
 and verify. Always run the test suite after touching shared.js. Only
 commit/push to main when I ask.
 
+WHERE WE ARE — FINAL POLISH STAGE (important): the product is feature-complete for
+the beta; we are now polishing, hardening, and going to market. Bring a critical eye —
+if you spot a feature, flow, or piece of copy that could be meaningfully better, SAY SO
+and propose it with your reasoning. But do NOT self-initiate a change to an existing,
+working feature on your own: surface the improvement, explain the why, and get my
+go-ahead FIRST (propose, don't surprise). Work I've explicitly asked for proceeds
+normally — read the code first, implement it, verify with the test suite + diagnostics,
+bump CACHE_VERSION, and only push when I ask.
+
 MY SETUP (important): I have the project's LIVE PAGE via GitHub Pages on the
 `main` branch — every push auto-rebuilds it and I watch all changes there. I also
 have the PWA INSTALLED on my phone, so I test on a real device. Because the PWA
 caches via the service worker, BUMP CACHE_VERSION in sw.js whenever you push code
-I need to see (it's currently v59); I close+reopen the app (or remove → re-add) to
+I need to see (it's currently v66); I close+reopen the app (or remove → re-add) to
 pick up the new version. I also run the SQL migrations myself in the Supabase SQL
 editor (you write them, I apply them) and do the on-device verification checks.
 
-CURRENT FOCUS / WHERE WE ARE: We are building DMCA / MODERATION SCAFFOLDING and
-preparing an OPEN BETA in India. The plan: prove the loop (~15-20 curators, 300-500
-clips, ~1000-1500 users), then raise on that traction and buy a real legal team.
-The site is PUBLIC; we control risk by limiting the curator (upload) side, NOT by a
-"private/testing" label. Music feature stays PARKED. 18+ only.
+CURRENT FOCUS / WHERE WE ARE: the product is feature-complete for the beta; we are in FINAL
+POLISH + GO-TO-MARKET. DMCA/moderation Phase 1 + the beta-consent-gate are shipped. The active
+BUILD is the curator-application-approval spec (manual curator review → admin console →
+Curator/Verified badges; spec written, phased migrations 0034+). We are preparing an OPEN BETA in
+India. The plan: prove the loop (~15-20 curators, 300-500 clips, ~1000-1500 users), then raise on
+that traction and buy a real legal team. The site is PUBLIC; we control risk by limiting the curator
+(upload) side, NOT by a "private/testing" label. Music feature stays PARKED. 18+ only.
 
-LIVE ON MAIN (CACHE_VERSION v59, last commit 363fc27; migrations 0001-0032 applied — 0030 RESERVED
+LIVE ON MAIN (CACHE_VERSION v66, last commit c31b94d; migrations 0001-0033 authored, 0001-0032 applied,
+⚠ 0033_feedback NOT yet applied — 0030 RESERVED
 for DMCA Phase 2): everything from prior sessions (felt-quality sweep, watch-it-curator-availability,
 feed-clip-load-performance, server-side Mux trim, portrait lock, DMCA Phase 1 + beta-consent-gate,
 feed-follows ranker, iOS autoplay fix v39, genre+moods, Watch It restyle, pitch deck,
 prefetch-cache-pipeline Phases 1-3, SW segment-reuse cache default-on, background-autoplay fix,
 in-page legal modal) PLUS this stretch's legal-docs deep expansion + consent/compliance hardening +
 profile/Discover changes (below). Pure logic in showshak-shared.js, dual-exported + property-tested
-(node tests/run-all.js → 103 files green).
+(node tests/run-all.js → 104 files green).
+
+SHIPPED THIS SESSION (v59 → v66; last commit c31b94d — full detail in SESSION LOG):
+  - Investor PITCH DECK fully rebuilt (showshak-pitch-deck.html): research-backed, one-idea-per-slide,
+    single cover, 13 slides; India-anchored problem stats; ₹ market sizing; de-risked ₹1 crore pre-seed
+    ask tied to a proof milestone; print CSS → landscape PDF + a native editable PPTX generator
+    (pitch/build-deck-pptx.js, gradient bg + logo) → ShowShak-Pitch-Deck.pptx. PLUS pitch/ collateral:
+    investor talk-track (slide-by-slide + hard-Q&A), cold-email, curator-outreach.
+  - SPLASH TAGLINE → "Discover · Trust · Watch It" app-wide (landing splash, feed splash, footer,
+    loading curtain, brand-asset tool), "Trust" in brand red. Old "Swipe · Discover · Watch" gone.
+  - SUPPORT WIRED (was stubs): Help/FAQ (in-app accordion) + Send Feedback + Report a Problem →
+    new `feedback` table (migration 0033_feedback — ⚠ FOUNDER MUST APPLY). Pure ssBuildFeedbackSubmission
+    + ssSubmitFeedback (property-tested, guest-safe). DMCA takedown form confirmed already wired end-to-end
+    (form → ssSubmitTakedown → submit-takedown fn → ss_submit_complaint) — only blocker = deploy the fn.
+  - SETTINGS honesty: Region = India-only (+ "more regions coming soon"), Language = English-only
+    (+ coming soon), Notifications = "Coming soon" card (mock toggles removed). My Platforms confirmed
+    DB-wired (user_subscriptions upsert/delete). Notifications feature parked post-traction.
+  - PROFILE + SETTINGS wired to REAL role: removed the dev "Preview as" 3-way switcher + the
+    "Curator mode (prototype)" toggle. Faces purely role/context-driven (user→user profile Edit-only;
+    curator→owner cockpit + Edit/Share/View-as-public with a Back button; ?curator= → public). Settings
+    creator block gated strictly by ssResolveMyRole (promote AND demote).
+  - LEGAL: Grievance Officer = Piyush Gupta filled across all 5 policy docs (emails/entity/address/
+    version still [PLACEHOLDER]).
+  - DATA RESET script (supabase/maintenance/reset_data.sql) for a fresh-start beta — wipes user data,
+    KEEPS seeds (policy_versions/platforms/genres/moods) + a playbook for Auth/Storage/Mux.
+  - NEW SPEC (written + validated, NOT yet built): curator-application-approval — manual curator review
+    (4-step application → admin console → approve/reject/verify), two badges (Curator + Verified),
+    review-only reference clip in a private bucket, RLS publish gate (drops the 0020 auto-promote
+    trigger), admin bootstrap via one-time is_admin SQL line. Phased migrations 0034→0036. THE NEXT BUILD.
 
 SHIPPED RECENTLY (all pushed to main; CACHE_VERSION v54 → v59):
   - ★ CONSENT now MANDATORY + FAIL-CLOSED for EVERY account (consent-gate-funnel-bypass bugfix): a
@@ -1389,16 +1499,28 @@ DMCA PHASE 2 (workflow/admin/counter-notice/repeat-infringer; tasks 11-18) is DE
 it everywhere). 0030 is RESERVED for it.
 
 NEXT STEP (resume here):
-  FOUNDER-SIDE (only YOU can do) — the beta-compliance finish line:
-    (a) DEPLOY the DMCA intake fn:  supabase functions deploy submit-takedown --no-verify-jwt
-        (code is pushed, NOT yet deployed — the in-app takedown form can't file a notice until this
-        is live; this is safe-harbour-critical).
-    (b) DECIDE the operating ENTITY (private limited company vs sole proprietor) + jurisdiction city.
-    (c) FILL the legal/*.md [PLACEHOLDERS] (entity name/type, registered address, city, the three
-        monitored inboxes grievance/copyright/support, Grievance Officer name, version, effective
-        date, URL); get an IP-lawyer hour; then bump VERSION in data/_gen_policy_seed.js, re-run it,
-        and re-apply the seed (clears the "counsel review required" banner).
-    (d) Optional on-device: byte-PREFETCH verify (set ss_ff_segprefetch='on') — the segment REUSE
+  IMMEDIATE FOUNDER-RUN (unblocks work already shipped this session):
+    (0a) APPLY migration 0033_feedback.sql in the Supabase SQL editor — until then Send Feedback +
+         Report a Problem fail soft (the `feedback` table doesn't exist yet). Read submissions in the
+         Supabase Table Editor.
+    (0b) DEPLOY the DMCA intake fn:  supabase functions deploy submit-takedown --no-verify-jwt
+         (code pushed + form fully wired; still NOT deployed — safe-harbour-critical).
+  NEXT BUILD (spec written + validated, NOT yet implemented): curator-application-approval — manual
+    curator review (4-step application → admin console → approve/reject/verify), two badges (Curator +
+    Verified), review-only reference clip in a private bucket, RLS publish gate. Spec at
+    .kiro/specs/curator-application-approval/ (requirements + design + tasks, phased). Start Phase 1:
+    author + you apply migration 0034, create the private `review-clips` Storage bucket + policies, and
+    run the one-time `update users set is_admin=true where username='<you>'`. Consider Phase 1 only
+    (get applications flowing) before Phase 2/3 — cold-start recruitment still outranks features.
+  PITCH — fill before sending to any investor: the real ROAS number (team slide), a live contact email,
+    and the app link (the [link] / [₹__] placeholders in the deck + pitch/ talk-track + cold-email).
+  FOUNDER-SIDE (beta-compliance finish line):
+    (a) DECIDE the operating ENTITY (private limited company vs sole proprietor) + jurisdiction city.
+    (b) FILL the legal/*.md [PLACEHOLDERS] (entity name/type, registered address, city, the three
+        monitored inboxes grievance/copyright/support, version, effective date, URL — Grievance Officer
+        name = Piyush Gupta is already filled); get an IP-lawyer hour; then bump VERSION in
+        data/_gen_policy_seed.js, re-run it, and re-apply the seed (clears the "counsel review" banner).
+    (c) Optional on-device: byte-PREFETCH verify (set ss_ff_segprefetch='on') — the segment REUSE
         cache is already default-on.
   BUILD (deferred / optional, post-compliance or post-raise):
     (1) 720p question + SS_RES_CAP.slow spec-drift realign to 480p, after the byte-prefetch verify.

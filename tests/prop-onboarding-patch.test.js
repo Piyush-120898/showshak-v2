@@ -13,7 +13,9 @@
    IMPORTANT — the helper's EXACT semantics (mirrored by this test's oracle):
      ssBuildOnboardingPatch(input):
        input = { handle?, bio?, genres?, avatarUrl? }
-       - patch.role === 'curator' ALWAYS (incl. {} / null / undefined / non-object).
+       - patch is ROLE-FREE: it NEVER contains a `role` key (curator-application-approval
+         Task 1.1 — becoming a curator happens ONLY through the admin Approve_RPC, never
+         client-side). An empty/blank input therefore yields {} (no keys).
        - username: only when input.handle is a string that, after trim() then
          stripping a SINGLE leading '@' then trim() again, is non-empty. The stored
          value is that cleaned string (no leading '@', no surrounding whitespace).
@@ -21,7 +23,7 @@
        - bio: only when input.bio is a string non-empty after trim(); stored trimmed.
        - genres: only when input.genres is an array of length 1..6; stored as a copy.
        - avatar_url: only when input.avatarUrl is a non-empty string; stored as-is.
-       - keys are confined to the allowlist {role, username, bio, genres, avatar_url};
+       - keys are confined to the allowlist {username, bio, genres, avatar_url};
          no key is ever emitted with an empty/blank value (no overwrite-with-empty).
 ═══════════════════════════════════════════════════════════════ */
 'use strict';
@@ -33,13 +35,13 @@ const ss = require('../showshak-shared.js');
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 
-const ALLOWLIST = ['role', 'username', 'bio', 'genres', 'avatar_url'];
+const ALLOWLIST = ['username', 'bio', 'genres', 'avatar_url'];
 
 /* Inline oracle — an independent re-implementation of the builder's contract.
    Mirrors the exact field rules above; used to check presence/absence + value. */
 function expectedPatch(input) {
   var i = (input && typeof input === 'object') ? input : {};
-  var patch = { role: 'curator' };
+  var patch = {};   // ROLE-FREE — no `role` key
   if (typeof i.handle === 'string') {
     var h = i.handle.trim();
     if (h.charAt(0) === '@') { h = h.slice(1); }  // strip exactly ONE leading '@'
@@ -108,10 +110,11 @@ const inputGen = fc.record({
   avatarUrl: avatarGen,
 });
 
-// Feature: curator-role-persistence, Property 1: Onboarding patch always persists the curator role
-// **Validates: Requirements 1.1, 9.2**
+// Feature: curator-role-persistence, Property 1: Onboarding patch is role-free (never self-promotes)
+// **Validates: Requirements 1.5, 5.3 (curator-application-approval); 1.1, 9.2**
 try {
-  // For ANY input — including {}, null, undefined, and arbitrary objects — role is 'curator'.
+  // For ANY input — including {}, null, undefined, and arbitrary objects — the patch
+  // NEVER carries a `role` key. Promotion to curator is admin-RPC-only, never client-side.
   const anyInputGen = fc.oneof(
     inputGen,
     fc.constant({}),
@@ -124,17 +127,17 @@ try {
   fc.assert(fc.property(anyInputGen, (input) => {
     const patch = ss.ssBuildOnboardingPatch(input);
     assert(patch && typeof patch === 'object', 'patch must be an object');
-    assert(patch.role === 'curator',
-      `role must always be 'curator': got ${JSON.stringify(patch.role)} for input ${JSON.stringify(input)}`);
+    assert(!('role' in patch),
+      `patch must be role-free: got role ${JSON.stringify(patch.role)} for input ${JSON.stringify(input)}`);
     return true;
   }), { numRuns: ITER });
 
-  // Explicit examples.
-  assert(ss.ssBuildOnboardingPatch().role === 'curator', 'no-arg → role curator');
-  assert(ss.ssBuildOnboardingPatch(null).role === 'curator', 'null → role curator');
-  assert(ss.ssBuildOnboardingPatch(undefined).role === 'curator', 'undefined → role curator');
-  assert(ss.ssBuildOnboardingPatch({}).role === 'curator', '{} → role curator');
-  assert(ss.ssBuildOnboardingPatch(42).role === 'curator', 'non-object → role curator');
+  // Explicit examples — never a role key, and empty input → {} exactly.
+  assert(!('role' in ss.ssBuildOnboardingPatch()), 'no-arg → no role');
+  assert(!('role' in ss.ssBuildOnboardingPatch(null)), 'null → no role');
+  assert(!('role' in ss.ssBuildOnboardingPatch(undefined)), 'undefined → no role');
+  assert(JSON.stringify(ss.ssBuildOnboardingPatch({})) === '{}', '{} → empty patch');
+  assert(!('role' in ss.ssBuildOnboardingPatch(42)), 'non-object → no role');
 
   console.log('  \u2713 Property 1');
 } catch (e) {
@@ -149,8 +152,8 @@ try {
     const patch = ss.ssBuildOnboardingPatch(input);
     const exp = expectedPatch(input);
 
-    // role always present.
-    assert(patch.role === 'curator', 'role must be curator');
+    // patch is role-free.
+    assert(!('role' in patch), 'patch must be role-free');
 
     // username: presence + cleaned value match the oracle.
     if ('username' in exp) {
@@ -214,7 +217,7 @@ try {
       handle: '  @gpiyush791  ', bio: '  I review thrillers  ',
       genres: ['Thriller', 'Drama'], avatarUrl: 'https://x/avatars/u/1.jpg',
     });
-    assert(p.role === 'curator', 'all-fields role');
+    assert(!('role' in p), 'all-fields must be role-free');
     assert(p.username === 'gpiyush791', `all-fields username: ${p.username}`);
     assert(p.bio === 'I review thrillers', `all-fields bio: ${p.bio}`);
     assert(JSON.stringify(p.genres) === JSON.stringify(['Thriller', 'Drama']), 'all-fields genres');
@@ -224,15 +227,15 @@ try {
   // bio-only.
   (function () {
     const p = ss.ssBuildOnboardingPatch({ bio: 'I review thrillers' });
-    assert(JSON.stringify(Object.keys(p).sort()) === JSON.stringify(['bio', 'role']),
+    assert(JSON.stringify(Object.keys(p).sort()) === JSON.stringify(['bio']),
       `bio-only keys: ${Object.keys(p)}`);
     assert(p.bio === 'I review thrillers', 'bio-only value');
   })();
 
-  // nothing-entered → {role:'curator'} only.
+  // nothing-entered → {} (empty, role-free).
   (function () {
     const p = ss.ssBuildOnboardingPatch({});
-    assert(JSON.stringify(p) === JSON.stringify({ role: 'curator' }), `nothing-entered: ${JSON.stringify(p)}`);
+    assert(JSON.stringify(p) === JSON.stringify({}), `nothing-entered: ${JSON.stringify(p)}`);
   })();
 
   // '@@x' → only ONE '@' stripped → username '@x'.

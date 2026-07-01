@@ -856,14 +856,16 @@ function wlCreator(c) {
     return {
       name: c.creator.name || 'curator',
       letter: c.creator.letter || (c.creator.name || 'C').charAt(0).toUpperCase(),
-      bg: c.creator.bg || '#EA3B32'
+      bg: c.creator.bg || '#EA3B32',
+      verified: !!c.creator.verified
     };
   }
   const name = (c && typeof c.creator === 'string') ? c.creator : 'curator';
   return {
     name: name,
     letter: (c && c.creatorLetter) || name.charAt(0).toUpperCase(),
-    bg: (c && c.creatorBg) || '#EA3B32'
+    bg: (c && c.creatorBg) || '#EA3B32',
+    verified: false
   };
 }
 
@@ -905,7 +907,7 @@ function render() {
           <div class="wl-clip-vig"></div>
           <div class="wl-clip-remove" onclick="removeClip(event,'${stack.id}','${c.id}')">✕</div>
           <div class="wl-clip-meta">
-            <div class="wl-clip-creator" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</div>
+            <div class="wl-clip-creator" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}${(typeof ssVerifiedBadgeHTML==='function')?ssVerifiedBadgeHTML(cr):''}</div>
             ${tag ? `<div class="wl-clip-tag">${tag}</div>` : ''}
             ${attribution}
           </div>
@@ -994,7 +996,7 @@ function _wlRecCardHTML(c) {
         <div class="rec-clip-play">${PLAY_SVG}</div>
         <div class="rec-clip-creator-row">
           <div class="rec-clip-avatar" style="background:${cr.bg}" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">${cr.letter}</div>
-          <span class="rec-clip-handle" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</span>
+          <span class="rec-clip-handle" data-curator="${cr.name}" data-curator-name="${cr.name}" data-curator-letter="${cr.letter}" data-curator-bg="${cr.bg}">@${cr.name}</span>${(typeof ssVerifiedBadgeHTML==='function')?ssVerifiedBadgeHTML(cr):''}
         </div>
       </div>
       <div class="rec-clip-foot">

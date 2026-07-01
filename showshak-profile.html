@@ -893,6 +893,14 @@ html, body { overflow: hidden; }
       </div>
     </div>
 
+    <!-- CURATOR APPLICATION STATUS (user mode; shown instead of the CTA while pending/rejected/approved) -->
+    <div class="cta-wrap" id="bc-status-wrap" style="display:none">
+      <div class="cta">
+        <div class="cta-bg"></div><div class="cta-glow"></div>
+        <div class="cta-in" id="bc-status-in"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -908,6 +916,7 @@ html, body { overflow: hidden; }
         <div class="bc-pip" id="bc-pip-1"><span class="bc-pip-fill"></span></div>
         <div class="bc-pip" id="bc-pip-2"><span class="bc-pip-fill"></span></div>
         <div class="bc-pip" id="bc-pip-3"><span class="bc-pip-fill"></span></div>
+        <div class="bc-pip" id="bc-pip-4"><span class="bc-pip-fill"></span></div>
       </div>
       <div class="bc-x" onclick="closeBecomeCurator()" aria-label="Close">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -915,27 +924,14 @@ html, body { overflow: hidden; }
     </div>
 
     <div class="bc-body">
-      <!-- STEP 1 — what it means -->
+      <!-- STEP 1 — applicant / user info -->
       <div class="bc-step active" id="bc-step-1">
         <div class="bc-badge-icon">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>
         </div>
-        <div class="bc-eyebrow">Become a Curator</div>
-        <div class="bc-title">Turn your taste into <em>a following</em></div>
-        <p class="bc-sub">Curators are the heart of ShowShak. Here's what you unlock:</p>
-        <div class="bc-perks">
-          <div class="bc-perk"><span class="bc-perk-ic">🎬</span><div><div class="bc-perk-t">Post recommendations</div><div class="bc-perk-d">Share clips of any show or movie, on any platform.</div></div></div>
-          <div class="bc-perk"><span class="bc-perk-ic">👥</span><div><div class="bc-perk-t">Build a following</div><div class="bc-perk-d">People who trust your taste and watch what you pick.</div></div></div>
-          <div class="bc-perk"><span class="bc-perk-ic">📊</span><div><div class="bc-perk-t">See your impact</div><div class="bc-perk-d">Fires, followers, reach and Watch It taps — all tracked.</div></div></div>
-          <div class="bc-perk"><span class="bc-perk-ic">💸</span><div><div class="bc-perk-t">Earn from it — soon</div><div class="bc-perk-d">Monetise the Watch Its you drive as we grow.</div></div></div>
-        </div>
-      </div>
-
-      <!-- STEP 2 — identity -->
-      <div class="bc-step" id="bc-step-2">
-        <div class="bc-eyebrow">Step 2 of 3</div>
-        <div class="bc-title">Set up your <em>curator profile</em></div>
-        <p class="bc-sub">This is what viewers see when they visit you.</p>
+        <div class="bc-eyebrow">Step 1 of 4 · About you</div>
+        <div class="bc-title">Apply to become <em>a curator</em></div>
+        <p class="bc-sub">Every curator on ShowShak is personally reviewed — this is where your taste earns its place. Start with who you are.</p>
 
         <div class="pic-picker">
           <div class="pic-ring" onclick="document.getElementById('bc-pic-file').click()">
@@ -956,9 +952,16 @@ html, body { overflow: hidden; }
           </div>
           <div class="bc-hint" id="bc-handle-hint">Letters, numbers and underscores. This is your @handle.</div>
         </div>
+      </div>
+
+      <!-- STEP 2 — curator info (incl. genres) -->
+      <div class="bc-step" id="bc-step-2">
+        <div class="bc-eyebrow">Step 2 of 4 · Your taste</div>
+        <div class="bc-title">What you're <em>known for</em></div>
+        <p class="bc-sub">Pick the genres you curate and tell us your angle — this is what viewers see when they visit you.</p>
 
         <div class="bc-field">
-          <label class="bc-label">Your specialties <span style="color:var(--gray2);font-weight:500;text-transform:none;letter-spacing:0">(pick a few)</span></label>
+          <label class="bc-label">Your specialties <span style="color:var(--gray2);font-weight:500;text-transform:none;letter-spacing:0">(pick 1–6)</span></label>
           <div class="gpick" id="bc-genres"></div>
           <div class="bc-hint" id="bc-genre-hint">What kind of shows are you known for? Shows up as your taste tags.</div>
         </div>
@@ -969,9 +972,33 @@ html, body { overflow: hidden; }
         </div>
       </div>
 
-      <!-- STEP 3 — agree + activate -->
+      <!-- STEP 3 — recommendation profile (social link + optional review-only clip) -->
       <div class="bc-step" id="bc-step-3">
-        <div class="bc-eyebrow">Almost there</div>
+        <div class="bc-eyebrow">Step 3 of 4 · Your work</div>
+        <div class="bc-title">Show us <em>your recommendations</em></div>
+        <p class="bc-sub">Link where you already share what to watch — and, if you like, add a short sample clip just for the review team.</p>
+
+        <div class="bc-field">
+          <label class="bc-label">Social / recommendation link</label>
+          <div class="bc-input-wrap" id="bc-social-wrap">
+            <input class="bc-input" id="bc-social" type="url" placeholder="instagram.com/you · a YouTube channel · Letterboxd…" autocomplete="off" oninput="bcCheckSocial()" style="padding-left:14px">
+          </div>
+          <div class="bc-hint" id="bc-social-hint">Where can we see your taste? A profile, channel, or page.</div>
+        </div>
+
+        <div class="bc-field">
+          <label class="bc-label">Sample clip <span style="color:var(--gray2);font-weight:500;text-transform:none;letter-spacing:0">(optional · review only)</span></label>
+          <div class="bc-input-wrap" style="cursor:pointer" onclick="document.getElementById('bc-refclip-file').click()">
+            <input class="bc-input" id="bc-refclip-name" type="text" placeholder="Add a short video…" readonly style="padding-left:14px;cursor:pointer">
+          </div>
+          <input type="file" id="bc-refclip-file" accept="video/*" style="display:none" onchange="bcPickRefClip(event)">
+          <div class="bc-hint" id="bc-refclip-hint">Private — seen only by the review team. It is never posted to the feed.</div>
+        </div>
+      </div>
+
+      <!-- STEP 4 — Curator Terms acceptance -->
+      <div class="bc-step" id="bc-step-4">
+        <div class="bc-eyebrow">Step 4 of 4 · Agreement</div>
         <div class="bc-title">One quick <em>agreement</em></div>
         <p class="bc-sub">ShowShak is a home for original recommendations — keep it clean and it stays great for everyone.</p>
         <div class="bc-agree" id="bc-agree" onclick="bcToggleAgree()">
@@ -980,7 +1007,17 @@ html, body { overflow: hidden; }
         </div>
         <a id="bc-terms-link" href="showshak-legal.html?doc=curator" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--red);font-size:12px;font-weight:600;text-decoration:none">Read the Curator Terms</a>
         <div id="bc-terms-notice" style="display:none;margin-top:10px;color:var(--red);font-size:12px;font-weight:600">Curator Terms unavailable — please try again later.</div>
-        <p class="bc-sub" style="margin-bottom:4px;font-size:12px">You can switch back to a viewer account anytime in Settings.</p>
+        <p class="bc-sub" style="margin-bottom:4px;font-size:12px">Applying doesn't change your account — you keep browsing as usual while we review.</p>
+      </div>
+
+      <!-- CONFIRMATION — shown after a successful submit (no role change) -->
+      <div class="bc-step" id="bc-step-done">
+        <div class="bc-badge-icon">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <div class="bc-eyebrow">Application received</div>
+        <div class="bc-title">Thanks — <em>we're on it</em></div>
+        <p class="bc-sub">Every curator on ShowShak is personally reviewed. We'll look at your application and update your profile — usually within about 24 hours. Keep browsing as normal in the meantime.</p>
       </div>
     </div>
 
@@ -1456,6 +1493,20 @@ function renderHeader() {
     (PROFILE.genres || []).map(g => `<span class="taste-tag">${g}</span>`).join('');
 
   document.getElementById('identity').classList.toggle('is-creator', isCurator());
+
+  // Two-badge trust pill (curator-application-approval Req 15/16): resolve the
+  // badge from the displayed account's role + verified via the pure ssResolveBadge.
+  // CSS (.is-creator .id-pill) controls visibility; here we set the correct text
+  // so a plain curator reads "CURATOR" and a verified one reads "VERIFIED CURATOR".
+  (function () {
+    var pill = document.querySelector('#identity .id-pill');
+    if (!pill) return;
+    var badge = (typeof ssResolveBadge === 'function')
+      ? ssResolveBadge({ role: isCurator() ? 'curator' : 'user', verified: !!PROFILE.verified })
+      : (isCurator() ? 'curator' : 'none');
+    if (badge === 'verified') pill.innerHTML = '<span class="id-pip"></span>VERIFIED CURATOR';
+    else if (badge === 'curator') pill.innerHTML = '<span class="id-pip"></span>CURATOR';
+  })();
 
   const actions = document.getElementById('hero-actions');
   const editBtn = `
@@ -2153,17 +2204,25 @@ function renderAnalytics() {
     ${perfBlock}`;
 }
 
-/* ── BECOME A CURATOR FLOW ── */
+/* ── BECOME A CURATOR FLOW (curator application & approval — Phase 1) ── */
 let bcStep = 1;
 let bcAgreed = false;
 let bcPhoto = null;            // data URL of chosen photo (session)
 let bcGenres = [];             // selected specialty genres
 let boundCurator = null;       // resolved current Curator Terms version, bound ONCE (Req 9.3)
+let bcRefClipFile = null;      // optional review-only reference clip (File), Step 3
+let bcAppFetched = false;      // has the latest application been fetched this session
+let bcLatestApp = null;        // most-recent curator_application row { status } | null
 
 function openBecomeCurator() {
-  bcStep = 1; bcAgreed = false; bcPhoto = null; bcGenres = []; boundCurator = null;
+  bcStep = 1; bcAgreed = false; bcPhoto = null; bcGenres = []; boundCurator = null; bcRefClipFile = null;
   document.getElementById('bc-agree').classList.remove('on');
   document.getElementById('bc-bio').value = '';
+  const soc = document.getElementById('bc-social'); if (soc) soc.value = '';
+  const rc = document.getElementById('bc-refclip-name'); if (rc) rc.value = '';
+  // Reset the confirmation view + footer for a fresh run.
+  const doneEl = document.getElementById('bc-step-done'); if (doneEl) doneEl.classList.remove('active');
+  const footEl = document.querySelector('#bc-overlay .bc-foot'); if (footEl) footEl.style.display = '';
   // Reset the Curator Terms notice + link to their default (pre-resolution) state.
   const tn = document.getElementById('bc-terms-notice'); if (tn) tn.style.display = 'none';
   const tl = document.getElementById('bc-terms-link');
@@ -2218,13 +2277,18 @@ async function bcBindCuratorTerms() {
     if (notice) notice.style.display = '';
   }
   // Refresh the activate control gating now that the binding has resolved.
-  if (bcStep === 3) {
+  if (bcStep === 4) {
     const next = document.getElementById('bc-next');
     if (next) next.disabled = !(bcAgreed && boundCurator);
   }
 }
 function closeBecomeCurator() {
   document.getElementById('bc-overlay').classList.remove('open');
+  // Restore the footer + hide the confirmation view so the next open is clean.
+  const footEl = document.querySelector('#bc-overlay .bc-foot'); if (footEl) footEl.style.display = '';
+  const doneEl = document.getElementById('bc-step-done'); if (doneEl) doneEl.classList.remove('active');
+  // The status zone may have changed (a fresh pending application) — refresh it.
+  if (typeof refreshCuratorCta === 'function') refreshCuratorCta();
 }
 function bcPickPhoto(e) {
   const file = e.target.files && e.target.files[0];
@@ -2245,9 +2309,10 @@ function bcToggleGenre(g) {
   if (i >= 0) bcGenres.splice(i,1);
   else { if (bcGenres.length >= 6) { ssToast('Pick up to 6 specialties'); return; } bcGenres.push(g); }
   bcRenderGenres();
+  if (bcStep === 2) document.getElementById('bc-next').disabled = !(bcGenres.length >= 1);
 }
 function bcRender() {
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 4; i++) {
     document.getElementById(`bc-step-${i}`).classList.toggle('active', i === bcStep);
     const pip = document.getElementById(`bc-pip-${i}`);
     pip.classList.toggle('done', i < bcStep);
@@ -2255,13 +2320,27 @@ function bcRender() {
   }
   document.getElementById('bc-back').style.display = bcStep > 1 ? 'block' : 'none';
   const next = document.getElementById('bc-next');
-  if (bcStep === 1) { next.textContent = 'Get Started'; next.disabled = false; }
-  else if (bcStep === 2) { next.textContent = 'Continue'; next.disabled = !bcHandleValid(); }
-  else { next.textContent = 'Activate Curator Mode 🔥'; next.disabled = !(bcAgreed && boundCurator); }
+  if (bcStep === 1)      { next.textContent = 'Continue';           next.disabled = !bcHandleValid(); }
+  else if (bcStep === 2) { next.textContent = 'Continue';           next.disabled = !(bcGenres.length >= 1); }
+  else if (bcStep === 3) { next.textContent = 'Continue';           next.disabled = !bcSocialValid(); }
+  else                   { next.textContent = 'Submit application'; next.disabled = !(bcAgreed && boundCurator); }
 }
 function bcHandleValid() {
   const v = (document.getElementById('bc-handle').value || '').trim();
   return /^[a-zA-Z0-9_]{3,24}$/.test(v);
+}
+function bcSocialValid() {
+  return (document.getElementById('bc-social').value || '').trim().length >= 1;
+}
+function bcCheckSocial() {
+  if (bcStep === 3) document.getElementById('bc-next').disabled = !bcSocialValid();
+}
+function bcPickRefClip(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  bcRefClipFile = file;
+  const nm = document.getElementById('bc-refclip-name');
+  if (nm) nm.value = file.name || 'Selected clip';
 }
 function bcCheckHandle() {
   const hint = document.getElementById('bc-handle-hint');
@@ -2273,94 +2352,116 @@ function bcCheckHandle() {
     hint.classList.remove('err');
     hint.textContent = 'Letters, numbers and underscores. This is your @handle.';
   }
-  if (bcStep === 2) document.getElementById('bc-next').disabled = !bcHandleValid();
+  if (bcStep === 1) document.getElementById('bc-next').disabled = !bcHandleValid();
 }
 function bcToggleAgree() {
   bcAgreed = !bcAgreed;
   document.getElementById('bc-agree').classList.toggle('on', bcAgreed);
-  if (bcStep === 3) document.getElementById('bc-next').disabled = !(bcAgreed && boundCurator);
+  if (bcStep === 4) document.getElementById('bc-next').disabled = !(bcAgreed && boundCurator);
 }
 function bcBack() { if (bcStep > 1) { bcStep--; bcRender(); } }
 function bcNext() {
-  if (bcStep === 2 && !bcHandleValid()) return;
-  if (bcStep === 3) {
+  if (bcStep === 1 && !bcHandleValid()) return;
+  if (bcStep === 2 && !(bcGenres.length >= 1)) return;
+  if (bcStep === 3 && !bcSocialValid()) return;
+  if (bcStep === 4) {
     if (!(bcAgreed && boundCurator)) return;
-    bcActivate();
+    bcSubmitApplication();
     return;
   }
   bcStep++;
   bcRender();
 }
-async function bcActivate() {
-  // Persist curator status + identity to the DB BEFORE flipping into creator mode.
+async function bcSubmitApplication() {
+  // Gather the captured fields. This SUBMITS AN APPLICATION — it never flips role.
   const handle = (document.getElementById('bc-handle').value || '').trim();
   const bio = (document.getElementById('bc-bio').value || '').trim();
+  const social = (document.getElementById('bc-social').value || '').trim();
+
+  // Final client-side gates (the RPC re-validates server-side).
+  if (!bcHandleValid())        { ssToast('Choose a valid username'); return; }
+  if (!(bcGenres.length >= 1)) { ssToast('Pick at least one specialty'); return; }
+  if (!social)                 { ssToast('Add a link to your recommendations'); return; }
+  if (!(bcAgreed && boundCurator)) { ssToast('Please accept the Curator Terms to continue'); return; }
+
+  const next = document.getElementById('bc-next');
+  const prevLabel = next ? next.textContent : '';
+  if (next) { next.disabled = true; next.textContent = 'Submitting…'; }
 
   const user = (typeof ssCurrentUser === 'function') ? ssCurrentUser() : null;
 
+  // Best-effort: persist the applicant's chosen PROFILE IDENTITY (username/bio/
+  // genres/avatar) — NOT role (the onboarding patch is role-free). Never blocks
+  // the application; a failure here still lets the application through.
   if (user && window.ssDB) {
-    // Real persistence path.
     try {
-      let avatarUrl;   // undefined unless an upload succeeds (R1.6: never overwrite with empty)
-      // If a new data-URL photo was chosen, upload it to Storage (mirror saveEditProfile).
+      let avatarUrl;   // undefined unless an upload succeeds (never overwrite with empty)
       if (bcPhoto && bcPhoto.startsWith('data:')) {
         try {
           const blob = await (await fetch(bcPhoto)).blob();
           const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg','jpg');
           const path = user.id + '/' + Date.now() + '.' + ext;
           const up = await window.ssDB.storage.from('avatars').upload(path, blob, { upsert: true, contentType: blob.type });
-          if (up.error) throw up.error;
-          const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
-          if (!pub || !pub.publicUrl) throw new Error('no_public_url');
-          avatarUrl = pub.publicUrl;
-        } catch (e) {
-          // Leave avatarUrl undefined — do NOT block role persistence (R1.6).
-          console.error('ShowShak: curator avatar upload failed', e);
-        }
+          if (!up.error) {
+            const { data: pub } = window.ssDB.storage.from('avatars').getPublicUrl(path);
+            if (pub && pub.publicUrl) avatarUrl = pub.publicUrl;
+          }
+        } catch (e) { console.error('ShowShak: applicant avatar upload failed', e); }
       }
-
-      // ── Curator Terms acceptance is a HARD precondition for the role flip ──
-      // Bind a recorded, version-stamped acceptance BEFORE users.role → curator.
-      const acceptance = { affirmative: true, curator_version: boundCurator };
-      // Req 9.14 — invalid acceptance: persist nothing and do NOT flip the role.
-      if (typeof window.ssCuratorTermsAccepted !== 'function' || !window.ssCuratorTermsAccepted(acceptance)) {
-        ssToast('Please accept the Curator Terms to continue');
-        return;
+      const patch = (typeof ssBuildOnboardingPatch === 'function')
+        ? ssBuildOnboardingPatch({ handle, bio, genres: bcGenres, avatarUrl })
+        : null;
+      if (patch && Object.keys(patch).length) {
+        await window.ssDB.from('users').update(patch).eq('id', user.id);
       }
-      // Req 9.5 — record the acceptance FIRST; only proceed to the role flip on success.
-      const r = await window.ssRecordCuratorTerms(acceptance);
-      if (!r || r.ok !== true) {
-        // Req 9.8 — acceptance could not be saved: do NOT flip the role.
-        ssToast('Couldn’t save your acceptance — please try again');
-        return;
-      }
-
-      const patch = ssBuildOnboardingPatch({ handle, bio, genres: bcGenres, avatarUrl });
-      const { error } = await window.ssDB.from('users').update(patch).eq('id', user.id);
-      if (error) throw error;
-    } catch (e) {
-      // R2.1/R2.2: keep modal open, do NOT flip to owner face, stay interactive.
-      console.error('ShowShak: curator activation failed', e);
-      ssToast('Couldn’t activate curator — please try again');
-      return;
-    }
+    } catch (e) { console.error('ShowShak: applicant profile update failed', e); }
   }
 
-  // SUCCESS path (and the no-backend demo fallback when !user || !ssDB):
-  // apply the chosen identity to the in-memory PROFILE for instant feedback.
-  if (handle) { PROFILE.handle = '@' + handle; PROFILE.letter = handle.charAt(0).toUpperCase(); }
-  if (bio) PROFILE.bio = bio;
-  if (bcPhoto) PROFILE.photo = bcPhoto;
-  if (bcGenres.length) PROFILE.genres = bcGenres.slice();
-  closeBecomeCurator();
-  // Become a creator (owner face) and land on the Create tab
-  face = 'owner';
-  activeTab = 'create';
-  document.getElementById('profile-scroll').scrollTo({ top: 0, behavior: 'smooth' });
-  document.getElementById('cta-wrap').style.display = 'none';
-  renderAll();
-  switchTab('create');
-  setTimeout(() => ssToast('🔥 Welcome, curator! Post your first clip.'), 400);
+  // THE GATING ACTION — submit the application. Creates ONE pending row; role
+  // stays 'user' (Req 1.5). The optional review-only clip uploads inside the
+  // wrapper to the private review-clips bucket.
+  const payload = {
+    applicant:    { name: (PROFILE.name || ''), username: handle },
+    curator_info: { bio: bio },
+    genres:       bcGenres.slice(),
+    social_link:  social,
+    termsAccepted: true,
+    terms_version: boundCurator,
+    referenceClipFile: bcRefClipFile || undefined
+  };
+
+  let res = { ok: false };
+  if (typeof ssSubmitCuratorApplication === 'function') {
+    res = await ssSubmitCuratorApplication(payload);
+  }
+
+  if (res && res.ok) {
+    bcLatestApp = { status: 'pending' };
+    bcAppFetched = true;
+    // Reflect the chosen identity in the in-memory profile for instant feedback
+    // (no role change — the face stays 'user' until an admin approves).
+    if (handle) { PROFILE.handle = '@' + handle; PROFILE.letter = handle.charAt(0).toUpperCase(); }
+    if (bio) PROFILE.bio = bio;
+    if (bcPhoto) PROFILE.photo = bcPhoto;
+    if (bcGenres.length) PROFILE.genres = bcGenres.slice();
+    bcShowConfirmation();
+  } else if (res && Array.isArray(res.missing) && res.missing.length) {
+    if (next) { next.disabled = false; next.textContent = prevLabel; }
+    ssToast('Please complete: ' + res.missing.join(', '));
+  } else {
+    if (next) { next.disabled = false; next.textContent = prevLabel; }
+    ssToast('Couldn’t submit your application — please try again');
+  }
+}
+
+// Show the calm confirmation card in the modal (no role change).
+function bcShowConfirmation() {
+  for (let i = 1; i <= 4; i++) {
+    const s = document.getElementById('bc-step-' + i); if (s) s.classList.remove('active');
+    const p = document.getElementById('bc-pip-' + i); if (p) { p.classList.add('done'); p.classList.remove('current'); }
+  }
+  const done = document.getElementById('bc-step-done'); if (done) done.classList.add('active');
+  const foot = document.querySelector('#bc-overlay .bc-foot'); if (foot) foot.style.display = 'none';
 }
 
 /* ── EDIT PROFILE (user + curator) ── */
@@ -2496,9 +2597,67 @@ function renderAll() {
   renderStacks();
   renderFollowing();
   renderAnalytics();
-  document.getElementById('cta-wrap').style.display = (isUserOwn() && !isGuestOwn()) ? 'block' : 'none';
+  refreshCuratorCta();
   ALL_PANEL_IDS.forEach(id =>
     document.getElementById('panel-'+id).classList.toggle('active', id===activeTab));
+}
+
+/* ── Curator application status zone (Req 6) ──────────────────────────────────
+   For a signed-in normal-user profile, show EITHER the "Become a Curator" CTA
+   (no application) OR a status panel (pending / rejected / approved), driven by
+   the most-recent curator_application via ssMyLatestApplication. Fetched once
+   per session, fail-soft: pre-migration / on error the CTA simply shows. */
+function applyCuratorZone() {
+  const cta = document.getElementById('cta-wrap');
+  const panel = document.getElementById('bc-status-wrap');
+  const showZone = (typeof isUserOwn === 'function' ? isUserOwn() : false)
+                   && !(typeof isGuestOwn === 'function' && isGuestOwn());
+  if (!showZone) {
+    if (cta) cta.style.display = 'none';
+    if (panel) panel.style.display = 'none';
+    return;
+  }
+  const st = bcLatestApp && bcLatestApp.status;
+  if (st === 'pending' || st === 'rejected' || st === 'approved') {
+    if (cta) cta.style.display = 'none';
+    if (panel) { panel.style.display = 'block'; renderStatusPanel(st); }
+  } else {
+    if (cta) cta.style.display = 'block';
+    if (panel) panel.style.display = 'none';
+  }
+}
+function refreshCuratorCta() {
+  applyCuratorZone();
+  const showZone = (typeof isUserOwn === 'function' ? isUserOwn() : false)
+                   && !(typeof isGuestOwn === 'function' && isGuestOwn());
+  if (!bcAppFetched && showZone && typeof ssMyLatestApplication === 'function') {
+    bcAppFetched = true;
+    ssMyLatestApplication()
+      .then((a) => { bcLatestApp = a || null; applyCuratorZone(); })
+      .catch(() => {});
+  }
+}
+function renderStatusPanel(status) {
+  const el = document.getElementById('bc-status-in');
+  if (!el) return;
+  if (status === 'pending') {
+    el.innerHTML =
+      '<div class="cta-eye">🔥 Application received</div>' +
+      '<div class="cta-title">UNDER <em>REVIEW.</em></div>' +
+      '<p class="cta-desc">Your curator application is in — every curator is personally reviewed. We usually decide within about 24 hours, and your profile updates automatically. Keep browsing as usual meanwhile.</p>';
+  } else if (status === 'approved') {
+    el.innerHTML =
+      '<div class="cta-eye">🔥 You\'re in</div>' +
+      '<div class="cta-title">WELCOME, <em>CURATOR.</em></div>' +
+      '<p class="cta-desc">Your application was approved. Refresh to open your curator tools and post your first clip.</p>' +
+      '<button class="btn btn-primary" onclick="location.reload()">Refresh</button>';
+  } else { // rejected
+    el.innerHTML =
+      '<div class="cta-eye">Application reviewed</div>' +
+      '<div class="cta-title">NOT THIS TIME<em> — YET.</em></div>' +
+      '<p class="cta-desc">Your application wasn\'t approved this round. You\'re welcome to refine your recommendations and apply again.</p>' +
+      '<button class="btn btn-primary" onclick="openBecomeCurator()">Apply again</button>';
+  }
 }
 function setFace(f) {
   // Preview_Toggle is inert for persisted state (curator-role-persistence

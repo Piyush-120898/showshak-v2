@@ -1891,7 +1891,7 @@ function ssMapContentRowsToClips(rows){
       providers: t.providers || {},
       cachedAt: t.cached_at || null,
       curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
-      creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
+      creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null, verified: !!cr.verified }
     };
   });
 }
@@ -1907,7 +1907,7 @@ async function _ssFeedFallbackPage(limit, offset){
   var n = limit||50, off = offset||0;
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url,verified), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("status","live").is("deleted_at",null).order("created_at",{ascending:false}).range(off, off + n - 1);
     if(res.error || !res.data || !res.data.length) return [];
     // Filter + projection delegated to the pure helper (the SQL filter above
@@ -1938,7 +1938,7 @@ async function ssLoadClips(limit, offset){
     // Hydrate the page's full rows with the EXISTING rich select (scoreboard-safe,
     // unchanged projection), re-enforcing live/non-deleted; .in() does NOT preserve order.
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url,verified), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .in("id", pageIds).eq("status","live").is("deleted_at",null);
     if (res.error || !res.data) return _ssFeedFallbackPage(n, off);   // hydration error (Req 8.2)
     // Reorder hydrated rows to match pageIds order (since .in() is unordered),
@@ -2081,7 +2081,7 @@ async function ssLoadClipById(id){
   if(!window.ssDB || !id) return null;
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, creator:creator_id(username,name,avatar_url,verified), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("id", id).eq("status","live").is("deleted_at",null).limit(1);
     if(res.error || !res.data || !res.data.length) return null;
     var mapped = ssMapContentRowsToClips(res.data);
@@ -3443,17 +3443,26 @@ if (typeof window !== 'undefined') {
    (Req 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 7.2, 7.3, 9.2; design
    Components → "The patch shape", Properties 1-3)
    ───────────────────────────────────────────────────────────────
-   Curator onboarding completion (`bcActivate`) persists the chosen
-   identity together with `role = 'curator'` in a single self-scoped
-   `users` update. This PURE helper turns the collected onboarding
-   fields into that UPDATE patch. The patch is built by an explicit
-   ALLOWLIST (never by spreading the input), so an unknown field on the
-   input can never leak in, and identity keys are included ONLY when
-   their source value is present/valid so an empty value never
-   overwrites an existing one (Req 1.6 — no overwrite-with-empty).
+   Curator onboarding completion persists the chosen identity fields in
+   a single self-scoped `users` update. This PURE helper turns the
+   collected onboarding fields into that UPDATE patch. The patch is
+   built by an explicit ALLOWLIST (never by spreading the input), so an
+   unknown field on the input can never leak in, and identity keys are
+   included ONLY when their source value is present/valid so an empty
+   value never overwrites an existing one (Req 1.6 — no
+   overwrite-with-empty).
+
+   ── curator-application-approval CHANGE (Task 1.1) ──
+   This patch NO LONGER includes the `role` key. Under the manual-review
+   application flow, becoming a curator happens ONLY through the admin
+   Approve_RPC (`ss_approve_application`), never client-side. A user's
+   `role` MUST NEVER be flipped to 'curator' from the browser — so this
+   onboarding/identity patch writes only handle/bio/genres/avatar and is
+   pointedly role-free (the security spine, Req 13). Any residual caller
+   of this patch is an identity update, not a promotion.
 
    ── ALLOWLIST (the ONLY keys the patch may ever own) ──
-     { role, username, bio, genres, avatar_url }
+     { username, bio, genres, avatar_url }   (NO `role`)
 
    ── INPUT CONTRACT (input, all keys optional; input may be
       null/undefined/{}) ──
@@ -3465,8 +3474,8 @@ if (typeof window !== 'undefined') {
                            upload succeeded; null/undefined otherwise
 
    ── KEY RULES (locked, so the Property tests mirror them) ──
-   • role        : ALWAYS 'curator' for every input, including {} /
-     null / undefined (Req 1.1, 9.2).
+   • role        : NEVER included — the patch is role-free (see above).
+     For an empty/blank input the patch is therefore {} (Req 1.5/13).
    • username    : included ONLY when `handle` is a string that is
      non-empty after (a) trimming surrounding whitespace and (b)
      stripping exactly ONE leading '@'. Stored value is that trimmed,
@@ -3482,7 +3491,7 @@ if (typeof window !== 'undefined') {
    Pure: no DOM, no Supabase, no network, never throws. */
 function ssBuildOnboardingPatch(input){
   var i = (input && typeof input === 'object') ? input : {};
-  var patch = { role: 'curator' };                // ALLOWLIST: role is always set
+  var patch = {};                                 // ALLOWLIST: role is NEVER set here
 
   // username — trim whitespace, strip a single leading '@', include when non-empty.
   if (typeof i.handle === 'string') {
@@ -3514,6 +3523,131 @@ if (typeof window !== 'undefined') {
   window.ssBuildOnboardingPatch = ssBuildOnboardingPatch;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   CURATOR APPLICATION & APPROVAL — pure decision helpers
+   (Feature: curator-application-approval; design "Pure decision
+   helpers", Correctness Properties 1-4)
+   ───────────────────────────────────────────────────────────────
+   FOUR pure, DOM-free, dual-exported, fast-check-tested helpers. They
+   decide UI/UX ONLY and are the spec their server-side SQL twins honor
+   — they are NEVER the security boundary (that is the database: RLS +
+   admin-only SECURITY DEFINER RPCs). Each tolerates malformed input by
+   returning a safe value rather than throwing, and is deterministic.
+
+   Conventions deliberately mirror ssDmcaNoticeWellFormed (strict
+   booleans, a stable-order `missing` key list) so the SQL re-validation
+   in ss_submit_curator_application is a line-for-line translation.
+═══════════════════════════════════════════════════════════════ */
+
+/* Req 2 (Application_Validator) — decide whether a submitted curator
+   application payload is well-formed. PURE: no DOM/network/Supabase,
+   does NOT mutate `payload`, deterministic, never throws.
+
+   Returns { ok, missing } where `missing` lists the stable key of each
+   failing element in the FIXED order below, and ok === (missing.length === 0):
+     applicant_info : payload.applicant is an object carrying a non-empty
+                      (trimmed length >= 1) identity string — `name` OR
+                      `username`.                                (Req 2.1)
+     genres         : Array.isArray(payload.genres) AND
+                      1 <= genres.length <= 6.               (Req 2.1/2.5)
+     social_link    : typeof payload.social_link === 'string' AND
+                      trim().length >= 1.                    (Req 2.1/2.3)
+     terms          : payload.termsAccepted === true (STRICT boolean).
+                                                             (Req 2.1/2.4)
+   The Reference_Clip is OPTIONAL: its presence/absence NEVER affects the
+   result (Req 2.2). Null/undefined/non-object payload → ok:false with
+   ALL FOUR keys missing (Req 1.4). (Validates Req 1.4, 2.1-2.6 — Property 1.) */
+function ssValidateCuratorApplication(payload) {
+  var missing = [];
+  var p = (payload && typeof payload === 'object') ? payload : null;
+
+  // applicant_info: object with a non-empty trimmed name OR username identity.
+  var applicant = (p && p.applicant && typeof p.applicant === 'object') ? p.applicant : null;
+  var nameOk = !!applicant && typeof applicant.name === 'string' && applicant.name.trim().length >= 1;
+  var userOk = !!applicant && typeof applicant.username === 'string' && applicant.username.trim().length >= 1;
+  if (!(nameOk || userOk)) missing.push('applicant_info');
+
+  // genres: an array of length 1..6.
+  var genresOk = !!p && Array.isArray(p.genres) && p.genres.length >= 1 && p.genres.length <= 6;
+  if (!genresOk) missing.push('genres');
+
+  // social_link: a string that is non-empty after trimming.
+  var linkOk = !!p && typeof p.social_link === 'string' && p.social_link.trim().length >= 1;
+  if (!linkOk) missing.push('social_link');
+
+  // terms: strict boolean true (truthy non-true like 1 / 'true' is rejected).
+  if (!p || p.termsAccepted !== true) missing.push('terms');
+
+  return { ok: missing.length === 0, missing: missing };
+}
+
+/* Req 8 (State_Machine) — decide the allowed Application_Status
+   transitions. Returns the strict boolean `true` for EXACTLY the two
+   permitted transitions, `false` for everything else:
+     ('pending','approved') -> true                          (Req 8.2)
+     ('pending','rejected') -> true                          (Req 8.2)
+   Every other pair is false — terminal origins 'approved'/'rejected'
+   (Req 8.3/8.4), self-loops incl. 'pending'->'pending', unknown states,
+   and null/undefined/non-string inputs (Req 8.5). Total over all inputs;
+   never throws (Req 8.6). (Validates Req 8.2-8.6 — Property 2.) */
+function ssCuratorAppTransition(from, to) {
+  return from === 'pending' && (to === 'approved' || to === 'rejected');
+}
+
+/* Req 15 (Badge_Resolver) — map { role, verified } to EXACTLY ONE badge
+   value from { 'none', 'curator', 'verified' }:
+     verified === true              -> 'verified' (overrides curator, Req 15.2)
+     else role === 'curator'        -> 'curator'                  (Req 15.1)
+     else                           -> 'none'                     (Req 15.3)
+   A strictly-true `verified` is required — truthy non-true (1, 'true')
+   does NOT resolve to 'verified'. Null/undefined/non-object/garbage input
+   → 'none'. PURE, deterministic, DOM/network-free, never throws.
+   (Validates Req 15.1-15.5 — Property 3.) */
+function ssResolveBadge(account) {
+  var a = (account && typeof account === 'object') ? account : null;
+  if (a && a.verified === true) return 'verified';
+  if (a && a.role === 'curator') return 'curator';
+  return 'none';
+}
+
+/* Req 13 (Admin_Authorizer) — decide whether an actor is authorized to
+   perform a privileged action, from the actor's `is_admin` flag. Returns
+   the strict boolean `true` IFF actor.is_admin === true (STRICT boolean);
+   `false` for every other value — absent, null, 'true', 1, or any
+   non-strict-true value (Req 13.6) — and for a null/undefined/non-object
+   actor (Req 13.2). PURE, deterministic, never throws. This decides UI/UX
+   only; the database ss_is_admin() gate is the real security boundary.
+   (Validates Req 13.2, 13.5, 13.6 — Property 4.) */
+function ssIsAdminActor(actor) {
+  return !!actor && typeof actor === 'object' && actor.is_admin === true;
+}
+
+if (typeof window !== 'undefined') {
+  window.ssValidateCuratorApplication = ssValidateCuratorApplication;
+  window.ssCuratorAppTransition = ssCuratorAppTransition;
+  window.ssResolveBadge = ssResolveBadge;
+  window.ssIsAdminActor = ssIsAdminActor;
+}
+
+/* Presentational badge chip (window-only, NOT pure/exported) — the ONE
+   cross-surface renderer for the two-badge trust signal, driven by the pure
+   ssResolveBadge. Given a curator account { role, verified } it returns:
+     'verified' → a small brand-red flame chip (the higher trust tier)
+     'curator'  → '' on dense surfaces by default (the profile hero shows the
+                  explicit CURATOR pill instead — keeps feed/cards uncluttered)
+     'none'     → ''
+   Renders ONLY the resolved badge — never a count (hide-the-scoreboard, Req 16.4).
+   Inline-styled so it drops into any curator-name row without new CSS. */
+function ssVerifiedBadgeHTML(account) {
+  var badge = (typeof ssResolveBadge === 'function') ? ssResolveBadge(account) : 'none';
+  if (badge !== 'verified') return '';
+  return '<span class="ss-vbadge" aria-label="Verified curator" title="Verified curator"' +
+    ' style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;' +
+    'border-radius:50%;background:var(--red,#EA3B32);font-size:8px;line-height:1;vertical-align:middle;' +
+    'margin-left:4px;flex-shrink:0;box-shadow:0 0 8px rgba(234,59,50,0.5)">\uD83D\uDD25</span>';
+}
+if (typeof window !== 'undefined') { window.ssVerifiedBadgeHTML = ssVerifiedBadgeHTML; }
+
 /* ── MY CLIPS (owner profile) ───────────────────────────────────
    Loads the SIGNED-IN user's OWN clips straight from the DB, scoped to
    creator_id = me. Unlike ssLoadClips (feed = live only), this includes
@@ -3528,7 +3662,7 @@ async function ssLoadMyClips(){
   if(!me || !me.id) return [];
   try{
     var res = await window.ssDB.from("content")
-      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, created_at, creator:creator_id(username,name,avatar_url), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
+      .select("id, description, fires_count, views_count, meta, status, mux_playback_id, url, thumbnail_url, duration_sec, created_at, creator:creator_id(username,name,avatar_url,verified), title:title_id(name,year,synopsis,providers,cached_at), platform:platform_id(id,name,color,abbr)")
       .eq("creator_id", me.id)
       .in("status", ["processing","live"])
       .is("deleted_at", null)
@@ -3554,7 +3688,7 @@ async function ssLoadMyClips(){
         providers: t.providers || {},
         cachedAt: t.cached_at || null,
         curatorPlat: (p && p.name) ? { platform_id: p.id||null, name: p.name, color: p.color, abbr: p.abbr } : null,
-        creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null }
+        creator: { name: uname, letter: uname.charAt(0).toUpperCase(), bg: "#EA3B32", avatar: cr.avatar_url||null, verified: !!cr.verified }
       };
     });
   }catch(e){ return []; }
@@ -5093,7 +5227,7 @@ function _inlineClipHTML(c, i) {
       <div class="clip-bottom">
         <div class="creator-row">
           <div class="creator-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${_ssAvatarInner(c.creator)}</div>
-          <span class="creator-name" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
+          <span class="creator-name" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>${ssVerifiedBadgeHTML(c.creator)}
           <span class="creator-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
         <div class="tag-row">${tags}</div>
@@ -6703,7 +6837,7 @@ function _ssvClipHTML(c, i, mode) {
       <div class="ssv-bottom">
         <div class="ssv-creator-row">
           <div class="ssv-avatar" style="background:${c.creator.bg}" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">${_ssAvatarInner(c.creator)}</div>
-          <span class="ssv-handle" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>
+          <span class="ssv-handle" data-curator="${c.creator.name}" data-curator-name="${c.creator.name}" data-curator-letter="${c.creator.letter}" data-curator-bg="${c.creator.bg}">@${c.creator.name}</span>${ssVerifiedBadgeHTML(c.creator)}
           <span class="ssv-follow" data-follow="${c.creator.name}" data-follow-plus data-follow-name="${c.creator.name}" data-follow-letter="${c.creator.letter}" data-follow-bg="${c.creator.bg}">+ Follow</span>
         </div>
         <div class="ssv-tags">${tags}</div>
@@ -10328,6 +10462,192 @@ async function ssCurrentPolicyVersions(opts) {
   } catch (e) { return fail; }
 }
 
+/* ── curator-application-approval Phase 1 — impure client RPC wrappers ─────────
+   Window-only (NOT in module.exports). Like ssSubmitTakedown / ssRecordAttestation
+   they drive UI/UX only — the database (the ss_submit_curator_application
+   SECURITY DEFINER RPC + own-row RLS on curator_application, migration 0034) is
+   the security boundary and re-validates every write. Both guard window.ssDB /
+   window.ssCurrentUser, fail soft, and NEVER throw. Inert pre-migration: the RPC
+   is absent, so submit fails soft and the profile degrades to the legacy CTA. */
+
+/* Submit a curator application. Gates FIRST with the pure
+   ssValidateCuratorApplication (UX only — the RPC re-validates server-side); if
+   not well-formed, returns { ok:false, missing } WITHOUT any network call. When
+   an optional Reference_Clip File is supplied (payload.referenceClipFile), it is
+   uploaded to the PRIVATE `review-clips` bucket under the caller's OWN uid prefix
+   (review-only — never a content row, never a Mux id, Req 3); an upload failure
+   never blocks the application. Then calls the ss_submit_curator_application RPC
+   with the validated fields (the File handle is stripped). Returns
+   { ok:true, application_id, status } on success, { ok:false, missing } when the
+   payload is not well-formed, or { ok:false, error } on any other failure.
+   Never throws. Leaves users.role UNCHANGED (Req 1.5) — no promotion here. */
+async function ssSubmitCuratorApplication(payload) {
+  // Client-side well-formedness gate (no network call when it fails) — Req 1.4.
+  var gate = (typeof ssValidateCuratorApplication === 'function')
+    ? ssValidateCuratorApplication(payload)
+    : { ok: false, missing: [] };
+  if (!gate.ok) return { ok: false, missing: gate.missing || [] };
+
+  var fail = { ok: false, error: 'application could not be submitted' };
+  if (!window.ssDB || !window.ssCurrentUser) return fail;
+  try {
+    var me = window.ssCurrentUser();
+    if (!me || !me.id) return fail;
+
+    // Build the RPC payload from the validated fields only (drop any File handle).
+    var rpcPayload = {
+      applicant: payload.applicant,
+      curator_info: payload.curator_info || {},
+      genres: payload.genres,
+      social_link: payload.social_link,
+      termsAccepted: payload.termsAccepted,
+      terms_version: payload.terms_version
+    };
+
+    // Optional REVIEW-ONLY reference clip → PRIVATE review-clips bucket (Req 3).
+    // Object name is `<uid>/<unique>.<ext>` (bucket-relative); the own-uid prefix
+    // satisfies the Storage INSERT policy. Upload failure must NOT block submit.
+    var file = payload.referenceClipFile;
+    if (file && window.ssDB.storage) {
+      try {
+        var ext = 'mp4';
+        if (file.name && file.name.indexOf('.') !== -1) {
+          ext = (file.name.split('.').pop() || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'mp4';
+        } else if (file.type && file.type.indexOf('/') !== -1) {
+          ext = (file.type.split('/')[1] || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'mp4';
+        }
+        var objPath = me.id + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 10) + '.' + ext;
+        var up = await window.ssDB.storage.from('review-clips').upload(objPath, file, {
+          upsert: false, contentType: file.type || 'video/mp4'
+        });
+        if (!up.error) { rpcPayload.reference_clip_path = objPath; }
+        else { console.warn('SS review-clip upload:', up.error.message); }
+      } catch (e) { /* review clip is optional — never block the application */ }
+    }
+
+    var res = await window.ssDB.rpc('ss_submit_curator_application', { payload: rpcPayload });
+    var data = res && res.data;
+    if (res && res.error) { console.warn('SS ss_submit_curator_application:', res.error.message); return fail; }
+    if (data && data.application_id) {
+      return { ok: true, application_id: data.application_id, status: data.status || 'pending' };
+    }
+    return fail;
+  } catch (e) { return fail; }
+}
+
+/* Read the caller's MOST RECENT curator application (own-row RLS). Returns the
+   row { id, status, created_at } or null when the caller is unauthenticated, has
+   no application, or the table/API is unavailable (pre-migration). Never throws.
+   "Most recent" = order by created_at desc limit 1 for this applicant (Req 6.4). */
+async function ssMyLatestApplication() {
+  if (!window.ssDB || !window.ssCurrentUser) return null;
+  try {
+    var me = window.ssCurrentUser();
+    if (!me || !me.id) return null;
+    var res = await window.ssDB
+      .from('curator_application')
+      .select('id,status,created_at')
+      .eq('applicant_id', me.id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (res.error || !res.data || !res.data.length) return null;
+    return res.data[0];
+  } catch (e) { return null; }
+}
+
+/* ── curator-application-approval Phase 2 — impure ADMIN client wrappers ───────
+   Window-only (NOT in module.exports). The admin console (showshak-admin.html)
+   is gated to is_admin, but these NEVER trust the client: every mutation runs
+   through a SECURITY DEFINER RPC gated by ss_is_admin() (migration 0035), and
+   every read is limited by RLS (admins read all curator_application rows; the
+   audit log + review clip are admin-only). All guard window.ssDB, fail soft
+   (return [] / null / { ok:false }), and NEVER throw. Inert pre-migration. */
+
+/* List curator applications by status for the console (admin RLS returns all
+   rows; a non-admin would see only their own). status omitted → all rows.
+   Returns an array (newest first) or [] on any failure. */
+async function ssAdminListApplications(status) {
+  if (!window.ssDB) return [];
+  try {
+    var q = window.ssDB.from('curator_application')
+      .select('id,applicant_id,status,applicant_info,curator_info,genres,social_link,reference_clip_path,terms_version,created_at')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (status) q = q.eq('status', status);
+    var res = await q;
+    if (res.error || !res.data) return [];
+    return res.data;
+  } catch (e) { return []; }
+}
+
+/* List curators (role='curator') for the console's Make-Verified list. Returns
+   an array of { id, username, name, avatar_url, verified } or [] on failure. */
+async function ssAdminListCurators() {
+  if (!window.ssDB) return [];
+  try {
+    var res = await window.ssDB.from('users')
+      .select('id,username,name,avatar_url,verified,role')
+      .eq('role', 'curator')
+      .is('deleted_at', null)
+      .order('username', { ascending: true });
+    if (res.error || !res.data) return [];
+    return res.data;
+  } catch (e) { return []; }
+}
+
+/* Mint a short-lived SIGNED URL for a review-only reference clip, given its
+   Storage object path (review-clips/<uid>/<file>). The admin-read Storage policy
+   (reviewclip_admin_read USING ss_is_admin(), migration 0034) is the security
+   boundary — a non-admin JWT cannot sign the object. Returns the URL or null.
+   Never throws. */
+async function ssAdminReferenceClipUrl(path) {
+  if (!window.ssDB || !window.ssDB.storage || !path) return null;
+  try {
+    var res = await window.ssDB.storage.from('review-clips').createSignedUrl(path, 120);
+    if (res.error || !res.data) return null;
+    return res.data.signedUrl || res.data.signedURL || null;
+  } catch (e) { return null; }
+}
+
+/* Approve a pending application → applicant becomes a curator. Runs through the
+   admin-only ss_approve_application RPC (role flip + status + audit, one txn).
+   Returns the RPC result { ok, ... } or { ok:false } on failure. Never throws. */
+async function ssApproveApplication(appId) {
+  var fail = { ok: false };
+  if (!window.ssDB) return fail;
+  try {
+    var res = await window.ssDB.rpc('ss_approve_application', { app_id: appId });
+    if (res.error) { console.warn('SS ss_approve_application:', res.error.message); return fail; }
+    return res.data || fail;
+  } catch (e) { return fail; }
+}
+
+/* Reject a pending application (status only; role unchanged). Runs through the
+   admin-only ss_reject_application RPC. Returns { ok, ... } or { ok:false }. */
+async function ssRejectApplication(appId) {
+  var fail = { ok: false };
+  if (!window.ssDB) return fail;
+  try {
+    var res = await window.ssDB.rpc('ss_reject_application', { app_id: appId });
+    if (res.error) { console.warn('SS ss_reject_application:', res.error.message); return fail; }
+    return res.data || fail;
+  } catch (e) { return fail; }
+}
+
+/* Set a curator's verified flag (true/false). Runs through the admin-only
+   ss_set_curator_verified RPC (only affects an account with role='curator').
+   Returns { ok, verified } or { ok:false }. Never throws. */
+async function ssSetCuratorVerified(userId, on) {
+  var fail = { ok: false };
+  if (!window.ssDB) return fail;
+  try {
+    var res = await window.ssDB.rpc('ss_set_curator_verified', { user_id: userId, p_verified: !!on });
+    if (res.error) { console.warn('SS ss_set_curator_verified:', res.error.message); return fail; }
+    return res.data || fail;
+  } catch (e) { return fail; }
+}
+
 if (typeof window !== 'undefined') {
   window.ssRecordAttestation = ssRecordAttestation;
   window.ssSubmitTakedown    = ssSubmitTakedown;
@@ -10336,6 +10656,16 @@ if (typeof window !== 'undefined') {
   window.ssRecordConsent        = ssRecordConsent;
   window.ssRecordCuratorTerms   = ssRecordCuratorTerms;
   window.ssCurrentPolicyVersions = ssCurrentPolicyVersions;
+  // curator-application-approval Phase 1 wrappers — window-only (NOT in module.exports).
+  window.ssSubmitCuratorApplication = ssSubmitCuratorApplication;
+  window.ssMyLatestApplication      = ssMyLatestApplication;
+  // curator-application-approval Phase 2 admin wrappers — window-only (NOT in module.exports).
+  window.ssAdminListApplications  = ssAdminListApplications;
+  window.ssAdminListCurators      = ssAdminListCurators;
+  window.ssAdminReferenceClipUrl  = ssAdminReferenceClipUrl;
+  window.ssApproveApplication     = ssApproveApplication;
+  window.ssRejectApplication      = ssRejectApplication;
+  window.ssSetCuratorVerified     = ssSetCuratorVerified;
 }
 
 /* Expose consistently with the other ss* helpers (window in the browser),
@@ -10464,6 +10794,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // Curator Role Persistence — pure onboarding patch builder
   module.exports.ssBuildOnboardingPatch = ssBuildOnboardingPatch;
+  // Curator Application & Approval — four pure decision helpers (Properties 1-4)
+  module.exports.ssValidateCuratorApplication = ssValidateCuratorApplication;
+  module.exports.ssCuratorAppTransition = ssCuratorAppTransition;
+  module.exports.ssResolveBadge = ssResolveBadge;
+  module.exports.ssIsAdminActor = ssIsAdminActor;
   // Creator Analytics — Event_Recorder pure helpers
   module.exports.ssIsRecordableClipId = ssIsRecordableClipId;
   module.exports.ssResolveEventUserId = ssResolveEventUserId;

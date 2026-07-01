@@ -450,10 +450,19 @@ REVENUE MODEL — the founder's seeding idea, corrected (good instinct, fix thes
   - FIRST PAYING CUSTOMERS = regional OTT + film launches (60+ regional services +
     constant film slate need discovery most, least marketing muscle) — NOT Netflix first.
 
-PITCH DECK (showshak-pitch-deck.html — built this session; LIVE/public):
-  - 15 slides, on-brand HTML, ↑↓/space nav. Cover A = current splash; Cover B
-    (recommended) tagline "Discover · Trust · Watch It" (drops the generic "Swipe",
-    adds TRUST = the one word no rival can say, upgrades to branded "Watch It").
+PITCH DECK (showshak-pitch-deck.html — REBUILT; LIVE/public):
+  - ONE cover, 13 slides, on-brand HTML, ↑↓/space nav; one idea per slide. Tagline
+    "Discover · Trust · Watch It" (TRUST = the one word no rival can say). Rebuilt from
+    research on legendary first-raise decks (Airbnb/Sequoia) + how VCs screen pre-seed/seed
+    in 2026 (DocSend 2.5-min rule; 9-dimension IC scorecard; never put risks in the deck).
+  - India-anchored PROBLEM stats (16-min discovery pain, 69% frustrated, 148M paying subs —
+    verified LiveMint/Accenture/FICCI-EY). MARKET in ₹ for India (₹6,000-10,000cr TAM →
+    ₹2,000-4,000cr SAM → ₹200-400cr SOM ≈ 10%) with $ secondary; global $50B in $. The $89
+    CAC is labelled a US benchmark (India lower).
+  - EXPORTS: @media print CSS → clean landscape PDF; a native editable PPTX generator
+    (pitch/build-deck-pptx.js via pptxgenjs, dark gradient bg + logo baked in) →
+    ShowShak-Pitch-Deck.pptx (13 slides). COLLATERAL (pitch/): investor talk-track
+    (slide-by-slide + "what the investor is thinking" + 10 hard-Q&A), cold-email, curator-outreach.
   - DECK VOICE RULES (from research on Airbnb/Sequoia + how VCs read decks, avg
     ~2.5 min/first-pass; one-sentence-forward test): SHOW DON'T TELL. Assert what we
     ARE and why we WIN — never narrate our internal journey, never use "isn't/unlike/
@@ -469,8 +478,11 @@ PITCH DECK (showshak-pitch-deck.html — built this session; LIVE/public):
     ShowShak's customer IS a performance marketer; the founder has been that buyer.
     Solo + AI-built = capital efficiency (a strength in 2026), not a gap. Add a real
     ad-spend/ROAS number + 1-2 advisors when available to harden it.
-  - Stage framing: pre-seed; the ask is "bet we can get 15 curators + ~1000 users
-    returning + first Watch-It conversion data," not "bet on the revenue model today".
+  - THE ASK (in the deck): raising ₹1 crore pre-seed, de-risked to a proof milestone —
+    50-100 curators posting weekly + 2,000-3,000 returning + first Watch-It conversion data
+    → first OTT deal CONVERSATIONS (never signed-deal promises). Not "bet on the revenue model
+    today." ⚠ still to fill before any send: the real ROAS number (team slide), a live contact
+    email, and the app link (the [₹__]/[link] placeholders in the deck + talk-track + cold-email).
   - BEFORE any investor send: get the neutrality/data language + India legal posture
     a counsel read (same discipline as legal/*.md).
 
@@ -478,7 +490,7 @@ PITCH DECK (showshak-pitch-deck.html — built this session; LIVE/public):
 ═══════════════════════════════════════════════════════════════
   STATUS UPDATE (current — keep in sync with COFOUNDER-HANDOFF.txt)
 ═══════════════════════════════════════════════════════════════
-  As of CACHE_VERSION v59 (COFOUNDER-HANDOFF.txt is the authoritative live state):
+  As of CACHE_VERSION v66 (COFOUNDER-HANDOFF.txt is the authoritative live state):
 
   - THE DATA/NEUTRALITY MONETIZATION THESIS above is now reflected in the PRODUCT'S
     LEGAL DOCS. The Privacy Policy carries an explicit "Aggregated & De-Identified

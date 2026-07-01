@@ -155,8 +155,18 @@ Closest references for mental model:
       were expanded to in-depth drafts and seeded into policy_versions (version
       1.1-draft, counsel review + placeholders still pending); the normal-user profile
       leads with Following (History = coming soon); and Discover gained a By-Genre
-      filter. An investor PITCH DECK is live (showshak-pitch-deck.html). The remaining
-      gate is the beta-compliance finish line (deploy submit-takedown, fill legal
+      filter. LATEST (CACHE_VERSION v66): the investor PITCH DECK was fully rebuilt
+      (research-backed, one-idea-per-slide, 13 slides, India stats, ₹ market sizing, a
+      de-risked ₹1 crore ask) with a landscape PDF + a native editable PPTX, plus a pitch/
+      go-to-market collateral folder (investor talk-track, cold-email, curator-outreach); the
+      splash tagline is now "Discover · Trust · Watch It" (Trust in brand red) app-wide;
+      Support is wired (Help/FAQ + Send Feedback + Report a Problem → a feedback table, migration
+      0033_feedback pending founder-apply); Settings is honest for beta (India-only region,
+      English-only language, Notifications "coming soon"); and profile/settings are wired to the
+      REAL persisted role (the dev "Preview as" face switcher + "Curator mode" toggle removed). A
+      new spec — curator-application-approval (manual curator review + admin console +
+      Curator/Verified badges) — is written and is THE NEXT BUILD. The remaining gate is the
+      beta-compliance finish line (apply 0033_feedback, deploy submit-takedown, fill legal
       placeholders + decide the entity + IP-lawyer review) plus cold-start proof. See
       COFOUNDER-HANDOFF.txt for the authoritative live detail.
   ────────────────────────────────────────────────────────────────
