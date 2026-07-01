@@ -226,6 +226,7 @@ function settingsBack() {
 const TITLES = {
   home:'Settings', account:'Account', platforms:'My Platforms', region:'Region & Language',
   notif:'Notifications', privacy:'Privacy', playback:'Playback', support:'Support & About',
+  faq:'Help Center', feedback:'Send Feedback', problem:'Report a Problem',
   cprofile:'Creator Profile', chandle:'Curator Handle', ctools:'Creator Tools', payouts:'Payouts', canalytics:'Analytics',
 };
 
@@ -306,17 +307,17 @@ function platformsScreen() {
 }
 
 function regionScreen() {
-  const regions = ['India','United States','United Kingdom','Canada','Australia','UAE'];
-  const langs = ['English','Hindi','Tamil','Telugu','Spanish','Korean'];
   return `
     <div class="sec-label">Region <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:500">— controls where Watch It links go</span></div>
     <div class="group">
-      ${regions.map(r=>`<div class="row" onclick="setRegion('${r}')"><div class="choice ${REGION.region===r?'on':''}"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">${r}</div></div></div>`).join('')}
+      <div class="row static"><div class="choice on"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">India</div><div class="row-sub">Watch It links are tuned for Indian streaming services</div></div></div>
     </div>
+    <div class="set-foot-note" style="text-align:left;margin:14px 4px 0">ShowShak is India-only for now — <strong style="color:var(--white)">more regions coming soon.</strong></div>
     <div class="sec-label">App language</div>
     <div class="group">
-      ${langs.map(l=>`<div class="row" onclick="setLang('${l}')"><div class="choice ${REGION.lang===l?'on':''}"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">${l}</div></div></div>`).join('')}
+      <div class="row static"><div class="choice on"><div class="choice-dot"></div></div><div class="row-main"><div class="row-title">English</div></div></div>
     </div>
+    <div class="set-foot-note" style="text-align:left;margin:14px 4px 0"><strong style="color:var(--white)">More languages coming soon.</strong></div>
   `;
 }
 
@@ -326,23 +327,13 @@ function togRow(key, title, sub) {
 
 function notifScreen() {
   return `
-    <div class="sec-label">From curators you follow</div>
     <div class="group">
-      ${togRow('notif_follow','New clips','When a curator you follow posts')}
-      ${togRow('notif_stack','New shared stacks','When someone you follow shares a collection')}
-    </div>
-    <div class="creator-only">
-      <div class="sec-label">Your clips</div>
-      <div class="group">
-        ${togRow('notif_fire_digest','Fire summary','A weekly digest — never a ping per fire')}
-        ${togRow('notif_milestone','Milestones','When a clip hits a big moment')}
+      <div class="row static" style="flex-direction:column;align-items:center;text-align:center;padding:34px 20px;gap:10px">
+        <div style="font-size:30px">🔔</div>
+        <div class="row-title" style="font-size:16px">Coming soon</div>
+        <div class="row-sub" style="max-width:340px">Notifications aren\u2019t live yet. When they arrive they\u2019ll be calm and useful \u2014 a heads-up when a curator you follow posts, and a weekly fire summary. Never a ping for every fire.</div>
       </div>
     </div>
-    <div class="sec-label">From ShowShak</div>
-    <div class="group">
-      ${togRow('notif_product','Product &amp; announcements','Occasional news about new features')}
-    </div>
-    <div class="set-foot-note" style="text-align:left;margin:14px 4px 0">We keep fire notifications as a calm weekly digest on purpose — discovery should feel good, not like chasing numbers.</div>
   `;
 }
 
@@ -375,9 +366,9 @@ function playbackScreen() {
 function supportScreen() {
   return `
     <div class="group">
-      <div class="row" onclick="ssToast('Help center')"><div class="row-main"><div class="row-title">Help center / FAQ</div></div>${ARROW}</div>
-      <div class="row" onclick="ssToast('Send feedback')"><div class="row-main"><div class="row-title">Send feedback</div></div>${ARROW}</div>
-      <div class="row" onclick="ssToast('Report a problem')"><div class="row-main"><div class="row-title">Report a problem</div></div>${ARROW}</div>
+      <div class="row" onclick="go('faq')"><div class="row-main"><div class="row-title">Help center / FAQ</div></div>${ARROW}</div>
+      <div class="row" onclick="go('feedback')"><div class="row-main"><div class="row-title">Send feedback</div></div>${ARROW}</div>
+      <div class="row" onclick="go('problem')"><div class="row-main"><div class="row-title">Report a problem</div></div>${ARROW}</div>
     </div>
     <div class="sec-label">Legal</div>
     <div class="group">
@@ -444,9 +435,114 @@ function payoutsScreen() {
     </div>
   `;
 }
+/* ── Support: Help Center / Feedback / Report a Problem (wired) ── */
+function faqScreen() {
+  const QA = [
+    ['What is ShowShak?', 'A trust-based discovery layer for what to watch. Curators post short clips recommending a show or movie; you follow the people whose taste you trust and tap <strong style="color:#fff">Watch It</strong> to jump straight to the streaming platform. We\u2019re not a streaming service and not a social network \u2014 we\u2019re the bridge to everything you watch.'],
+    ['What is Fire (\uD83D\uDD25)?', 'Fire is our version of a like \u2014 it means \u201cthis is lit.\u201d Double-tap a clip, or tap the flame, to fire it.'],
+    ['What is Watch It?', 'The one button that matters. Tap Watch It and we send you to the right streaming app for that title in your region. It\u2019s private \u2014 your Watch It taps are never shown publicly.'],
+    ['Is ShowShak free?', 'Yes. ShowShak is free to use during our open beta in India.'],
+    ['Who can use it?', 'The beta is for adults (18+) in India. You can browse as a guest; a few features ask you to sign in.'],
+    ['How do I become a curator?', 'Open your profile and choose <strong style="color:#fff">Become a Curator</strong>. You\u2019ll accept the one-time Curator Terms, then you can post clips. We treat curators as tastemakers, not view-chasers.'],
+    ['How do you handle copyright?', 'ShowShak is a neutral host. Curators are responsible for the clips they post, and we act on valid copyright complaints quickly. To report a copyright concern, use <strong style="color:#fff">DMCA / report content</strong> under Legal.'],
+    ['How is my data used?', 'We use your taste and activity to build your feed, and we keep your Watch It activity private. Full detail is in our Privacy Policy (under Legal).'],
+    ['How do I delete my account?', 'Settings \u2192 Account \u2192 Delete account. Your data is kept for 30 days so you can restore it, then removed.'],
+  ];
+  const item = ([q, a]) => `<details class="faq-item" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;padding:0 14px">
+      <summary style="list-style:none;cursor:pointer;padding:14px 0;font-size:14.5px;font-weight:600;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px">${q}<span class="faq-plus" style="color:var(--red);font-size:20px;font-weight:300;line-height:1">+</span></summary>
+      <div style="font-size:13.5px;color:var(--gray);line-height:1.55;padding:0 0 16px">${a}</div>
+    </details>`;
+  return `
+    <style>
+      details.faq-item summary::-webkit-details-marker{display:none}
+      details.faq-item summary .faq-plus{transition:transform .18s ease}
+      details.faq-item[open] summary .faq-plus{transform:rotate(45deg)}
+    </style>
+    <div class="set-foot-note" style="text-align:left;margin:0 4px 14px">Quick answers about how ShowShak works. Still stuck? Use <strong style="color:var(--white)">Send feedback</strong> or <strong style="color:var(--white)">Report a problem</strong> below.</div>
+    ${QA.map(item).join('')}
+  `;
+}
+
+function feedbackScreen() { return supportFormScreen('feedback'); }
+function problemScreen()  { return supportFormScreen('problem'); }
+
+function supportFormScreen(kind) {
+  const isProblem = kind === 'problem';
+  const max = (typeof SS_FEEDBACK_MAX !== 'undefined') ? SS_FEEDBACK_MAX : 2000;
+  const intro = isProblem
+    ? 'Something broken or not working right? Tell us what happened and we\u2019ll dig in \u2014 a few technical details are attached automatically to help us debug.'
+    : 'Love something? Missing something? We read every note \u2014 it shapes what we build next.';
+  const ph  = isProblem ? 'What went wrong, and what were you doing when it happened?' : 'Share an idea, praise, or anything on your mind\u2026';
+  const btn = isProblem ? 'Send report' : 'Send feedback';
+  return `
+    <div class="set-foot-note" style="text-align:left;margin:0 4px 14px">${intro}</div>
+    <div class="group">
+      <div class="row static"><div class="row-main" style="width:100%">
+        <textarea id="fb-text" maxlength="${max}" rows="5" oninput="onFeedbackInput()" placeholder="${ph}"
+          style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;color:#fff;font-size:14px;font-family:var(--font-body);resize:vertical;min-height:120px"></textarea>
+        <div style="color:var(--gray);font-size:13px;margin-top:12px">Email (optional \u2014 so we can reply)</div>
+        <input id="fb-email" type="email" autocomplete="email" placeholder="you@example.com"
+          style="width:100%;box-sizing:border-box;margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:#fff;font-size:14px;font-family:var(--font-body)">
+        <div id="fb-msg" class="row-sub" style="margin-top:9px;min-height:16px"></div>
+      </div></div>
+    </div>
+    <button id="fb-send" onclick="submitFeedbackForm('${kind}')" disabled
+      style="width:100%;margin-top:16px;padding:14px;border-radius:100px;border:none;background:var(--red);color:#fff;font-family:var(--font-body);font-size:15px;font-weight:700;cursor:pointer;opacity:0.5;transition:opacity 0.15s">${btn}</button>
+    <div class="set-foot-note" style="text-align:left;margin:14px 4px 0">We may use your feedback to improve ShowShak. Please don\u2019t include sensitive personal information.</div>
+  `;
+}
+
+function onFeedbackInput() {
+  const t = document.getElementById('fb-text');
+  const btn = document.getElementById('fb-send');
+  if (!t || !btn) return;
+  const ok = t.value.trim().length > 0;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+}
+
+async function submitFeedbackForm(kind) {
+  const t = document.getElementById('fb-text');
+  const e = document.getElementById('fb-email');
+  const btn = document.getElementById('fb-send');
+  const msg = document.getElementById('fb-msg');
+  if (!t || !t.value.trim()) return;
+
+  const meta = { page: 'settings' };
+  if (kind === 'problem') {
+    try {
+      meta.ua = (navigator && navigator.userAgent) || '';
+      meta.url = (location && location.href) || '';
+      meta.viewport = (window.innerWidth || 0) + 'x' + (window.innerHeight || 0);
+      meta.standalone = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (x) {}
+  }
+
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Sending\u2026'; }
+  let res = { ok: false, reason: 'error' };
+  try {
+    res = (typeof ssSubmitFeedback === 'function')
+      ? await ssSubmitFeedback(kind, t.value, { email: e ? e.value : '', meta: meta })
+      : { ok: false, reason: 'offline' };
+  } catch (x) {}
+
+  if (res && res.ok) {
+    if (typeof ssToast === 'function') ssToast(kind === 'problem' ? 'Thanks \u2014 report sent' : 'Thanks \u2014 feedback sent');
+    settingsBack();
+  } else {
+    const reason = (res && res.reason) || 'error';
+    const human = reason === 'offline' ? 'You appear to be offline \u2014 please try again.'
+                : reason === 'toolong' ? 'That\u2019s a bit long \u2014 please shorten it.'
+                : 'Couldn\u2019t send just now \u2014 please try again.';
+    if (msg) { msg.textContent = human; msg.style.color = 'var(--red)'; }
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = kind === 'problem' ? 'Send report' : 'Send feedback'; }
+  }
+}
+
 const BUILDERS = {
   home:homeScreen, account:accountScreen, platforms:platformsScreen, region:regionScreen,
   notif:notifScreen, privacy:privacyScreen, playback:playbackScreen, support:supportScreen,
+  faq:faqScreen, feedback:feedbackScreen, problem:problemScreen,
   cprofile:cprofileScreen, chandle:chandleScreen, ctools:ctoolsScreen, payouts:payoutsScreen,
 };
 
