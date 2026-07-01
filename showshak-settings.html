@@ -169,8 +169,7 @@ body.is-creator .creator-only { display: block; }
 
 /* Prototype creator state (real app: from auth). Persisted for the session
    only, matching the rest of the app's fresh-start-on-the-live-page choice. */
-let SET_IS_CREATOR = false;
-try { SET_IS_CREATOR = sessionStorage.getItem('ss_is_creator_v1') === '1'; } catch (e) {}
+let SET_IS_CREATOR = false;   // authoritative value comes from the real persisted role (hydrateRealRole)
 document.body.classList.toggle('is-creator', SET_IS_CREATOR);
 
 /* Toggle state store (prototype) */
@@ -259,12 +258,6 @@ function homeScreen() {
     <div class="sec-label">Support</div>
     <div class="group">
       <div class="row" onclick="go('support')">${ic(ICONS.support)}<div class="row-main"><div class="row-title">Support &amp; About</div><div class="row-sub">Help, report content, terms, version</div></div>${ARROW}</div>
-    </div>
-
-    <div class="sec-label">Curator mode <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:500">(prototype)</span></div>
-    <div class="group">
-      <div class="row static">${ic(ICONS.cprofile, SET_IS_CREATOR)}<div class="row-main"><div class="row-title">${SET_IS_CREATOR?'You are a curator':'Preview as a curator'}</div><div class="row-sub">Reveals the creator-only settings block</div></div>
-        <div class="tog ${SET_IS_CREATOR?'on':''}" onclick="toggleCreator(this)"></div></div>
     </div>
 
     <div class="group" style="margin-top:18px">
@@ -648,13 +641,6 @@ function setRegion(r) {
 }
 function setLang(l) { REGION.lang = l; render(); ssToast('Language: ' + l); }
 function setStackPrivacy(v) { stackPriv = v; render(); }
-function toggleCreator(el) {
-  SET_IS_CREATOR = !SET_IS_CREATOR;
-  el.classList.toggle('on', SET_IS_CREATOR);
-  document.body.classList.toggle('is-creator', SET_IS_CREATOR);
-  try { sessionStorage.setItem('ss_is_creator_v1', SET_IS_CREATOR ? '1' : '0'); } catch (e) {}
-  setTimeout(render, 120);
-}
 
 /* ── Curator handle change (live, DB-unique across ALL users) ── */
 let _chTimer = null, _chOk = false;
@@ -800,13 +786,13 @@ async function hydrateRealRole() {
   if (typeof ssResolveMyRole !== 'function') return;
   try {
     const role = await ssResolveMyRole();
-    if (role === 'curator' && !SET_IS_CREATOR) {
-      SET_IS_CREATOR = true;
-      document.body.classList.add('is-creator');
-      try { sessionStorage.setItem('ss_is_creator_v1', '1'); } catch (e) {}
+    const isCur = (role === 'curator');
+    if (isCur !== SET_IS_CREATOR) {
+      SET_IS_CREATOR = isCur;
+      document.body.classList.toggle('is-creator', isCur);   // authoritative: promote AND demote from the real role
       render();
     }
-  } catch (e) { /* keep prototype state on failure */ }
+  } catch (e) { /* leave current state on failure */ }
 }
 </script>
 </body>

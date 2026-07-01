@@ -806,12 +806,6 @@ html, body { overflow: hidden; }
       <div class="hero-grain"></div>
 
       <div class="hero-top">
-        <div class="pv-switch" id="pv-switch">
-          <span class="pv-label">Preview as</span>
-          <button class="pv-opt" data-pv="user" onclick="setFace('user')">User</button>
-          <button class="pv-opt" data-pv="owner" onclick="setFace('owner')">Curator</button>
-          <button class="pv-opt" data-pv="public" onclick="setFace('public')">Public</button>
-        </div>
         <div style="flex:1"></div>
         <div class="hero-icon-btn" id="hero-share-btn" onclick="ssShareProfile(PROFILE.handle)" title="Share profile">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -1141,6 +1135,7 @@ let activeTab = 'primary';
         = 'public' → ANYONE viewing a curator (trust surface, no scoreboard)
    isCreator stays derived so all existing creator-styled code keeps working. */
 let face = 'user';
+let ownPublicPreview = false;   // true ONLY when a curator taps "View as public" on their OWN profile
 const isOwner   = () => face === 'owner';
 const isPublic  = () => face === 'public';
 const isCurator = () => face === 'owner' || face === 'public';
@@ -1462,9 +1457,6 @@ function renderHeader() {
 
   document.getElementById('identity').classList.toggle('is-creator', isCurator());
 
-  // reflect active preview-as button
-  document.querySelectorAll('.pv-opt').forEach(b => b.classList.toggle('on', b.dataset.pv === face));
-
   const actions = document.getElementById('hero-actions');
   const editBtn = `
     <button class="btn btn-ghost" onclick="openEditProfile()">
@@ -1482,9 +1474,14 @@ function renderHeader() {
       Follow
     </button>`;
   const viewPublicBtn = `
-    <button class="btn btn-accent" onclick="setFace('public')">
+    <button class="btn btn-accent" onclick="viewAsPublic()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
       View as public
+    </button>`;
+  const backToProfileBtn = `
+    <button class="btn btn-ghost" onclick="backToOwnProfile()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to your profile
     </button>`;
 
   if (isGuestOwn()) {
@@ -1495,8 +1492,13 @@ function renderHeader() {
         Log in / Sign up
       </button>`;
   } else if (isPublic()) {
-    // A stranger viewing a curator → Follow + Share. No edit, no scoreboard.
-    actions.innerHTML = followBtn + shareBtn;
+    if (ownPublicPreview) {
+      // Curator previewing THEIR OWN public profile → a clear way back.
+      actions.innerHTML = backToProfileBtn + shareBtn;
+    } else {
+      // A stranger viewing a curator → Follow + Share. No edit, no scoreboard.
+      actions.innerHTML = followBtn + shareBtn;
+    }
   } else if (isOwner()) {
     // Curator viewing their own profile → manage + share + preview public.
     actions.innerHTML = editBtn + shareBtn + viewPublicBtn;
@@ -2513,6 +2515,11 @@ function setFace(f) {
 /* Legacy alias — older calls / upload flow may still call toggleMode() */
 function toggleMode() { setFace(isUserOwn() ? 'owner' : 'user'); }
 
+/* Curator previews their own PUBLIC profile (real feature). The way back is the
+   "Back to your profile" button rendered on that own-public preview. */
+function viewAsPublic() { ownPublicPreview = true; setFace('public'); }
+function backToOwnProfile() { ownPublicPreview = false; setFace('owner'); }
+
 function togglePublicFollow(btn) {
   // Build the curator record for the profile currently being viewed. When
   // viewing a real curator (?curator=), carry the RESOLVED real id/username
@@ -2547,10 +2554,10 @@ function goSettings() {
 }
 
 /* ── INIT ── */
-// Deep-links: ?creator=1 (back from upload) → owner view; ?face=public for sharing
+// Deep-link: ?creator=1 (back from upload) → owner view. Faces are otherwise
+// decided purely by the persisted role (own profile) or ?curator= (public view).
 const _params = new URLSearchParams(location.search);
 if (_params.get('creator') === '1') face = 'owner';
-else if (['user','owner','public'].includes(_params.get('face'))) face = _params.get('face');
 
 // Viewing a SPECIFIC curator from search (?curator=<username>) — force the
 // public face for the initial render. The REAL identity, clips, counts, and
@@ -2560,13 +2567,6 @@ if (_params.get('curator')) {
   face = 'public';
 }
 activeTab = defaultTabFor(face);
-
-// When viewing ANOTHER curator (from search), hide the "Preview as" dev
-// switcher — it only makes sense on your own profile.
-if (_params.get('curator')) {
-  const pv = document.getElementById('pv-switch');
-  if (pv) pv.style.display = 'none';
-}
 
 /* ── HYDRATE FROM THE REAL LOGGED-IN USER ───────────────────────
    When you're viewing YOUR OWN profile (not another curator via
@@ -2597,7 +2597,7 @@ function applyCachedOwnProfile() {
   // hydrateMyClipsFromDB revalidate them right after).
   if (typeof c.followers_count === 'number') PROFILE.followers = c.followers_count;
   if (typeof c.clips_count === 'number') _cachedClipsCount = c.clips_count;
-  if (c.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
+  if (c.role === 'curator' && _params.get('creator') !== '1') {
     face = 'owner'; activeTab = defaultTabFor(face);
   }
   return true;
@@ -2643,7 +2643,7 @@ async function hydrateOwnProfile() {
     //   ?face= / ?creator=1 guards are intentional dev/deep-link overrides only.
     //   Owner face is set EXCLUSIVELY inside this role === 'curator' branch, so a
     //   non-curator (or a failed read, caught below) is never promoted (R6.6).
-    if (data.role === 'curator' && !_params.get('face') && _params.get('creator') !== '1') {
+    if (data.role === 'curator' && _params.get('creator') !== '1') {
       face = 'owner';
       activeTab = defaultTabFor(face);
     }
@@ -2931,11 +2931,8 @@ async function boot() {
       PROFILE.perClip       = {};   // content_id → { fires, views, watchIts }
     } else {
       // Logged-out visitor → clean, empty "your space" preview + sign-in CTA
-      // (no Arjun-Mehta demo mock). Hide the dev-only Preview switcher so the
-      // guest sees exactly what a real visitor sees.
+      // (no Arjun-Mehta demo mock).
       applyGuestProfile();
-      const pv = document.getElementById('pv-switch');
-      if (pv) pv.style.display = 'none';
     }
   }
   renderWall();
