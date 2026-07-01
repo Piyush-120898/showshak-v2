@@ -2776,6 +2776,7 @@ function applyCachedOwnProfile() {
   PROFILE.photo  = c.avatar_url || null;
   if (c.bio) PROFILE.bio = c.bio;
   if (Array.isArray(c.genres) && c.genres.length) PROFILE.genres = c.genres;
+  PROFILE.verified = !!c.verified;   // instant-paint verified badge (hydrate revalidates)
   // Instant stats: seed followers + clip count from the prewarm cache so the
   // creds strip paints real numbers on the first frame (fetchOwnFollowers /
   // hydrateMyClipsFromDB revalidate them right after).
@@ -2816,6 +2817,7 @@ async function hydrateOwnProfile() {
     PROFILE.photo  = data.avatar_url || null;
     if (data.bio)            PROFILE.bio    = data.bio;
     if (Array.isArray(data.genres) && data.genres.length) PROFILE.genres = data.genres;
+    PROFILE.verified = !!data.verified;   // BUGFIX: own-profile verified badge (was never set here)
     // ── PERSISTED ROLE IS THE SINGLE SOURCE OF TRUTH FOR THE OWN-PROFILE FACE ──
     //   (curator-role-persistence R6.1/R6.2/R7.1) The own-profile face is decided
     //   ONLY by the persisted users.role read above (WHERE id = auth.uid()):

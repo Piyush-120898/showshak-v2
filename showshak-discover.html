@@ -729,6 +729,44 @@ function rebuildCuratorsFromClips() {
   return Object.values(map);
 }
 
+/* BUGFIX (curator search): the directory used to be built ONLY from loaded
+   clips, so an approved curator with no live clips yet (just-approved, still
+   processing, or beyond the clip page limit) was unfindable. This fetches the
+   REAL curators straight from `users` (role='curator'), so every approved
+   curator is searchable regardless of clips. Fail-soft → []. */
+async function discoverLoadCurators() {
+  if (!window.ssDB) return [];
+  try {
+    const res = await window.ssDB.from('users')
+      .select('username,name,avatar_url,verified,role')
+      .eq('role', 'curator').is('deleted_at', null)
+      .order('username', { ascending: true }).limit(1000);
+    if (res.error || !res.data) return [];
+    return res.data.filter(u => u && u.username).map(u => ({
+      username: u.username, name: u.name || u.username,
+      letter: (u.name || u.username || '?').charAt(0).toUpperCase(),
+      bg: '#EA3B32', avatar: u.avatar_url || null,
+      isCurator: true, verified: !!u.verified,
+      clips: 0, clipCount: 0, totalFires: 0
+    }));
+  } catch (e) { return []; }
+}
+
+/* Merge the real curators table (authoritative membership + verified) with the
+   clip-derived tallies (clip counts + fires for those who've posted). */
+function mergeCuratorDirectory(fromClips, fromDb) {
+  const map = Object.create(null);
+  (fromDb || []).forEach(c => { map[c.username.toLowerCase()] = Object.assign({}, c); });
+  (fromClips || []).forEach(c => {
+    const k = c.username.toLowerCase();
+    if (!map[k]) { map[k] = Object.assign({}, c); return; }
+    map[k].clips = c.clips; map[k].clipCount = c.clipCount; map[k].totalFires = c.totalFires;
+    if (c.avatar && !map[k].avatar) map[k].avatar = c.avatar;
+    if (c.verified) map[k].verified = true;
+  });
+  return Object.values(map);
+}
+
 /* Fire SVG for inline use */
 const FIRE_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#EA3B32"><path d="M12 2C12 2 8 6.5 8 10a4 4 0 0 0 8 0c0-1.5-.8-3-1.5-4C13.8 7.5 14 9 13 10c-.5.5-1 .8-1 .8S10 9.5 10 8c0-2 2-6 2-6z"/><path d="M12 14c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z"/></svg>`;
 const EYE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24"><path fill="#EA3B32" d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7C21.3 8.1 17 5 12 5z"/><circle cx="12" cy="12" r="3.4" fill="#0B0B0F"/><circle cx="12" cy="12" r="1.5" fill="#EA3B32"/></svg>`;
@@ -1337,16 +1375,21 @@ async function _discInit(){
     : ((typeof ssReadPageCache === 'function') ? ssReadPageCache('discover') : null);
   if (_cached && _cached.length) { CLIPS = _cached; CURATORS = rebuildCuratorsFromClips(); }
   _discBuildAll();
-  // 2) Revalidate against the DB; cache + re-render only if the list changed.
-  const _prev = CLIPS;
+  // 2) Revalidate against the DB; rebuild the directory from real data.
   const _real = await discoverLoadRealClips();
+  // Fetch the REAL curators (role='curator') so approved curators are findable
+  // in search even with no live clips yet — not only clip authors.
+  const _dbCurators = (typeof discoverLoadCurators === 'function') ? await discoverLoadCurators() : [];
   if (_real) {
     if (typeof ssWritePageData === 'function') ssWritePageData('discover', CLIPS);
     else if (typeof ssWritePageCache === 'function') ssWritePageCache('discover', CLIPS);
-    if (typeof ssFeedListChanged !== 'function' || ssFeedListChanged(_prev, CLIPS)) {
-      CURATORS = rebuildCuratorsFromClips();
-      _discBuildAll();
-    }
+  }
+  // Rebuild the directory from real clips + the real curators table. Runs when
+  // we have either (clip authors OR the curators list), so a just-approved
+  // zero-clip curator still shows up in search.
+  if (_real || _dbCurators.length) {
+    CURATORS = mergeCuratorDirectory(rebuildCuratorsFromClips(), _dbCurators);
+    _discBuildAll();
   }
   // 3) Refine the Latest rail to true newest-first upload order (fail-soft).
   _discFetchLatestIds();
