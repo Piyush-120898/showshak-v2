@@ -1410,11 +1410,24 @@ function ssOpenCurator(curator) {
     verified: c.verified, clipCount: c.clips,
   })); } catch (e) {}
   const url = 'showshak-profile.html?face=public&curator=' + encodeURIComponent(c.username);
-  // If a full-screen clip viewer is open, tear it down first so we don't
-  // navigate "underneath" it.
+  // If a full-screen clip viewer is open, REMEMBER the clip so pressing BACK
+  // from the curator profile reopens it on the origin page (not the bare page),
+  // then tear the viewer down so we don't navigate underneath it.
   if (typeof ssCloseClip === 'function') {
     const v = document.getElementById('ss-clip-viewer');
-    if (v && v.classList.contains('open')) ssCloseClip();
+    if (v && v.classList.contains('open')) {
+      try {
+        var _cur = (Array.isArray(_ssvClips) && _ssvActiveIdx >= 0) ? _ssvClips[_ssvActiveIdx] : null;
+        if (_cur && _cur.id != null && _ssIsUuid(String(_cur.id))) {
+          sessionStorage.setItem('ss_reopen_clip_v1', JSON.stringify({
+            origin: location.pathname + location.search,
+            clipId: String(_cur.id),
+            ts: Date.now()
+          }));
+        }
+      } catch (e) {}
+      ssCloseClip();
+    }
   }
   if (typeof ssNavigate === 'function') ssNavigate(url);
   else window.location.href = url;
@@ -2091,6 +2104,34 @@ async function ssLoadClipById(id){
   }catch(e){ return null; }
 }
 window.ssLoadClipById = ssLoadClipById;
+
+/* ── Back-to-clip: reopen the clip the user was viewing when they tapped into a
+   curator profile, once they navigate BACK to the origin page. ssOpenCurator
+   stashes { origin, clipId, ts }; on return we reopen that clip in the viewer,
+   one-shot. `pageshow` covers BOTH bfcache restores and fresh loads. Guarded so
+   it only fires on the exact origin page, within 5 min, and never doubles. */
+async function _ssReopenClipOnReturn() {
+  var o;
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    var raw = sessionStorage.getItem('ss_reopen_clip_v1');
+    if (!raw) return;
+    sessionStorage.removeItem('ss_reopen_clip_v1');            // one-shot
+    o = JSON.parse(raw);
+  } catch (e) { return; }
+  if (!o || !o.clipId) return;
+  if (Date.now() - (o.ts || 0) > 5 * 60 * 1000) return;        // stale → ignore
+  if (o.origin !== (location.pathname + location.search)) return;   // origin page only
+  if (typeof ssOpenClip !== 'function' || !document.getElementById('ss-clip-viewer')) return;
+  if (typeof ssLoadClipById !== 'function') return;
+  try {
+    var c = await ssLoadClipById(o.clipId);
+    if (c) ssOpenClip(c, [c]);
+  } catch (e) { /* fail-soft — just land on the page */ }
+}
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('pageshow', function () { _ssReopenClipOnReturn(); });
+}
 
 /* ── Views display helper ────────────────────────────
    The clip "views" trust signal (eye-count), companion to the fire count.

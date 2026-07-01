@@ -204,12 +204,24 @@ async function initAdmin() {
 }
 
 /* ── New / Pending ── */
+let _admPendingApps = [];   // last-fetched pending apps (for reference_clip_path lookup)
 async function renderPending() {
   const host = document.getElementById('adm-pending');
   const apps = (typeof ssAdminListApplications === 'function') ? await ssAdminListApplications('pending') : [];
+  _admPendingApps = apps || [];
   document.getElementById('adm-pending-count').textContent = apps.length;
   if (!apps.length) { host.innerHTML = '<div class="adm-empty">No applications waiting. 🎬</div>'; return; }
   host.innerHTML = apps.map((a) => applicationCard(a, true)).join('');
+}
+
+/* Remove the review-only reference clip once an application is DECIDED — the
+   RPC has already nulled the DB pointer; this deletes the private Storage
+   object (admin DELETE policy, migration 0038). Fail-soft. */
+async function _admDeleteReviewClip(appId) {
+  const app = (_admPendingApps || []).find((a) => a.id === appId);
+  const path = app && app.reference_clip_path;
+  if (!path || !window.ssDB || !window.ssDB.storage) return;
+  try { await window.ssDB.storage.from('review-clips').remove([path]); } catch (e) { /* fail-soft */ }
 }
 
 /* ── Rejected (record, read-only) ── */
@@ -277,6 +289,7 @@ async function doApprove(appId) {
   if (rj) rj.disabled = true;
   const res = (typeof ssApproveApplication === 'function') ? await ssApproveApplication(appId) : { ok: false };
   if (res && res.ok) {
+    await _admDeleteReviewClip(appId);   // clip served its purpose → delete it
     toast('🔥 Approved — they’re a curator now');
     const card = document.getElementById('card-' + appId); if (card) card.remove();
     await Promise.all([renderPending(), renderCurators()]);
@@ -294,6 +307,7 @@ async function doReject(appId) {
   if (ap) ap.disabled = true;
   const res = (typeof ssRejectApplication === 'function') ? await ssRejectApplication(appId) : { ok: false };
   if (res && res.ok) {
+    await _admDeleteReviewClip(appId);   // clip served its purpose → delete it
     toast('Application rejected');
     await Promise.all([renderPending(), renderRejected()]);
   } else {
