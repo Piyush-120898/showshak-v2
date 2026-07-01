@@ -23,7 +23,7 @@
    Bump CACHE_VERSION to force a clean cache rebuild. */
 'use strict';
 
-var CACHE_VERSION = 'v73';
+var CACHE_VERSION = 'v75';
 var CACHE_NAME = 'showshak-' + CACHE_VERSION;
 
 /* ── Persistent video Segment_Cache (feed-clip-load-performance Phase 4, task 22)
@@ -245,7 +245,33 @@ var PRECACHE = [
   'showshak-shared.js',
   'showshak-stack-page.js',
   'manifest.webmanifest',
-  'icon.svg'
+  'icon.svg',
+  // iOS launch images (apple-touch-startup-image). Precaching them means that
+  // whenever the SW is already controlling, the matched splash is served from
+  // Cache_Storage instantly — shrinking the cold-launch white→splash gap on
+  // repeat launches. (On the very first launch iOS may resolve the startup
+  // image via its own launch path before the SW controls, so this is a
+  // best-effort belt-and-braces, not a guarantee.) Each PNG is a tiny solid
+  // #0B0B0F fill (a few hundred bytes → ~20KB), so the whole set is negligible.
+  'splash/splash-640x1136.png',
+  'splash/splash-750x1334.png',
+  'splash/splash-828x1792.png',
+  'splash/splash-1125x2436.png',
+  'splash/splash-1170x2532.png',
+  'splash/splash-1179x2556.png',
+  'splash/splash-1206x2622.png',
+  'splash/splash-1242x2208.png',
+  'splash/splash-1242x2688.png',
+  'splash/splash-1284x2778.png',
+  'splash/splash-1290x2796.png',
+  'splash/splash-1320x2868.png',
+  'splash/splash-1488x2266.png',
+  'splash/splash-1536x2048.png',
+  'splash/splash-1620x2160.png',
+  'splash/splash-1640x2360.png',
+  'splash/splash-1668x2224.png',
+  'splash/splash-1668x2388.png',
+  'splash/splash-2048x2732.png'
 ];
 
 self.addEventListener('install', function (event) {

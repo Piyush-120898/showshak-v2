@@ -663,17 +663,19 @@ html, body { overflow: hidden; }
   if (!standalone || shownThisSession) { splash.remove(); return; }
   try { sessionStorage.setItem('ss_splash_v1', '1'); } catch (e) {}
   document.body.style.opacity = '1';   // splash covers FOUC → reveal it immediately
-  // First-EVER launch gets the full ~3s brand beat (logo + tagline register,
-  // Netflix-style); every later cold app-open gets a deliberate ~2.5s splash —
-  // a guaranteed brand beat that also gives the feed time to warm before the
-  // first frame (we spend this window prewarming). A PERSISTENT localStorage
-  // flag distinguishes first-ever from subsequent (sessionStorage resets each
-  // PWA relaunch). Internal page nav never shows the splash (the splash markup
-  // only lives on the feed + the per-session gate above).
+  // First-EVER launch gets a slightly longer brand beat (logo + tagline
+  // register, Netflix-style); every later cold app-open gets a shorter floor.
+  // These are FLOORS, not fixed waits: the splash lifts at max(floor, clipReady)
+  // capped by the ceiling, so a fast-warming feed is never held behind an
+  // artificial minimum (that dead time was what made cold start FEEL slow). The
+  // clipReady gate still prevents lifting onto an unwarmed feed. A PERSISTENT
+  // localStorage flag distinguishes first-ever from subsequent (sessionStorage
+  // resets each PWA relaunch). Internal page nav never shows the splash (the
+  // splash markup only lives on the feed + the per-session gate above).
   var everLaunched = false;
   try { everLaunched = localStorage.getItem('ss_launched_v1') === '1'; } catch (e) {}
   try { localStorage.setItem('ss_launched_v1', '1'); } catch (e) {}
-  var SS_SPLASH_MIN_MS = everLaunched ? 2500 : 3000;   // cold-start brand-beat FLOOR (Req 5.7)
+  var SS_SPLASH_MIN_MS = everLaunched ? 2000 : 2400;   // cold-start brand-beat FLOOR (Req 5.7)
   var SS_SPLASH_CEILING_MS = SS_SPLASH_MIN_MS + 2000; // hard lift backstop — the splash can NEVER hang (Req 5.4)
   var shown = Date.now();
   var _clipReady = false;
