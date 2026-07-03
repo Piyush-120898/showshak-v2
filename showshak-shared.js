@@ -3736,6 +3736,31 @@ async function ssLoadMyClips(){
 }
 window.ssLoadMyClips=ssLoadMyClips;
 
+/* ── DELETE CLIP (owner) ────────────────────────────────────────
+   Soft-deletes a curator-owned clip via the delete-clip Edge Function
+   (sets deleted_at + status='removed' and best-effort Mux cleanup).
+   On success, removes the clip from all local Stacks. Returns
+   { ok:true } or { ok:false, error }. Never throws. */
+async function ssDeleteClip(clipId) {
+  var fail = { ok: false, error: 'could not delete clip' };
+  if (!clipId) return fail;
+  var me = window.ssCurrentUser && window.ssCurrentUser();
+  if (!me || !me.id) return { ok: false, error: 'sign in required' };
+  if (!window.ssDB || !window.ssDB.functions) return fail;
+  try {
+    var res = await window.ssDB.functions.invoke('delete-clip', { body: { contentId: String(clipId) } });
+    var data = res && res.data;
+    if (res && res.error) { console.warn('SS delete-clip:', res.error.message); return fail; }
+    if (!data || data.ok !== true) {
+      if (data && data.error === 'not_found') return { ok: false, error: 'clip not found' };
+      return fail;
+    }
+    if (typeof ssRemoveClipFromAllStacks === 'function') ssRemoveClipFromAllStacks(clipId);
+    return { ok: true };
+  } catch (e) { return fail; }
+}
+if (typeof window !== 'undefined') { window.ssDeleteClip = ssDeleteClip; }
+
 /* ── Button UI sync ────────────────────────────── */
 // Call after any page renders its save buttons so they
 // reflect the current sessionStorage state correctly.
