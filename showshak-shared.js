@@ -3737,23 +3737,38 @@ async function ssLoadMyClips(){
 window.ssLoadMyClips=ssLoadMyClips;
 
 /* ── DELETE CLIP (owner) ────────────────────────────────────────
-   Soft-deletes a curator-owned clip via the delete-clip Edge Function
-   (sets deleted_at + status='removed' and best-effort Mux cleanup).
-   On success, removes the clip from all local Stacks. Returns
-   { ok:true } or { ok:false, error }. Never throws. */
+   Soft-deletes a curator-owned clip via a direct RLS-scoped UPDATE
+   (status='removed', deleted_at) so delete works even before the
+   delete-clip Edge Function is deployed. Then best-effort Mux cleanup
+   via the Edge Function (fail-soft). Removes the clip from all local
+   Stacks on success. Returns { ok:true } or { ok:false, error }. Never throws. */
 async function ssDeleteClip(clipId) {
   var fail = { ok: false, error: 'could not delete clip' };
   if (!clipId) return fail;
   var me = window.ssCurrentUser && window.ssCurrentUser();
   if (!me || !me.id) return { ok: false, error: 'sign in required' };
-  if (!window.ssDB || !window.ssDB.functions) return fail;
+  if (!window.ssDB) return fail;
   try {
-    var res = await window.ssDB.functions.invoke('delete-clip', { body: { contentId: String(clipId) } });
-    var data = res && res.data;
-    if (res && res.error) { console.warn('SS delete-clip:', res.error.message); return fail; }
-    if (!data || data.ok !== true) {
-      if (data && data.error === 'not_found') return { ok: false, error: 'clip not found' };
+    var now = new Date().toISOString();
+    var upd = await window.ssDB.from('content')
+      .update({ status: 'removed', deleted_at: now })
+      .eq('id', String(clipId))
+      .eq('creator_id', me.id)
+      .is('deleted_at', null)
+      .select('id');
+    if (upd.error) {
+      console.warn('SS delete-clip db:', upd.error.message);
       return fail;
+    }
+    if (!upd.data || !upd.data.length) {
+      return { ok: false, error: 'clip not found' };
+    }
+    if (window.ssDB.functions) {
+      try {
+        await window.ssDB.functions.invoke('delete-clip', {
+          body: { contentId: String(clipId), muxOnly: true },
+        });
+      } catch (muxErr) { /* Mux cleanup is best-effort */ }
     }
     if (typeof ssRemoveClipFromAllStacks === 'function') ssRemoveClipFromAllStacks(clipId);
     return { ok: true };

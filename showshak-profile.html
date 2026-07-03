@@ -500,12 +500,13 @@ html, body { overflow: hidden; }
 .g-card.has-clip-opts .g-mine-badge,
 .g-card.has-clip-opts .g-proc-badge { left: 8px; right: auto; }
 #clip-opts-menu {
-  position: fixed; z-index: 400; display: none;
+  position: fixed; z-index: 650; display: none;
   background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
   border-radius: 14px; min-width: 168px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.7);
   overflow: hidden;
   animation: clipMenuPop 0.18s var(--ease-spring) both;
+  touch-action: manipulation;
 }
 #clip-opts-menu.show { display: block; }
 @keyframes clipMenuPop {
@@ -514,12 +515,40 @@ html, body { overflow: hidden; }
 }
 .clip-opts-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px; cursor: pointer;
+  width: 100%; padding: 12px 16px; cursor: pointer;
   font-size: 14px; font-weight: 500; color: var(--white);
   transition: background 0.12s;
+  border: none; background: transparent; font-family: var(--font-body);
+  text-align: left; -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .clip-opts-item:hover { background: var(--bg3); }
 .clip-opts-item.del { color: #FF5A5A; }
+.clip-opts-item:disabled { opacity: 0.5; cursor: wait; }
+
+/* Delete-clip confirmation (replaces window.confirm — unreliable in installed PWAs) */
+#clip-del-overlay {
+  position: fixed; inset: 0; z-index: 700;
+  background: rgba(0,0,0,0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+#clip-del-overlay.open { opacity: 1; pointer-events: all; }
+.clip-del-card {
+  width: min(360px, 100%); background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 22px; padding: 22px 22px 18px; text-align: center;
+  transform: translateY(12px) scale(0.98); transition: transform 0.3s var(--ease-spring);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+}
+#clip-del-overlay.open .clip-del-card { transform: none; }
+.clip-del-title { font-family: var(--font-display); font-size: 24px; letter-spacing: 1px; color: var(--white); margin-bottom: 8px; }
+.clip-del-title em { color: #FF5A5A; font-style: normal; }
+.clip-del-sub { font-size: 13px; color: var(--gray); line-height: 1.55; margin-bottom: 18px; }
+.clip-del-foot { display: flex; gap: 10px; }
+.clip-del-foot button { flex: 1; padding: 13px; border-radius: 100px; font-family: var(--font-body); font-size: 14px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.clip-del-cancel { background: transparent; border: 1.5px solid var(--border); color: var(--gray); }
+.clip-del-confirm { background: #FF5A5A; border: 1.5px solid #FF5A5A; color: #fff; }
+.clip-del-confirm:disabled { opacity: 0.55; cursor: wait; }
 
 /* Following */
 .follow-list { display: flex; flex-direction: column; }
@@ -1145,9 +1174,21 @@ html, body { overflow: hidden; }
 
 <!-- CLIP OPTIONS MENU (owner My Clips) -->
 <div id="clip-opts-menu">
-  <div class="clip-opts-item del" onclick="deleteActiveClip(event)">
+  <button type="button" id="clip-opts-delete" class="clip-opts-item del">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
     Delete clip
+  </button>
+</div>
+
+<!-- DELETE CLIP CONFIRM -->
+<div id="clip-del-overlay">
+  <div class="clip-del-card">
+    <div class="clip-del-title">Delete <em>clip</em>?</div>
+    <p class="clip-del-sub">This clip will be removed from your profile and can’t be undone.</p>
+    <div class="clip-del-foot">
+      <button type="button" class="clip-del-cancel" id="clip-del-cancel">Cancel</button>
+      <button type="button" class="clip-del-confirm" id="clip-del-confirm">Delete</button>
+    </div>
   </div>
 </div>
 
@@ -2011,7 +2052,7 @@ function renderPrimary() {
   }
   el.innerHTML = `<div class="grid">${list.map((c,i)=>`
     <div class="g-card ${i===0?'top':''}${showClipOpts ? ' has-clip-opts' : ''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
-      ${showClipOpts ? `<button class="g-clip-opts-btn" onclick="openClipOpts(event,'${c.id}')" aria-label="Clip options">
+      ${showClipOpts ? `<button type="button" class="g-clip-opts-btn" onclick="openClipOpts(event,'${c.id}')" aria-label="Clip options">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>` : ''}
       ${owner && c.status === 'processing'
@@ -2038,6 +2079,8 @@ function renderPrimary() {
 
 /* ── CLIP OPTIONS MENU (owner My Clips) ── */
 let _activeClipId = null;
+let _pendingDeleteClipId = null;
+let _clipDeleteBusy = false;
 
 function closeClipOpts() {
   const menu = document.getElementById('clip-opts-menu');
@@ -2049,27 +2092,36 @@ function closeClipOpts() {
 }
 
 function openClipOpts(e, clipId) {
-  e.stopPropagation();
-  _activeClipId = clipId;
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  if (!clipId) return;
+  _activeClipId = String(clipId);
   const menu = document.getElementById('clip-opts-menu');
   if (!menu) return;
-  menu.dataset.clipId = clipId;
+  menu.dataset.clipId = _activeClipId;
   menu.classList.add('show');
-  const rect = e.currentTarget.getBoundingClientRect();
+  const btn = e && e.currentTarget;
+  const rect = btn ? btn.getBoundingClientRect() : { bottom: 80, right: window.innerWidth - 24 };
   menu.style.top   = (rect.bottom + 6) + 'px';
   menu.style.right = (window.innerWidth - rect.right) + 'px';
   menu.style.left  = 'auto';
 }
 
-async function deleteActiveClip(e) {
-  if (e) e.stopPropagation();
-  const clipId = _activeClipId || (document.getElementById('clip-opts-menu') || {}).dataset?.clipId;
-  closeClipOpts();
-  if (!clipId) return;
-  if (!confirm('Delete this clip? It will be removed from your profile and cannot be undone.')) return;
-  if (typeof ssDeleteClip !== 'function') { ssToast('Couldn’t delete clip'); return; }
-  const res = await ssDeleteClip(clipId);
-  if (!res || !res.ok) { ssToast(res && res.error === 'sign in required' ? 'Sign in to delete clips' : 'Couldn’t delete clip'); return; }
+function openClipDeleteConfirm(clipId) {
+  _pendingDeleteClipId = String(clipId);
+  const ov = document.getElementById('clip-del-overlay');
+  if (ov) ov.classList.add('open');
+}
+
+function closeClipDeleteConfirm() {
+  _pendingDeleteClipId = null;
+  const ov = document.getElementById('clip-del-overlay');
+  if (ov) ov.classList.remove('open');
+  const btn = document.getElementById('clip-del-confirm');
+  if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
+  _clipDeleteBusy = false;
+}
+
+function _removeClipFromProfileUI(clipId) {
   if (_myClipsCache) {
     _myClipsCache = _myClipsCache.filter(c => String(c.id) !== String(clipId));
     _cachedClipsCount = _myClipsCache.length;
@@ -2083,15 +2135,60 @@ async function deleteActiveClip(e) {
   renderCreate();
   renderPrimary();
   renderAnalytics();
+}
+
+async function executeClipDelete() {
+  if (_clipDeleteBusy) return;
+  const clipId = _pendingDeleteClipId;
+  if (!clipId) { closeClipDeleteConfirm(); return; }
+  if (typeof ssDeleteClip !== 'function') {
+    ssToast('Couldn’t delete clip');
+    closeClipDeleteConfirm();
+    return;
+  }
+  _clipDeleteBusy = true;
+  const btn = document.getElementById('clip-del-confirm');
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  const res = await ssDeleteClip(clipId);
+  closeClipDeleteConfirm();
+  if (!res || !res.ok) {
+    ssToast(res && res.error === 'sign in required' ? 'Sign in to delete clips' : 'Couldn’t delete clip');
+    return;
+  }
+  _removeClipFromProfileUI(clipId);
   ssToast('Clip deleted');
 }
 
-document.addEventListener('click', e => {
+function wireClipDeleteUI() {
+  const delBtn = document.getElementById('clip-opts-delete');
   const menu = document.getElementById('clip-opts-menu');
-  if (menu && menu.classList.contains('show') && !menu.contains(e.target) && !e.target.closest('.g-clip-opts-btn')) {
+  const cancelBtn = document.getElementById('clip-del-cancel');
+  const confirmBtn = document.getElementById('clip-del-confirm');
+  const overlay = document.getElementById('clip-del-overlay');
+  if (!delBtn || delBtn._ssWired) return;
+  delBtn._ssWired = true;
+
+  delBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const clipId = _activeClipId || (menu && menu.dataset.clipId);
     closeClipOpts();
-  }
-});
+    if (!clipId) { ssToast('No clip selected'); return; }
+    openClipDeleteConfirm(clipId);
+  });
+
+  if (cancelBtn) cancelBtn.addEventListener('click', closeClipDeleteConfirm);
+  if (confirmBtn) confirmBtn.addEventListener('click', executeClipDelete);
+  if (overlay) overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) closeClipDeleteConfirm();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!menu || !menu.classList.contains('show')) return;
+    if (menu.contains(e.target) || (e.target.closest && e.target.closest('.g-clip-opts-btn'))) return;
+    closeClipOpts();
+  }, true);
+}
 
 /* ── HISTORY (user only) — 7-day recently watched, re-find utility ──
    This is a WATCH log, not a fire/like archive: it solves "I lost a clip
@@ -3247,6 +3344,7 @@ async function boot() {
    / ssOnFollowingChange / ssOnStacksChange / the ss* render helpers exist here.
    The static shell already painted, so this is off the first-paint path. */
 function _profileInit() {
+  wireClipDeleteUI();
   boot();
 
   // Keep the Following list + public Follow button live if following changes

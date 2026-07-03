@@ -3,10 +3,12 @@
 // (Deno Edge Function).
 // ───────────────────────────────────────────────────────────────
 // FLOW:
-//   browser (curator JWT) ──POST { contentId }──▶ this function
+//   browser (curator JWT) ──POST { contentId, muxOnly? }──▶ this function
 //     • verify the caller owns the clip (creator_id = auth.uid())
 //     • best-effort Mux cleanup (asset + in-flight upload)
-//     • soft-delete the content row (deleted_at + status='removed')
+//     • unless muxOnly: soft-delete the content row (deleted_at + removed)
+//
+// muxOnly=true: Mux cleanup only (DB soft-delete already done client-side).
 //
 // AUTH: JWT verification ON (same posture as mux-upload-url).
 // Mux secrets stay server-side via _shared/mux.ts.
@@ -43,6 +45,17 @@ async function cancelMuxUpload(uploadId: string | null | undefined): Promise<voi
   }
 }
 
+async function cleanupMuxForRow(row: {
+  mux_asset_id?: string | null;
+  meta?: Record<string, unknown> | null;
+}): Promise<void> {
+  const meta = (row.meta && typeof row.meta === "object") ? row.meta : {};
+  await deleteMuxAsset(row.mux_asset_id);
+  await deleteMuxAsset(typeof meta.mux_clip_asset_id === "string" ? meta.mux_clip_asset_id : null);
+  await deleteMuxAsset(typeof meta.mux_source_asset_id === "string" ? meta.mux_source_asset_id : null);
+  await cancelMuxUpload(typeof meta.mux_upload_id === "string" ? meta.mux_upload_id : null);
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -56,22 +69,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  let body: { contentId?: unknown };
+  let body: { contentId?: unknown; muxOnly?: unknown };
   try {
     body = await req.json();
   } catch (_e) {
     return json({ error: "invalid_body" }, 400);
   }
   const contentId = typeof body.contentId === "string" ? body.contentId.trim() : "";
+  const muxOnly = body.muxOnly === true;
   if (!contentId) return json({ error: "missing_content_id" }, 400);
 
-  const { data: row, error: readErr } = await supabase
+  let query = supabase
     .from("content")
     .select("id, mux_asset_id, meta, status")
     .eq("id", contentId)
-    .eq("creator_id", user.id)
-    .is("deleted_at", null)
-    .maybeSingle();
+    .eq("creator_id", user.id);
+
+  if (!muxOnly) {
+    query = query.is("deleted_at", null);
+  }
+
+  const { data: row, error: readErr } = await query.maybeSingle();
 
   if (readErr) {
     console.error("delete-clip read failed", readErr.message);
@@ -79,13 +97,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (!row) return json({ error: "not_found" }, 404);
 
-  const meta = (row.meta && typeof row.meta === "object") ? row.meta as Record<string, unknown> : {};
+  await cleanupMuxForRow(row);
 
-  // Mux cleanup — best-effort; a failure never blocks the soft delete.
-  await deleteMuxAsset(row.mux_asset_id);
-  await deleteMuxAsset(typeof meta.mux_clip_asset_id === "string" ? meta.mux_clip_asset_id : null);
-  await deleteMuxAsset(typeof meta.mux_source_asset_id === "string" ? meta.mux_source_asset_id : null);
-  await cancelMuxUpload(typeof meta.mux_upload_id === "string" ? meta.mux_upload_id : null);
+  if (muxOnly) {
+    return json({ ok: true, muxOnly: true });
+  }
 
   const now = new Date().toISOString();
   const { data: updated, error: updErr } = await supabase
