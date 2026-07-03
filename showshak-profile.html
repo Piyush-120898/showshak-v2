@@ -1145,7 +1145,7 @@ html, body { overflow: hidden; }
 
 <!-- CLIP OPTIONS MENU (owner My Clips) -->
 <div id="clip-opts-menu">
-  <div class="clip-opts-item del" onclick="deleteActiveClip()">
+  <div class="clip-opts-item del" onclick="deleteActiveClip(event)">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
     Delete clip
   </div>
@@ -2041,7 +2041,10 @@ let _activeClipId = null;
 
 function closeClipOpts() {
   const menu = document.getElementById('clip-opts-menu');
-  if (menu) menu.classList.remove('show');
+  if (menu) {
+    menu.classList.remove('show');
+    delete menu.dataset.clipId;
+  }
   _activeClipId = null;
 }
 
@@ -2050,6 +2053,7 @@ function openClipOpts(e, clipId) {
   _activeClipId = clipId;
   const menu = document.getElementById('clip-opts-menu');
   if (!menu) return;
+  menu.dataset.clipId = clipId;
   menu.classList.add('show');
   const rect = e.currentTarget.getBoundingClientRect();
   menu.style.top   = (rect.bottom + 6) + 'px';
@@ -2057,10 +2061,10 @@ function openClipOpts(e, clipId) {
   menu.style.left  = 'auto';
 }
 
-async function deleteActiveClip() {
+async function deleteActiveClip(e) {
+  if (e) e.stopPropagation();
+  const clipId = _activeClipId || (document.getElementById('clip-opts-menu') || {}).dataset?.clipId;
   closeClipOpts();
-  const clipId = _activeClipId;
-  _activeClipId = null;
   if (!clipId) return;
   if (!confirm('Delete this clip? It will be removed from your profile and cannot be undone.')) return;
   if (typeof ssDeleteClip !== 'function') { ssToast('Couldn’t delete clip'); return; }
