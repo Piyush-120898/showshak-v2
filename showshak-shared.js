@@ -3457,6 +3457,10 @@ function ssBuildEditPatch(editInput){
   var meta = {};
   var hasMeta = false;
   if (Array.isArray(e.vibes)) { meta.vibes = e.vibes.slice(); hasMeta = true; }
+  // genres — curator-picked (up to 3). Present IFF an array, so an empty array
+  // CLEARS the genres on save (mirrors vibes). Merged over the stashed row meta
+  // in saveEdit, so the new selection wins and other meta sub-keys survive.
+  if (Array.isArray(e.genres)) { meta.genres = e.genres.slice(); hasMeta = true; }
   var coverTimeNum = Number(e.coverTime);
   var hasCoverTime = (e.coverTime !== undefined && e.coverTime !== null && isFinite(coverTimeNum));
   if (hasCoverTime) { meta.cover_time = coverTimeNum; hasMeta = true; }

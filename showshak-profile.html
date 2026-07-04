@@ -523,6 +523,7 @@ html, body { overflow: hidden; }
   touch-action: manipulation;
 }
 .clip-opts-item:hover { background: var(--bg3); }
+.clip-opts-item + .clip-opts-item { border-top: 1px solid rgba(255,255,255,0.06); }
 .clip-opts-item.del { color: #FF5A5A; }
 .clip-opts-item:disabled { opacity: 0.5; cursor: wait; }
 
@@ -1174,6 +1175,10 @@ html, body { overflow: hidden; }
 
 <!-- CLIP OPTIONS MENU (owner My Clips) -->
 <div id="clip-opts-menu">
+  <button type="button" id="clip-opts-edit" class="clip-opts-item">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+    Edit clip
+  </button>
   <button type="button" id="clip-opts-delete" class="clip-opts-item del">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
     Delete clip
@@ -2051,7 +2056,7 @@ function renderPrimary() {
     return;
   }
   el.innerHTML = `<div class="grid">${list.map((c,i)=>`
-    <div class="g-card ${i===0?'top':''}${showClipOpts ? ' has-clip-opts' : ''}" onclick="ssOpenClip(_PROFILE_PRIMARY[${i}], _PROFILE_PRIMARY)">
+    <div class="g-card ${i===0?'top':''}${showClipOpts ? ' has-clip-opts' : ''}" onclick="openClipCard(event, ${i})">
       ${showClipOpts ? `<button type="button" class="g-clip-opts-btn" onclick="openClipOpts(event,'${c.id}')" aria-label="Clip options">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>` : ''}
@@ -2081,6 +2086,15 @@ function renderPrimary() {
 let _activeClipId = null;
 let _pendingDeleteClipId = null;
 let _clipDeleteBusy = false;
+
+/* Guard the card tap: a click that started on the ⋮ options button (or its SVG)
+   must open the menu, NEVER the fullscreen clip. Defense-in-depth on top of the
+   button's own stopPropagation — some engines still let the inline card handler
+   fire, which was opening the clip fullscreen on desktop instead of the menu. */
+function openClipCard(e, i) {
+  if (e && e.target && e.target.closest && e.target.closest('.g-clip-opts-btn')) return;
+  ssOpenClip(_PROFILE_PRIMARY[i], _PROFILE_PRIMARY);
+}
 
 function closeClipOpts() {
   const menu = document.getElementById('clip-opts-menu');
@@ -2161,10 +2175,28 @@ async function executeClipDelete() {
 
 function wireClipDeleteUI() {
   const delBtn = document.getElementById('clip-opts-delete');
+  const editBtn = document.getElementById('clip-opts-edit');
   const menu = document.getElementById('clip-opts-menu');
   const cancelBtn = document.getElementById('clip-del-cancel');
   const confirmBtn = document.getElementById('clip-del-confirm');
   const overlay = document.getElementById('clip-del-overlay');
+
+  // Edit → open the existing edit-after-post flow (?edit=<id>) on the upload page.
+  // Reads the active clip id the same way delete does, then navigates via the
+  // shared ssNavigate helper (location.href fallback).
+  if (editBtn && !editBtn._ssWired) {
+    editBtn._ssWired = true;
+    editBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const clipId = _activeClipId || (menu && menu.dataset.clipId);
+      closeClipOpts();
+      if (!clipId) { ssToast('No clip selected'); return; }
+      const url = 'showshak-upload.html?edit=' + encodeURIComponent(clipId);
+      if (typeof ssNavigate === 'function') ssNavigate(url); else window.location.href = url;
+    });
+  }
+
   if (!delBtn || delBtn._ssWired) return;
   delBtn._ssWired = true;
 

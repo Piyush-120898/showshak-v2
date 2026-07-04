@@ -2361,10 +2361,10 @@ async function publish() {
      real gate: every UPDATE/DELETE/INSERT below is scoped to creator_id =
      auth.uid(), so a forged request can't touch another curator's clip.
    • The UPDATE patch is built by window.ssBuildEditPatch — an ALLOWLIST that emits
-     ONLY description / title_id / meta{vibes,cover_time} / thumbnail_url and NEVER
+     ONLY description / title_id / meta{vibes,genres,cover_time} / thumbnail_url and NEVER
      mux_asset_id / mux_playback_id / url / bytes (design Property 10, Req 10.3). So
      the Immutable_Asset can't be swapped through an edit.
-   • meta MERGE (critical): ssBuildEditPatch returns meta with ONLY {vibes,cover_time}.
+   • meta MERGE (critical): ssBuildEditPatch returns meta with ONLY {vibes,genres,cover_time}.
      Writing it raw would CLOBBER the row's existing meta (dropping mux_upload_id,
      trim, rejected_reason, …). We therefore merge the patch's meta OVER the stashed
      row meta (draft.editMeta) so mutable sub-keys win and immutable ones survive. If
@@ -2405,6 +2405,7 @@ async function saveEdit() {
     pitch: draft.pitch,
     selectedTitles: draft.selectedTitles,
     vibes: draft.vibes,
+    genres: draft.genres,
     coverTime: draft.coverTime,
     muxPlaybackId: draft.muxPlaybackId,
   };
@@ -2530,6 +2531,14 @@ function upPostAnother() {
    policy only exposes status='live' — a non-owner can't read someone else's
    draft. A guest, a missing/non-draft row, or any read error falls back to a
    fresh flow on step 1. */
+function restoreGenreVisuals() {
+  // Reflect draft.genres onto the Genre step chips (built from GENRES by buildGenres).
+  document.querySelectorAll('[data-genre]').forEach(el => {
+    const g = el.getAttribute('data-genre');
+    el.classList.toggle('on', draft.genres.indexOf(g) >= 0);
+  });
+}
+
 function restoreVibeVisuals() {
   // Reflect draft.vibes onto the Vibe step buttons (built from VIBES) + the note.
   document.querySelectorAll('.up-vibe').forEach(el => {
@@ -2719,6 +2728,9 @@ async function enterEditMode(contentId) {
   draft.muxPlaybackId = row.mux_playback_id || null;
   draft.pitch = (typeof d.pitch === 'string') ? d.pitch : '';
   draft.vibes = Array.isArray(d.vibes) ? d.vibes.slice() : [];
+  // Genres live in meta.genres (outside the ssRowToDraft round-trip, same as at
+  // publish), so restore them straight from the stashed row meta.
+  draft.genres = (row.meta && Array.isArray(row.meta.genres)) ? row.meta.genres.slice() : [];
   draft.coverTime = (typeof d.coverTime === 'number' && isFinite(d.coverTime) && d.coverTime > 0) ? d.coverTime : 0;
   draft.selectedTitles = Array.isArray(d.selectedTitles) ? d.selectedTitles.slice() : [];
   // Published clip duration → drives the Cover scrubber range (no local file).
@@ -2765,6 +2777,7 @@ async function enterEditMode(contentId) {
   titlesSearchResults = [];
   renderTitlesList('');         // shows the restored linked titles (names/posters)
   syncPitch();                  // refreshes the pitch counter + footer from draft.pitch
+  restoreGenreVisuals();        // toggles .on on the matching genre chips
   restoreVibeVisuals();         // toggles .on on the matching vibe buttons + note count
 
   // Rebuild the progress bar for the edit step subset (Clip + Trim hidden), then

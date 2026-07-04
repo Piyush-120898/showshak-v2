@@ -16,7 +16,7 @@
        - Builds `patch` by EXPLICIT ALLOWLIST assignment only — it never spreads
          editInput, so forbidden/immutable keys can NEVER leak.
        - ALLOWED top-level keys: { description, title_id, meta, thumbnail_url }.
-         meta sub-keys: { vibes, cover_time }.
+         meta sub-keys: { vibes, genres, cover_time }.
        - description : included IFF typeof pitch==='string' && ssValidatePitch(pitch).ok
                        (length 1..280); when present === editInput.pitch.
        - title_id    : ssBuildTitleLinks(selectedTitles)[0].title_id when non-empty;
@@ -42,7 +42,7 @@ function deepEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
 // The ONLY keys the edit patch is ever allowed to carry.
 const ALLOWED_TOP = ['description', 'title_id', 'meta', 'thumbnail_url'];
-const ALLOWED_META = ['vibes', 'cover_time'];
+const ALLOWED_META = ['vibes', 'cover_time', 'genres'];
 
 // Keys that must NEVER appear (top-level OR nested in meta) — swapping the
 // Immutable_Asset through an edit must be impossible.
@@ -97,6 +97,12 @@ try {
     { weight: 2, arbitrary: fc.constantFrom(undefined, null, 'x', 7, {}) }
   );
 
+  // genres: sometimes an array (incl empty → clears), sometimes not.
+  const genresGen = fc.oneof(
+    { weight: 3, arbitrary: fc.array(fc.string(), { maxLength: 3 }) },
+    { weight: 2, arbitrary: fc.constantFrom(undefined, null, 'x', 7, {}) }
+  );
+
   // coverTime: finite numbers incl 0/negative, plus non-finite junk.
   const coverTimeGen = fc.oneof(
     { weight: 3, arbitrary: fc.double({ min: -10, max: 600, noNaN: true }) },
@@ -125,6 +131,7 @@ try {
     selectedTitles: selectedTitlesGen,
     title_id: titleIdGen,
     vibes: vibesGen,
+    genres: genresGen,
     coverTime: coverTimeGen,
     thumbnailUrl: urlGen,
     coverUrl: urlGen,
@@ -226,6 +233,16 @@ try {
     if (wantVibes) {
       assert(deepEqual(patch.meta.vibes, e.vibes),
         'meta.vibes value mismatch: ' + JSON.stringify(patch.meta.vibes));
+    }
+
+    // meta.genres present IFF Array.isArray(genres) (empty array clears on save).
+    const wantGenres = Array.isArray(e.genres);
+    const haveGenres = !!(patch.meta && Object.prototype.hasOwnProperty.call(patch.meta, 'genres'));
+    assert(haveGenres === wantGenres,
+      'meta.genres presence mismatch (want ' + wantGenres + ')');
+    if (wantGenres) {
+      assert(deepEqual(patch.meta.genres, e.genres),
+        'meta.genres value mismatch: ' + JSON.stringify(patch.meta.genres));
     }
 
     // meta.cover_time present IFF coverTime is finite (incl 0).
