@@ -2220,6 +2220,13 @@ function wireClipDeleteUI() {
     if (menu.contains(e.target) || (e.target.closest && e.target.closest('.g-clip-opts-btn'))) return;
     closeClipOpts();
   }, true);
+
+  // Close the menu on scroll/resize. It's position:fixed (anchored off the ⋮),
+  // so without this it stays pinned as a detached overlay while the page scrolls
+  // behind it. Capture phase so it catches the inner scroll container's scroll.
+  var _closeOptsOnScroll = function () { if (menu && menu.classList.contains('show')) closeClipOpts(); };
+  window.addEventListener('scroll', _closeOptsOnScroll, { capture: true, passive: true });
+  window.addEventListener('resize', _closeOptsOnScroll);
 }
 
 /* ── HISTORY (user only) — 7-day recently watched, re-find utility ──

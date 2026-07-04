@@ -1195,6 +1195,16 @@ document.addEventListener('click', e => {
   }
 });
 
+// Close the menu on scroll/resize. It's position:fixed (anchored off the ⋮), so
+// without this it stays pinned as a detached overlay while the page scrolls
+// behind it. Capture phase so it catches the inner scroll container's scroll.
+function _closeOptsOnScroll() {
+  const menu = document.getElementById('opts-menu');
+  if (menu && menu.classList.contains('show')) { menu.classList.remove('show'); activeStackId = null; }
+}
+window.addEventListener('scroll', _closeOptsOnScroll, { capture: true, passive: true });
+window.addEventListener('resize', _closeOptsOnScroll);
+
 let _renameId = null;
 function renameActiveStack() {
   document.getElementById('opts-menu').classList.remove('show');
