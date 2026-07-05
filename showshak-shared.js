@@ -11115,3 +11115,140 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports.SS_FEEDBACK_MAX = SS_FEEDBACK_MAX;
   module.exports.SS_FEEDBACK_KINDS = SS_FEEDBACK_KINDS;
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Install-to-Home-Screen banner (PWA "Add to Home Screen").
+   • Android / Chromium: captures `beforeinstallprompt` → true one-tap install.
+   • iOS Safari: no programmatic install API exists, so we show a short
+     "Share → Add to Home Screen" instruction banner instead.
+   Self-contained: injects its own <style> + DOM (no per-page HTML needed).
+   Window-guarded so the Node test runner (which require()s this file) is inert.
+   Manual entry point exposed as window.ssPromptInstall() for a menu/settings button.
+   ─────────────────────────────────────────────────────────────────────────── */
+(function ssInstallBanner() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  var DISMISS_KEY = 'ss_install_dismissed_at';
+  var SUPPRESS_DAYS = 14;      // after a dismiss (or install), stay quiet this long
+  var IOS_DELAY_MS = 7000;     // iOS has no prompt event — surface after brief engagement
+  var deferredPrompt = null;
+  var el = null;
+
+  // Ensure iOS has a home-screen icon (it ignores the manifest; needs <link rel="apple-touch-icon">).
+  // Injected centrally so no per-page <head> edit is needed. try/catch keeps the Node test stub inert.
+  try {
+    if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+      var atl = document.createElement('link');
+      atl.rel = 'apple-touch-icon';
+      atl.href = 'apple-touch-icon.png';
+      document.head.appendChild(atl);
+    }
+  } catch (e) {}
+
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+        || window.navigator.standalone === true;
+  }
+  function recentlyDismissed() {
+    try {
+      var t = parseInt(window.localStorage.getItem(DISMISS_KEY) || '0', 10);
+      return !!t && (Date.now() - t) < SUPPRESS_DAYS * 864e5;
+    } catch (e) { return false; }
+  }
+  function markQuiet() { try { window.localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch (e) {} }
+  function isIOS() {
+    return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
+        || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+  }
+  function isIOSSafari() {
+    var ua = window.navigator.userAgent;
+    return isIOS() && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+  }
+
+  function injectStyle() {
+    if (document.getElementById('ss-install-style')) return;
+    var css =
+      '.ss-install{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:2147483000;display:flex;align-items:center;gap:12px;padding:12px 14px;background:linear-gradient(180deg,#16161f,#101018);border:1px solid rgba(255,255,255,.09);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.55);transform:translateY(160%);opacity:0;transition:transform .32s cubic-bezier(.2,.7,.2,1),opacity .32s;font-family:inherit}' +
+      '.ss-install--in{transform:translateY(0);opacity:1}' +
+      '.ss-install-icon{width:44px;height:44px;border-radius:11px;flex:0 0 auto;background:#0B0B0F}' +
+      '.ss-install-copy{flex:1 1 auto;min-width:0}' +
+      '.ss-install-title{color:#fff;font-weight:700;font-size:15px;line-height:1.2}' +
+      '.ss-install-sub{color:#A0A0B8;font-size:12px;line-height:1.3;margin-top:2px}' +
+      '.ss-install-cta{flex:0 0 auto;background:#EA3B32;color:#fff;border:0;border-radius:10px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}' +
+      '.ss-install-cta:active{transform:scale(.96)}' +
+      '.ss-install-ios{flex:0 0 auto;color:#cdd;font-size:12px;max-width:150px;text-align:right;line-height:1.35}' +
+      '.ss-install-share{color:#EA3B32;font-weight:700}' +
+      '.ss-install-x{flex:0 0 auto;background:transparent;border:0;color:#7a7a90;font-size:22px;line-height:1;cursor:pointer;padding:0 2px;align-self:flex-start}' +
+      '@media(min-width:640px){.ss-install{left:auto;right:20px;max-width:380px}}';
+    var st = document.createElement('style');
+    st.id = 'ss-install-style';
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
+  function hide() {
+    if (!el) return;
+    var n = el; el = null;
+    n.classList.remove('ss-install--in');
+    setTimeout(function () { if (n && n.parentNode) n.parentNode.removeChild(n); }, 320);
+  }
+  function dismiss() { markQuiet(); hide(); }
+
+  function doInstall() {
+    if (!deferredPrompt) return;
+    var p = deferredPrompt; deferredPrompt = null;
+    try { p.prompt(); } catch (e) { hide(); return; }
+    p.userChoice.then(function (res) {
+      hide();
+      if (res && res.outcome === 'accepted') markQuiet();
+    }).catch(function () { hide(); });
+  }
+
+  function build(mode) { // mode: 'android' | 'ios'
+    if (isStandalone() || recentlyDismissed()) return;
+    injectStyle();
+    if (el) hide();
+    el = document.createElement('div');
+    el.className = 'ss-install';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Install ShowShak');
+    var action = mode === 'android'
+      ? '<button class="ss-install-cta" type="button">Install</button>'
+      : '<div class="ss-install-ios">Tap <span class="ss-install-share">Share</span> then <b>Add to Home Screen</b></div>';
+    el.innerHTML =
+      '<img class="ss-install-icon" src="icon.svg" alt="" width="44" height="44">' +
+      '<div class="ss-install-copy">' +
+        '<div class="ss-install-title">Install ShowShak</div>' +
+        '<div class="ss-install-sub">' +
+          (mode === 'android' ? 'One tap · full-screen · no app store' : 'Add it to your home screen for the full app') +
+        '</div>' +
+      '</div>' + action +
+      '<button class="ss-install-x" type="button" aria-label="Dismiss">×</button>';
+    document.body.appendChild(el);
+    el.querySelector('.ss-install-x').addEventListener('click', dismiss);
+    if (mode === 'android') el.querySelector('.ss-install-cta').addEventListener('click', doInstall);
+    requestAnimationFrame(function () { if (el) el.classList.add('ss-install--in'); });
+  }
+
+  // Android / Chromium — the real one-tap install path.
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    build('android');
+  });
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null; markQuiet(); hide();
+  });
+
+  // iOS Safari — no prompt event; show instructions after brief engagement.
+  if (isIOSSafari() && !isStandalone() && !recentlyDismissed()) {
+    setTimeout(function () { if (!isStandalone()) build('ios'); }, IOS_DELAY_MS);
+  }
+
+  // Manual trigger for a Settings / menu "Install app" button.
+  window.ssPromptInstall = function () {
+    if (deferredPrompt) { doInstall(); return true; }
+    if (isIOSSafari()) { build('ios'); return true; }
+    return false; // already installed, unsupported browser, or prompt not yet available
+  };
+})();
