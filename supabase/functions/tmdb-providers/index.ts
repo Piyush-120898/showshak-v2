@@ -29,18 +29,24 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeadersFor } from "../_shared/cors.ts";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const REGIONS = ["IN"];                       // extend later: ["IN","US","GB"]
 const TMDB_DELAY_MS = 250;                    // polite pacing between titles
 const NAME_SIMILARITY_THRESHOLD = 0.6;
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// Per-request JSON responder bound to the caller's CORS origin. Built once
+// per request inside the handler (see makeJson) so the allow-listed origin is
+// echoed back correctly under concurrency.
+type Json = (body: unknown, status?: number) => Response;
+function makeJson(req: Request): Json {
+  const cors = corsHeadersFor(req);
+  return (body, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -338,7 +344,8 @@ async function createManualTitle(
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadersFor(req) });
+  const json = makeJson(req);
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY");

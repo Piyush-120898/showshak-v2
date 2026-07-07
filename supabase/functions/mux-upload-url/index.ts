@@ -19,19 +19,19 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeadersFor } from "../_shared/cors.ts";
 import { createDirectUpload } from "../_shared/mux.ts";
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
 Deno.serve(async (req: Request): Promise<Response> => {
+  const cors = corsHeadersFor(req);
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+
   // CORS preflight.
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   // 1) AUTH GATE — must be an authenticated user (Req 1.3 / 11.3).
@@ -61,7 +61,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch (_e) { /* fail-open — never block a legit upload on a limiter hiccup */ }
 
   // 2) MINT a Mux direct-upload (secret used only inside createDirectUpload).
-  const appOrigin = Deno.env.get("APP_ORIGIN") ?? "*";
+  // Mux's cors_origin must be a SINGLE concrete origin, not a list — use the
+  // caller's allow-listed origin (echoed by corsHeadersFor), falling back to
+  // "*" for local/dev where no Origin/allow-list is set.
+  const appOrigin = cors["Access-Control-Allow-Origin"] || "*";
   let mux: { data: { id: string; url: string } };
   try {
     mux = await createDirectUpload(appOrigin);

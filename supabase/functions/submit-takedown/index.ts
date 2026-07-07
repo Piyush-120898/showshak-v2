@@ -32,19 +32,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeadersFor } from "../_shared/cors.ts";
 
 // Anti-abuse: reject oversized bodies before parsing. A well-formed notice is
 // at most a few KB (work_identification 2000 + target_url 2000 + the short
 // fields); 64 KB is a generous cap that still blocks abusive payloads.
 const MAX_BODY_BYTES = 64 * 1024;
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
 
 // ── wellFormed(notice) — server-side mirror of ssDmcaNoticeWellFormed ──
 // Returns { ok, missing }. `missing` lists the stable key of each failing
@@ -127,8 +121,15 @@ async function ipKey(req: Request): Promise<string> {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const cors = corsHeadersFor(req);
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+
   // CORS preflight.
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   // 1) ANTI-ABUSE size cap. Reject an oversized body before reading/parsing.
