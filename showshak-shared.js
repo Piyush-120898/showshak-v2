@@ -5279,8 +5279,11 @@ function _inlineClipHTML(c, i) {
   // Poster-first frame: paint the Mux thumbnail (or the gradient) on the media
   // node up front so the clip shows an image INSTANTLY — no black/spinner while
   // the <mux-player> upgrades and buffers (Instagram/TikTok feel).
+  // Size to a phone-appropriate ~720px rather than the full ~1080×1920 still: it's
+  // a transient first-frame the player replaces within ~1s, so a smaller image
+  // paints the LCP faster on slow mobile and cuts bytes, no perceptible quality hit.
   const mediaStyle = c.poster
-    ? ` style="background-image:url('${String(c.poster).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
+    ? ` style="background-image:url('${String(ssMuxThumb(c.poster, 720)).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
     : (c.bg ? ` style="background:${c.bg}"` : '');
   return `
     <div class="clip${i === 0 ? ' active' : ''}" id="clip-${i}" data-ss-idx="${i}">
@@ -6913,9 +6916,11 @@ function _ssvClipHTML(c, i, mode) {
     .map(t => `<span class="tag">${t}</span>`).join('');
   const caption = c.caption || `A pick from <em>@${c.creator.name}</em>`;
   // Poster-first frame so an un-mounted clip (outside the bounded player band)
-  // shows the Mux thumbnail instead of black while you scroll to it.
+  // shows the Mux thumbnail instead of black while you scroll to it. Sized to
+  // ~720px (phone-appropriate) — smaller than the full still, faster LCP, no
+  // perceptible quality hit for this transient placeholder.
   const mediaStyle = c.poster
-    ? ` style="background-image:url('${String(c.poster).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
+    ? ` style="background-image:url('${String(ssMuxThumb(c.poster, 720)).replace(/'/g, '%27')}');background-size:cover;background-position:center;background-color:#000;"`
     : (c.bg ? ` style="background:${c.bg}"` : '');
   return `
     <div class="${rootCls}" id="ssv-clip-${i}" data-ssv-idx="${i}">
