@@ -8,7 +8,7 @@
 //     • match the content row by meta->>'mux_upload_id' (the upload id we
 //       stored at insert time), falling back to mux_asset_id — Req 3.4
 //     • duration backstop: if the Mux-reported duration exceeds DURATION_CAP
-//       (90 s), delete the Mux asset and mark the row 'removed' so an over-cap
+//       (120 s), delete the Mux asset and mark the row 'removed' so an over-cap
 //       clip never goes live — Req 4.5/4.6
 //     • idempotently flip status 'processing' → 'live' and store
 //       mux_asset_id / mux_playback_id / thumbnail_url / duration_sec — Req 3.1/3.2/3.5
@@ -25,11 +25,11 @@ import { verifyMuxSignature } from "../_shared/verify-signature.ts";
 import { muxFetch } from "../_shared/mux.ts";
 
 // Server-side backstop for the clip length limit. Mirrors the client-side
-// SS_DURATION_CAP (90 s) enforced in showshak-shared.js — kept in sync by hand
+// SS_DURATION_CAP (120 s) enforced in showshak-shared.js — kept in sync by hand
 // since the Edge runtime (Deno) and the browser/Node helpers don't share a
 // module. An asset whose Mux-reported duration exceeds this slipped past the
 // client trim/validation and must be rejected (Req 4.5/4.6).
-const DURATION_CAP = 90;
+const DURATION_CAP = 120;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // Raw body is required for HMAC verification — read it before JSON.parse.

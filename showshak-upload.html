@@ -425,7 +425,7 @@ body { background: var(--bg); }
         </div>
         <div class="up-drop-main" id="up-drop-main">Tap to upload</div>
         <div class="up-drop-sub" id="up-drop-sub">Record in the app, or pick a video from your device</div>
-        <div class="up-drop-formats" id="up-drop-formats">MP4 · MOV · up to 90 seconds</div>
+        <div class="up-drop-formats" id="up-drop-formats">MP4 · MOV · up to 120 seconds</div>
       </div>
       <input type="file" id="up-file" accept="video/*" style="display:none" onchange="upHandleFile(event)">
 
@@ -439,7 +439,7 @@ body { background: var(--bg); }
     <div class="up-step" id="step-2">
       <div class="up-eyebrow">Step 2 · Trim</div>
       <div class="up-title">Cut to the <em>moment</em></div>
-      <p class="up-sub">Set the in and out points so only the part that lands gets posted. The segment has to stay under <strong>90 seconds</strong>.</p>
+      <p class="up-sub">Set the in and out points so only the part that lands gets posted. The segment has to stay under <strong>120 seconds</strong>.</p>
 
       <div class="up-trim-stage">
         <video id="up-trim-video" muted playsinline preload="metadata"></video>
@@ -781,7 +781,7 @@ function upBack() { if (step > firstStep()) showStep(step - 1); }
 function canAdvance() {
   if (step === 1) return !!draft.videoUrl;
   // Trim (Req 7.2/7.4): block proceeding unless the [in,out] selection is valid
-  // (out > in and segment <= 90 s). Full source (untouched) is a valid selection.
+  // (out > in and segment <= 120 s). Full source (untouched) is a valid selection.
   if (step === 2) return window.ssValidateTrim(draft.trimIn, draft.trimOut, draft.durationSec).ok;
   // Titles (Req 1.5/2.3): at least one linked title is required to advance.
   if (step === 3) return window.ssCanPublish(draft);
@@ -849,10 +849,10 @@ function syncFooter() {
 ════════════════════════════════════════════════ */
 
 /* Map the ssValidateMediaFile reason codes (defined in showshak-shared.js,
-   caps SS_DURATION_CAP = 90 s and SS_FILE_SIZE_CAP ≈ 300 MB) to clear,
+   caps SS_DURATION_CAP = 120 s and SS_FILE_SIZE_CAP ≈ 300 MB) to clear,
    curator-facing messages that state the specific limit that was hit. */
 function upMediaRejectMessage(reason) {
-  if (reason === 'over_duration') return 'That clip is over the 90-second limit — trim it down and try again.';
+  if (reason === 'over_duration') return 'That clip is over the 120-second limit — trim it down and try again.';
   if (reason === 'over_size')     return 'That file is too big — keep it under 300 MB.';
   return 'Couldn’t read that video — please try a different file.';
 }
@@ -955,7 +955,7 @@ async function upHandleFile(e) {
 ════════════════════════════════════════════════ */
 
 /* SS.cc formatter (seconds + hundredths, e.g. 3.5s → "03.50") for the in/out
-   readouts and the live segment duration. Clips are ≤ 90 s so minutes aren't
+   readouts and the live segment duration. Clips are ≤ 120 s so minutes aren't
    needed — seconds.milliseconds reads cleaner. */
 function fmtTrimTime(sec) {
   sec = Math.max(0, Number(sec) || 0);
@@ -966,11 +966,11 @@ function fmtTrimTime(sec) {
 }
 
 /* Map the ssValidateTrim reason codes (showshak-shared.js) to curator-facing
-   messages. The over-cap message names the 90 s limit (Req 7.4, consistent
+   messages. The over-cap message names the 120 s limit (Req 7.4, consistent
    with Req 4). */
 function upTrimRejectMessage(reason) {
   if (reason === 'out_not_after_in') return 'The out point needs to come after the in point.';
-  if (reason === 'over_cap')         return 'That segment is over the 90-second limit — tighten the in/out points.';
+  if (reason === 'over_cap')         return 'That segment is over the 120-second limit — tighten the in/out points.';
   if (reason === 'non_finite')       return 'Couldn’t read the trim points — try a different file.';
   return 'Adjust the in and out points to continue.';
 }
@@ -1149,9 +1149,9 @@ function syncTrim() {
 
    Degradation (Req 7.6 / design error table): if the engine fails to load or
    exec, ssTrimToBlob throws. The publish path (task 14.7) catches that and may
-   fall back to the UNTRIMMED source — but only if it already passes the 90 s
+   fall back to the UNTRIMMED source — but only if it already passes the 120 s
    cap. Note the source duration is already capped at file-select
-   (ssValidateMediaFile rejects > 90 s), so an over-cap source can never reach
+   (ssValidateMediaFile rejects > 120 s), so an over-cap source can never reach
    here; the webhook duration re-check (Req 4.5/4.6) is the server backstop.
    An over-cap source is never silently uploaded.
 ════════════════════════════════════════════════ */
@@ -1207,7 +1207,7 @@ async function ssTrimToBlob(file, inSec, outSec, onProgress) {
   // timeout. The ~25 MB core download can be slow on a constrained connection,
   // so allow a generous window (it's usually pre-warmed via ssWarmFfmpeg by the
   // time we get here). On timeout we throw → the publish path falls back to the
-  // full (already ≤90 s) source instead of freezing.
+  // full (already ≤120 s) source instead of freezing.
   // NOTE: we do NOT report(0) here — the caller shows a "Preparing…" message
   // during this load so the progress bar doesn't look stuck at 0%.
   const loadWithTimeout = Promise.race([

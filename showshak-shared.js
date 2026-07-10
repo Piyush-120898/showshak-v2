@@ -2830,7 +2830,7 @@ if (typeof window !== 'undefined') {
 
 /* Clip Trim rules — Req 7.2, 7.3, 7.4, 7.6.
 
-   SS_DURATION_CAP is the single shared 90-second Duration_Cap used by BOTH the
+   SS_DURATION_CAP is the single shared 120-second Duration_Cap used by BOTH the
    trim validation here AND the media-file validation (Task 5.1 reuses this same
    constant) so the limit is defined in exactly one place. Mirrors the cap the
    webhook re-applies server-side.
@@ -2847,13 +2847,13 @@ if (typeof window !== 'undefined') {
      'over_cap'         → finite, out > in, but (out - in) > SS_DURATION_CAP (Req 7.4)
 
    ── ok-gate (locked, matches design Property 2 exactly) ──
-     ok === isFinite(in) && isFinite(out) && (out > in) && ((out - in) <= 90)
+     ok === isFinite(in) && isFinite(out) && (out > in) && ((out - in) <= 120)
    srcDur is accepted for signature/audit completeness, but it deliberately does
-   NOT tighten `ok`: Property 2 states ok IFF (out > in AND out - in <= 90), so
+   NOT tighten `ok`: Property 2 states ok IFF (out > in AND out - in <= 120), so
    adding srcDur bounds (e.g. in >= 0, out <= srcDur) could flip ok to false
    where Property 2 expects true and would violate the property. We therefore
    keep the gate to the four primary conditions only. */
-var SS_DURATION_CAP = 90;        // Duration_Cap in seconds (Req 4 / Req 7.4), shared
+var SS_DURATION_CAP = 120;       // Duration_Cap in seconds (Req 4 / Req 7.4), shared
 
 /* outSec - inSec, clamped to >= 0 and finite-safe (never NaN, never negative).
    Rule: coerce both inputs to Number; if either is non-finite return 0;
@@ -2911,8 +2911,8 @@ if (typeof window !== 'undefined') {
    SS_FILE_SIZE_CAP is the File_Size_Cap (~300 MB). The design says
    "approximately 300 MB"; we lock the exact byte value to the binary MiB
    reading 300 * 1024 * 1024 = 314,572,800 bytes (no prior size cap existed in
-   this file, so this is the canonical definition). SS_DURATION_CAP (90 s) is
-   REUSED from the trim section above — the 90 is defined in exactly one place.
+   this file, so this is the canonical definition). SS_DURATION_CAP (120 s) is
+   REUSED from the trim section above — the 120 is defined in exactly one place.
 
    ── ssValidateMediaFile reason codes (locked, documented) ──
      ''              → ok === true   (no reason needed)
@@ -2923,7 +2923,7 @@ if (typeof window !== 'undefined') {
                        sizeBytes > SS_FILE_SIZE_CAP
 
    ── ok-gate (matches design Property 4 for valid finite, non-negative input) ──
-     ok === (durationSec <= 90) && (sizeBytes <= SS_FILE_SIZE_CAP)
+     ok === (durationSec <= 120) && (sizeBytes <= SS_FILE_SIZE_CAP)
 
    ── Precedence when BOTH caps are exceeded ──
      Duration is checked FIRST, so a both-over file reports 'over_duration'.

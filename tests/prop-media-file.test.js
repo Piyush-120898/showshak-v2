@@ -141,8 +141,8 @@ try {
   v = ss.ssValidateMediaFile(1000, 90);
   assert(v.ok === true && v.reason === '', "(1000, 90) must be ok=true");
 
-  v = ss.ssValidateMediaFile(1000, 91);
-  assert(v.ok === false && v.reason === 'over_duration', "(1000, 91) must be over_duration");
+  v = ss.ssValidateMediaFile(1000, DURATION_CAP + 1);
+  assert(v.ok === false && v.reason === 'over_duration', "(1000, CAP+1) must be over_duration");
 
   v = ss.ssValidateMediaFile(SIZE_CAP, 10);
   assert(v.ok === true && v.reason === '', "(CAP, 10) must be ok=true");
@@ -151,8 +151,8 @@ try {
   assert(v.ok === false && v.reason === 'over_size', "(CAP+1, 10) must be over_size");
 
   // Precedence: both over → over_duration (duration checked first).
-  v = ss.ssValidateMediaFile(SIZE_CAP + 1, 91);
-  assert(v.ok === false && v.reason === 'over_duration', "(CAP+1, 91) must be over_duration (precedence)");
+  v = ss.ssValidateMediaFile(SIZE_CAP + 1, DURATION_CAP + 1);
+  assert(v.ok === false && v.reason === 'over_duration', "(CAP+1, CAP+1) must be over_duration (precedence)");
 
   v = ss.ssValidateMediaFile(-1, 10);
   assert(v.ok === false && v.reason === 'invalid', "(-1, 10) must be invalid");
