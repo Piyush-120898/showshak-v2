@@ -3151,6 +3151,33 @@ if (typeof window !== 'undefined') {
   window.ssCoverThumbUrl = ssCoverThumbUrl;
 }
 
+/* ── ssMuxThumb(url, width) — render-layer poster sizing ──────────────────────
+   Appends a `width` hint to a Mux image (image.mux.com) thumbnail so GRID
+   thumbnails fetch a right-sized still instead of the full-resolution portrait
+   frame — a portrait clip's default Mux thumbnail is ~1080×1920 (~150–250 KB),
+   which is wasteful for a 100–300 px card. Mux resizes server-side and preserves
+   aspect ratio from `width` alone.
+
+   This is deliberately a DISPLAY concern kept OUT of ssCoverThumbUrl and the data
+   layer (clip.poster), so the cover-URL round-trip (Property 8) and the poster
+   field contract stay byte-for-byte identical and their property tests keep
+   passing. The fullscreen player poster keeps the full-res source (called there
+   without a width), where the extra resolution actually matters.
+
+   Pure + defensive: only rewrites image.mux.com URLs that don't already carry a
+   `width`; returns the input UNCHANGED for anything else (non-string, other host,
+   already-sized, non-positive/NaN width). Never throws. */
+function ssMuxThumb(url, width){
+  if (typeof url !== 'string' || url.indexOf('image.mux.com') === -1) return url;
+  var w = Math.round(Number(width));
+  if (!isFinite(w) || w <= 0) return url;
+  if (/[?&]width=/.test(url)) return url;                 // already sized — leave it
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'width=' + w;
+}
+if (typeof window !== 'undefined') {
+  window.ssMuxThumb = ssMuxThumb;
+}
+
 /* ── ssParseCoverTime(thumbUrl) ──
    Inverse of ssCoverThumbUrl: extract the `time` query value and return it as
    a Number, or null when there is no usable time.
