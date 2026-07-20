@@ -28,13 +28,15 @@
 // the cached titles.providers with the anon key — it never touches TMDB.
 // ═══════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeadersFor } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.1";
+import { corsHeadersFor, isOriginAllowed } from "../_shared/cors.ts";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const REGIONS = ["IN"];                       // extend later: ["IN","US","GB"]
 const TMDB_DELAY_MS = 250;                    // polite pacing between titles
 const NAME_SIMILARITY_THRESHOLD = 0.6;
+const MAX_BODY_BYTES = 16 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Per-request JSON responder bound to the caller's CORS origin. Built once
 // per request inside the handler (see makeJson) so the allow-listed origin is
@@ -51,6 +53,8 @@ function makeJson(req: Request): Json {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // TMDB provider_name → our platforms catalog `name` (lowercased keys).
+// NOTE: keys are matched with String(provider_name).trim().toLowerCase() —
+// keep every key fully lowercase.
 const PROVIDER_TO_CATALOG: Record<string, string> = {
   "netflix": "Netflix",
   "amazon prime video": "Prime Video",
@@ -66,6 +70,18 @@ const PROVIDER_TO_CATALOG: Record<string, string> = {
   "max": "HBO Max",
   "zee5": "Zee5",
   "hulu": "Hulu",
+  // Lionsgate Play (0039) — standalone + the Prime Video / Apple TV Channels
+  // add-on variants TMDB reports for the IN region all map to the one catalog row.
+  "lionsgate play": "Lionsgate Play",
+  "lionsgate play amazon channel": "Lionsgate Play",
+  "lionsgate play apple tv channel": "Lionsgate Play",
+  // Remaining active-catalog platforms TMDB reports in IN (were unmapped →
+  // platform_id null → invisible to subscriptions/chips).
+  "crunchyroll": "Crunchyroll",
+  "sun nxt": "Sun NXT",
+  "aha": "Aha",
+  "hoichoi": "Hoichoi",
+  "manoramamax": "ManoramaMax",
 };
 
 function normalizeName(name: string): string {
@@ -344,8 +360,15 @@ async function createManualTitle(
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadersFor(req) });
+  if (req.method === "OPTIONS") {
+    const allowed = isOriginAllowed(req);
+    return new Response(allowed ? "ok" : "forbidden", {
+      status: allowed ? 200 : 403,
+      headers: corsHeadersFor(req),
+    });
+  }
   const json = makeJson(req);
+  if (!isOriginAllowed(req)) return json({ error: "forbidden_origin" }, 403);
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY");
@@ -357,8 +380,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "server_misconfigured" }, 500);
   }
 
-  let body: any = {};
-  try { body = await req.json(); } catch (_e) { body = {}; }
+  const contentLength = Number(req.headers.get("Content-Length") || "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    return json({ error: "payload_too_large" }, 413);
+  }
+  let body: any;
+  try {
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+      return json({ error: "payload_too_large" }, 413);
+    }
+    body = JSON.parse(raw);
+  } catch (_e) {
+    return json({ error: "bad_json" }, 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "bad_request" }, 400);
   const mode = body.mode || (body.titleId ? "single" : "batch");
   const force = body.force === true;
 
@@ -366,9 +402,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // batch is admin-only (the shared INGEST_SECRET). The upload-flow modes
   // (search / link / manual) and single-title ingest also accept a logged-in
   // curator's Supabase JWT — all bounded, per-title actions.
-  const providedSecret = req.headers.get("x-ingest-secret") || body.secret || "";
+  const providedSecret = req.headers.get("x-ingest-secret") || "";
   const isAdmin = !!(INGEST_SECRET && providedSecret && providedSecret === INGEST_SECRET);
   const userAllowed = new Set(["single", "search", "link", "manual"]);
+  let callerId = "";
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   if (!isAdmin) {
     if (!userAllowed.has(mode)) return json({ error: "unauthorized" }, 401);
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -377,10 +415,60 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const userClient = createClient(SUPABASE_URL, anon, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: "unauthorized" }, 401);
+    callerId = user.id;
+    const { data: profile, error: profileError } = await db
+      .from("users")
+      .select("role,is_guest,deleted_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileError) return json({ error: "authorization_unavailable" }, 503);
+    if (!profile || profile.role !== "curator" || profile.is_guest === true || profile.deleted_at) {
+      return json({ error: "curator_required" }, 403);
+    }
   }
 
   // Service-role client for privileged titles reads/writes (bypasses RLS).
-  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  if (!isAdmin) {
+    const bucket = mode === "search" ? "tmdb_search" : "tmdb_write";
+    const { data: decision, error: rateError } = await db.rpc("ss_rate_consume", {
+      p_bucket: bucket,
+      p_subject: callerId,
+    });
+    if (rateError || !decision || typeof decision.allowed !== "boolean") {
+      return json({ error: "rate_limit_unavailable" }, 503);
+    }
+    if (!decision.allowed) {
+      const retryAfter = Math.max(1, Number(decision.retry_after_seconds) || 60);
+      return new Response(JSON.stringify({ error: "rate_limited", retry_after: retryAfter }), {
+        status: 429,
+        headers: { ...corsHeadersFor(req), "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+      });
+    }
+  }
+
+  if (!["batch", "single", "search", "link", "manual"].includes(mode)) {
+    return json({ error: "bad_request", detail: "unsupported mode" }, 400);
+  }
+  if (mode === "single" && (!UUID_RE.test(String(body.titleId || "")))) {
+    return json({ error: "bad_request", detail: "valid titleId required" }, 400);
+  }
+  if (["link"].includes(mode)) {
+    const tmdbId = Number(body.tmdbId);
+    if (!Number.isInteger(tmdbId) || tmdbId <= 0 || !["movie", "tv"].includes(String(body.mediaType))) {
+      return json({ error: "bad_request", detail: "valid tmdbId and mediaType required" }, 400);
+    }
+  }
+  if (mode === "search") {
+    const query = String(body.query || "").trim();
+    if (query.length < 1 || query.length > 100) return json({ error: "bad_request", detail: "query must be 1-100 characters" }, 400);
+  }
+  if (mode === "manual") {
+    const name = String(body.name || "").trim();
+    const ids = Array.isArray(body.platformIds) ? body.platformIds : [];
+    if (name.length < 1 || name.length > 200 || ids.length > 20 || ids.some((id: unknown) => !UUID_RE.test(String(id)))) {
+      return json({ error: "bad_request", detail: "invalid manual title payload" }, 400);
+    }
+  }
 
   try {
     // SEARCH — pure TMDB proxy, no DB needed.

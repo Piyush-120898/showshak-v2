@@ -9,8 +9,8 @@
 // (comma-separated). The response echoes back the caller's Origin when
 // it is on the list, so MULTIPLE app domains work from one secret
 // (apex + www + old GitHub Pages + *.pages.dev previews). When APP_ORIGIN
-// is unset the policy is permissive (`*`) so local/dev works out of the
-// box. Tighten in production by setting APP_ORIGIN — no code change needed.
+// is unset the policy is restrictive by default. Local development may opt in
+// to permissive CORS with ALLOW_ANY_CORS=true; production never does.
 //
 //   APP_ORIGIN="https://showshak.com,https://www.showshak.com,https://piyush-120898.github.io"
 //
@@ -28,7 +28,10 @@ const ALLOWED_ORIGINS: string[] = (Deno.env.get("APP_ORIGIN") ?? "")
   .map((o) => o.trim())
   .filter(Boolean);
 
-const ALLOW_ANY = ALLOWED_ORIGINS.length === 0;
+const ALLOW_ANY = ALLOWED_ORIGINS.length === 0 &&
+  Deno.env.get("ALLOW_ANY_CORS") === "true" &&
+  Deno.env.get("APP_ENV") !== "production";
+const DEFAULT_ORIGIN = ALLOWED_ORIGINS[0] ?? "https://showshak.com";
 
 const BASE_HEADERS: Record<string, string> = {
   // supabase-js sends apikey + x-client-info (and a version header) on every
@@ -49,7 +52,18 @@ const BASE_HEADERS: Record<string, string> = {
 function resolveOrigin(requestOrigin: string | null): string {
   if (ALLOW_ANY) return "*";
   if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
-  return ALLOWED_ORIGINS[0];
+  return DEFAULT_ORIGIN;
+}
+
+/**
+ * CORS is not an authorization boundary, but rejecting an explicit foreign
+ * browser origin prevents side-effect endpoints from doing work for a page
+ * that cannot legitimately call the app. Requests without Origin (CLI/webhook)
+ * are handled by the endpoint's normal authentication/signature gates.
+ */
+export function isOriginAllowed(req: Request): boolean {
+  const origin = req.headers.get("Origin");
+  return !origin || ALLOW_ANY || ALLOWED_ORIGINS.includes(origin);
 }
 
 /**
@@ -76,5 +90,5 @@ export function corsHeadersFor(
  */
 export const corsHeaders: Record<string, string> = {
   ...BASE_HEADERS,
-  "Access-Control-Allow-Origin": ALLOW_ANY ? "*" : ALLOWED_ORIGINS[0],
+  "Access-Control-Allow-Origin": ALLOW_ANY ? "*" : DEFAULT_ORIGIN,
 };

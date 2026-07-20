@@ -27,12 +27,20 @@ export async function verifyMuxSignature(
   header: string,
   secret: string,
 ): Promise<boolean> {
-  const parts = Object.fromEntries(header.split(",").map((p) => p.split("=")));
+  if (!secret || !header || typeof raw !== "string") return false;
+  const parts: Record<string, string> = {};
+  for (const part of header.split(",")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    parts[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
+  }
   const ts = parts["t"];
   const sig = parts["v1"];
-  if (!ts || !sig) return false;
+  if (!ts || !sig || !/^\d+$/.test(ts) || !/^[0-9a-f]+$/i.test(sig)) return false;
+  const timestamp = Number(ts);
+  if (!Number.isSafeInteger(timestamp)) return false;
   // reject stale events (replay protection): 5-minute tolerance
-  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  if (Math.abs(Date.now() / 1000 - timestamp) > 300) return false;
   const key = await crypto.subtle.importKey(
     "raw",
     enc.encode(secret),

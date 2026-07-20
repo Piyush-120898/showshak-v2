@@ -31,13 +31,14 @@
 // the DURATION_CAP mirror in mux-webhook/index.ts.
 // ═══════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeadersFor } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.1";
+import { corsHeadersFor, isOriginAllowed } from "../_shared/cors.ts";
 
 // Anti-abuse: reject oversized bodies before parsing. A well-formed notice is
 // at most a few KB (work_identification 2000 + target_url 2000 + the short
 // fields); 64 KB is a generous cap that still blocks abusive payloads.
 const MAX_BODY_BYTES = 64 * 1024;
+const LEGAL_FALLBACK_EMAIL = "copyright@showshak.com";
 
 
 // ── wellFormed(notice) — server-side mirror of ssDmcaNoticeWellFormed ──
@@ -110,26 +111,60 @@ export { wellFormed };
 // limiting: SHA-256(salt | ip) truncated to 32 hex chars. The raw IP is NEVER
 // stored (DPDP-minded). Returns '' when no IP is resolvable → limiter fail-open.
 async function ipKey(req: Request): Promise<string> {
-  const xff = req.headers.get("x-forwarded-for") || "";
-  const ip = (xff.split(",")[0] || req.headers.get("cf-connecting-ip") ||
-              req.headers.get("x-real-ip") || "").trim();
+  // Prefer headers set by the hosting edge. x-forwarded-for is accepted only
+  // when explicitly enabled because an arbitrary client can otherwise rotate it.
+  const trustedXff = Deno.env.get("TRUST_PROXY_XFF") === "true"
+    ? (req.headers.get("x-forwarded-for") || "").split(",")[0]
+    : "";
+  const ip = (req.headers.get("cf-connecting-ip") ||
+              req.headers.get("x-real-ip") || trustedXff || "").trim();
   if (!ip) return "";
-  const salt = Deno.env.get("RATE_SALT") || "showshak-rate-v1";
+  const salt = Deno.env.get("RATE_SALT") || "";
+  if (!salt) return "";
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + "|" + ip));
   return Array.from(new Uint8Array(buf)).slice(0, 16)
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Supabase JSONB RPCs normally decode to an object, but a malformed response
+// must never become an unbounded 429 or accidentally block legal intake. Keep
+// retry values finite and bounded before emitting Retry-After.
+export function normalizeRateDecision(value: unknown): {
+  valid: boolean;
+  allowed: boolean;
+  retryAfter: number;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { valid: false, allowed: true, retryAfter: 0 };
+  }
+  const decision = value as Record<string, unknown>;
+  if (typeof decision.allowed !== "boolean") {
+    return { valid: false, allowed: true, retryAfter: 0 };
+  }
+  if (decision.allowed) return { valid: true, allowed: true, retryAfter: 0 };
+  const retryValue = decision.retry_after_seconds;
+  const raw = typeof retryValue === "number" ||
+      (typeof retryValue === "string" && retryValue.trim() !== "")
+    ? Number(retryValue)
+    : Number.NaN;
+  const retryAfter = Number.isFinite(raw) ? Math.min(86400, Math.max(1, Math.ceil(raw))) : 60;
+  return { valid: true, allowed: false, retryAfter };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = corsHeadersFor(req);
-  const json = (body: unknown, status = 200): Response =>
+  const json = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, ...extraHeaders, "Content-Type": "application/json" },
     });
 
   // CORS preflight.
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") {
+    const allowed = isOriginAllowed(req);
+    return new Response(allowed ? "ok" : "forbidden", { status: allowed ? 200 : 403, headers: cors });
+  }
+  if (!isOriginAllowed(req)) return json({ error: "forbidden_origin", fallback_email: LEGAL_FALLBACK_EMAIL }, 403);
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   // 1) ANTI-ABUSE size cap. Reject an oversized body before reading/parsing.
@@ -139,34 +174,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "payload_too_large" }, 413);
   }
   const raw = await req.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
     return json({ error: "payload_too_large" }, 413);
   }
 
   // 1b) RATE LIMIT — this endpoint is public, so cap per client (default
   //     10/hour) to protect the safe-harbour moderation queue from floods.
   //     Keyed on a HASHED IP (raw IP never stored). Runs through the
-  //     ss_rate_allow SECURITY DEFINER RPC (migration 0037). FAIL-OPEN: a
+  //     ss_rate_consume service-role RPC (migration 0041). FAIL-OPEN: a
   //     limiter error or an unresolvable IP never blocks a legitimate notice.
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { auth: { persistSession: false } },
-  );
-  try {
-    const subject = await ipKey(req);
-    if (subject) {
-      const { data: allowed, error: rlErr } = await supabase.rpc("ss_rate_allow", {
-        p_bucket: "takedown",
-        p_subject: subject,
-        p_limit: 10,
-        p_window_seconds: 3600,
-      });
-      if (!rlErr && allowed === false) {
-        return json({ ok: false, error: "rate_limited" }, 429);
-      }
-    }
-  } catch (_e) { /* fail-open — never block a legit notice on a limiter hiccup */ }
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) {
+    return json({ ok: false, error: "server_misconfigured", fallback_email: LEGAL_FALLBACK_EMAIL }, 500);
+  }
+  const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
   // 2) Tolerate malformed JSON → 400, create nothing.
   let notice: unknown;
@@ -187,15 +209,59 @@ Deno.serve(async (req: Request): Promise<Response> => {
   //    re-validates a THIRD time and does the insert + 'received' audit
   //    append atomically, returning only { confirmation_ref } (Req 3.5).
   //    (Reuses the anon client created for the rate-limit step above.)
-  const { data, error } = await supabase.rpc("ss_submit_complaint", {
-    payload: notice,
-  });
+  // Only valid notices consume quota. Prefer a trusted edge-IP key and fall
+  // back to a salted email key when proxy IP headers are unavailable.
+  try {
+    let subject = await ipKey(req);
+    if (!subject) {
+      const salt = Deno.env.get("RATE_SALT") || "";
+      const email = (notice as DmcaNotice).complainant_email;
+      if (salt && typeof email === "string") {
+        const bytes = new TextEncoder().encode(`${salt}|email|${email.trim().toLowerCase()}`);
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        subject = Array.from(new Uint8Array(digest)).slice(0, 16)
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+    }
+    if (subject) {
+      const { data: decision, error: rlErr } = await supabase.rpc("ss_rate_consume", {
+        p_bucket: "takedown",
+        p_subject: subject,
+      });
+      if (rlErr) {
+        console.error("submit-takedown limiter unavailable:", rlErr.message);
+      } else {
+        const normalized = normalizeRateDecision(decision);
+        if (!normalized.valid) {
+          console.error("submit-takedown limiter returned an invalid decision");
+        } else if (!normalized.allowed) {
+          const retryAfter = normalized.retryAfter;
+          return json(
+            { ok: false, error: "rate_limited", retry_after: retryAfter, fallback_email: LEGAL_FALLBACK_EMAIL },
+            429,
+            { "Retry-After": String(retryAfter) },
+          );
+        }
+      }
+    }
+  } catch (_e) { /* fail-open: legal intake retains the email fallback */ }
+
+  let data: unknown;
+  let error: { message?: string } | null = null;
+  try {
+    const result = await supabase.rpc("ss_submit_complaint", { payload: notice });
+    data = result.data;
+    error = result.error;
+  } catch (rpcError) {
+    console.error("ss_submit_complaint request failed:", rpcError);
+    return json({ ok: false, error: "submit_failed", fallback_email: LEGAL_FALLBACK_EMAIL }, 502);
+  }
 
   if (error) {
     // Log the real Postgres rejection SERVER-SIDE only; never leak DB internals
     // to the anonymous caller. Generic body for the client.
     console.error("ss_submit_complaint failed:", error.message);
-    return json({ ok: false, error: "submit_failed" }, 502);
+    return json({ ok: false, error: "submit_failed", fallback_email: LEGAL_FALLBACK_EMAIL }, 502);
   }
 
   // The RPC returns the confirmation reference (shape: { confirmation_ref }

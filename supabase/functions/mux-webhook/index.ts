@@ -20,7 +20,7 @@
 // key is read only from function secrets and never reaches the browser (Req 3.6).
 // ═══════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.1";
 import { verifyMuxSignature } from "../_shared/verify-signature.ts";
 import { muxFetch } from "../_shared/mux.ts";
 
@@ -31,15 +31,39 @@ import { muxFetch } from "../_shared/mux.ts";
 // client trim/validation and must be rejected (Req 4.5/4.6).
 const DURATION_CAP = 120;
 
+async function deleteMuxAsset(assetId: string): Promise<void> {
+  const response = await muxFetch(`/video/v1/assets/${assetId}`, { method: "DELETE" });
+  // A retry may arrive after the first attempt already deleted the asset.
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`mux_asset_delete_failed: ${response.status}`);
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
+  if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+  const webhookSecret = Deno.env.get("MUX_WEBHOOK_SECRET") ?? "";
+  const serviceUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!webhookSecret || !serviceUrl || !serviceKey) {
+    console.error("mux-webhook is misconfigured");
+    return new Response("misconfigured", { status: 500 });
+  }
+
+  const contentLength = Number(req.headers.get("Content-Length") || "0");
+  if (Number.isFinite(contentLength) && contentLength > 1024 * 1024) {
+    return new Response("payload too large", { status: 413 });
+  }
   // Raw body is required for HMAC verification — read it before JSON.parse.
   const raw = await req.text();
+  if (new TextEncoder().encode(raw).byteLength > 1024 * 1024) {
+    return new Response("payload too large", { status: 413 });
+  }
 
   // 1) VERIFY the Mux signature; reject + modify nothing on failure (Req 3.3).
   const ok = await verifyMuxSignature(
     raw,
     req.headers.get("Mux-Signature") ?? "",
-    Deno.env.get("MUX_WEBHOOK_SECRET") ?? "",
+    webhookSecret,
   );
   if (!ok) return new Response("bad signature", { status: 401 });
 
@@ -63,11 +87,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const durationSec: number | null = asset.duration ? Math.round(asset.duration) : null;
 
   // Service-role client (bypasses RLS); key is server-side only (Req 3.6).
-  const db = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    { auth: { persistSession: false } },
-  );
+  const db = createClient(serviceUrl, serviceKey, { auth: { persistSession: false } });
 
   // 2) MATCH the target row by the upload id we stored in meta at insert time,
   //    falling back to the asset id, and only consider rows still 'processing'
@@ -78,12 +98,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
   type ContentRow = { id: string; meta: Record<string, any> | null };
   let row: ContentRow | null = null;
   if (uploadId) {
+    const mapped = await db.from("content_assets")
+      .select("content_id")
+      .eq("upload_id", uploadId)
+      .limit(1)
+      .maybeSingle();
+    if (mapped.error) {
+      console.error("mux-webhook asset lookup failed:", mapped.error.message);
+      return new Response("database retry", { status: 500 });
+    }
+    if (mapped.data?.content_id) {
+      const mappedRow = await db.from("content")
+        .select("id, meta")
+        .eq("id", mapped.data.content_id)
+        .eq("status", "processing")
+        .limit(1)
+        .maybeSingle();
+      if (mappedRow.error) {
+        console.error("mux-webhook content lookup failed:", mappedRow.error.message);
+        return new Response("database retry", { status: 500 });
+      }
+      row = (mappedRow.data as ContentRow | null) ?? null;
+    }
+  }
+  if (!row && uploadId) {
     const res = await db.from("content")
       .select("id, meta")
       .eq("meta->>mux_upload_id", uploadId)
       .eq("status", "processing")
       .limit(1)
       .maybeSingle();
+    if (res.error) {
+      console.error("mux-webhook upload lookup failed:", res.error.message);
+      return new Response("database retry", { status: 500 });
+    }
     row = (res.data as ContentRow | null) ?? null;
   }
 
@@ -95,6 +143,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq("status", "processing")
       .limit(1)
       .maybeSingle();
+    if (res.error) {
+      console.error("mux-webhook asset-id lookup failed:", res.error.message);
+      return new Response("database retry", { status: 500 });
+    }
     row = (res.data as ContentRow | null) ?? null;
   }
 
@@ -110,6 +162,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq("status", "processing")
       .limit(1)
       .maybeSingle();
+    if (res.error) {
+      console.error("mux-webhook clip lookup failed:", res.error.message);
+      return new Response("database retry", { status: 500 });
+    }
     if (res.data) { row = res.data as ContentRow; matchedByClip = true; }
   }
 
@@ -133,16 +189,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // still mark the row removed and ACK 200.
     if (assetId) {
       try {
-        await muxFetch(`/video/v1/assets/${assetId}`, { method: "DELETE" });
+        await deleteMuxAsset(assetId);
       } catch (err) {
         console.error("mux asset delete failed", assetId, err);
+        return new Response("mux retry", { status: 500 });
       }
     }
 
     // Merge rejected_reason into the EXISTING meta so other keys
     // (mux_upload_id, vibes, cover_time, trim, …) are preserved (Req 4.6).
     const mergedMeta = { ...meta, rejected_reason: "over_duration_cap" };
-    await db.from("content")
+    const rejectedAsset = await db.from("content_assets")
+      .update({
+        mux_asset_id: assetId,
+        lifecycle: "removed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("content_id", row.id)
+      .select("content_id");
+    if (rejectedAsset.error || !rejectedAsset.data?.length) {
+      console.error("mux-webhook rejection mapping failed:", rejectedAsset.error?.message ?? "missing mapping");
+      return new Response("database retry", { status: 500 });
+    }
+    const rejectedUpdate = await db.from("content")
       .update({
         status: "removed",
         deleted_at: new Date().toISOString(),
@@ -150,6 +219,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       })
       .eq("id", row.id)
       .eq("status", "processing");
+    if (rejectedUpdate.error) {
+      console.error("mux-webhook rejection update failed:", rejectedUpdate.error.message);
+      return new Response("database retry", { status: 500 });
+    }
 
     return new Response(JSON.stringify({ rejected: "over_duration_cap" }), {
       status: 200,
@@ -199,10 +272,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const clipAssetId: string | null = clipJson?.data?.id ?? null;
         if (!clipAssetId) throw new Error("mux_clip_no_id");
         const mergedMeta = { ...meta, mux_clip_asset_id: clipAssetId, mux_source_asset_id: assetId };
-        await db.from("content")
+        const clipState = await db.from("content")
           .update({ meta: mergedMeta })
           .eq("id", row.id)
-          .eq("status", "processing");
+          .eq("status", "processing")
+          .select("id");
+        if (clipState.error || !clipState.data?.length) {
+          console.error(
+            "mux-webhook clip state update failed:",
+            clipState.error?.message ?? "no rows updated",
+          );
+          try {
+            await deleteMuxAsset(clipAssetId);
+          } catch (cleanupError) {
+            console.error("mux-webhook orphan clip cleanup failed", clipAssetId, cleanupError);
+          }
+          return new Response("database retry", { status: 500 });
+        }
         return new Response(JSON.stringify({ clip_requested: clipAssetId }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -227,6 +313,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       : `https://image.mux.com/${playbackId}/thumbnail.jpg`)
     : null;
 
+  // Update the server-owned mapping first. If this fails, return 5xx before
+  // flipping content live so Mux can retry the same idempotent event.
+  const assetUpdate = await db.from("content_assets")
+    .update({
+      mux_asset_id: assetId,
+      mux_playback_id: playbackId,
+      lifecycle: "live",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("content_id", row.id)
+    .select("content_id");
+  if (assetUpdate.error || !assetUpdate.data?.length) {
+    console.error("content asset mapping update failed:", assetUpdate.error?.message ?? "missing mapping");
+    return new Response("database retry", { status: 500 });
+  }
+
   // Update by id (read+write on the same row avoids a re-match race); keep the
   // status='processing' guard for extra idempotency. Do NOT write meta here —
   // only the rejected branch touches meta.
@@ -241,6 +343,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq("id", row.id)
     .eq("status", "processing")
     .select("id");
+  if (res.error) {
+    console.error("mux-webhook content update failed:", res.error.message);
+    return new Response("database retry", { status: 500 });
+  }
   const updated = res.data ?? null;
 
   // PHASE 2 cleanup: the trimmed clip is now live — delete the SOURCE asset so
@@ -248,7 +354,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // a Mux failure here never fails the webhook (the clip is already live).
   if (matchedByClip && meta.mux_source_asset_id) {
     try {
-      await muxFetch(`/video/v1/assets/${meta.mux_source_asset_id}`, { method: "DELETE" });
+      await deleteMuxAsset(meta.mux_source_asset_id);
     } catch (err) {
       console.error("mux source asset delete failed", meta.mux_source_asset_id, err);
     }

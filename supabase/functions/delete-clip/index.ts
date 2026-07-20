@@ -1,122 +1,116 @@
-// ═══════════════════════════════════════════════════════════════
-// supabase/functions/delete-clip/index.ts — curator-owned clip delete
-// (Deno Edge Function).
-// ───────────────────────────────────────────────────────────────
-// FLOW:
-//   browser (curator JWT) ──POST { contentId, muxOnly? }──▶ this function
-//     • verify the caller owns the clip (creator_id = auth.uid())
-//     • best-effort Mux cleanup (asset + in-flight upload)
-//     • unless muxOnly: soft-delete the content row (deleted_at + removed)
-//
-// muxOnly=true: Mux cleanup only (DB soft-delete already done client-side).
-//
-// AUTH: JWT verification ON (same posture as mux-upload-url).
-// Mux secrets stay server-side via _shared/mux.ts.
-// ═══════════════════════════════════════════════════════════════
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeadersFor } from "../_shared/cors.ts";
+// Delete a caller-owned clip without trusting client-writable Mux fields.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.1";
+import { corsHeadersFor, isOriginAllowed } from "../_shared/cors.ts";
 import { muxFetch } from "../_shared/mux.ts";
 
-/** Best-effort DELETE for one Mux asset id; never throws. */
-async function deleteMuxAsset(assetId: string | null | undefined): Promise<void> {
-  if (!assetId || typeof assetId !== "string") return;
+async function deleteMuxAsset(assetId: unknown): Promise<boolean> {
+  if (typeof assetId !== "string" || !assetId) return true;
   try {
-    await muxFetch(`/video/v1/assets/${assetId}`, { method: "DELETE" });
-  } catch (err) {
-    console.error("mux asset delete failed", assetId, err);
+    const response = await muxFetch(`/video/v1/assets/${assetId}`, { method: "DELETE" });
+    return response.ok || response.status === 404;
+  } catch (error) {
+    console.error("mux asset delete failed", error instanceof Error ? error.message : String(error));
+    return false;
   }
 }
 
-/** Best-effort cancel of a direct upload; never throws. */
-async function cancelMuxUpload(uploadId: string | null | undefined): Promise<void> {
-  if (!uploadId || typeof uploadId !== "string") return;
+async function cancelMuxUpload(uploadId: unknown): Promise<boolean> {
+  if (typeof uploadId !== "string" || !uploadId) return true;
   try {
-    await muxFetch(`/video/v1/uploads/${uploadId}`, { method: "DELETE" });
-  } catch (err) {
-    console.error("mux upload cancel failed", uploadId, err);
+    const response = await muxFetch(`/video/v1/uploads/${uploadId}`, { method: "DELETE" });
+    return response.ok || response.status === 404;
+  } catch (error) {
+    console.error("mux upload cancel failed", error instanceof Error ? error.message : String(error));
+    return false;
   }
-}
-
-async function cleanupMuxForRow(row: {
-  mux_asset_id?: string | null;
-  meta?: Record<string, unknown> | null;
-}): Promise<void> {
-  const meta = (row.meta && typeof row.meta === "object") ? row.meta : {};
-  await deleteMuxAsset(row.mux_asset_id);
-  await deleteMuxAsset(typeof meta.mux_clip_asset_id === "string" ? meta.mux_clip_asset_id : null);
-  await deleteMuxAsset(typeof meta.mux_source_asset_id === "string" ? meta.mux_source_asset_id : null);
-  await cancelMuxUpload(typeof meta.mux_upload_id === "string" ? meta.mux_upload_id : null);
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = corsHeadersFor(req);
-  const json = (body: unknown, status = 200): Response =>
+  const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, ...extra, "Content-Type": "application/json" },
     });
 
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") {
+    const allowed = isOriginAllowed(req);
+    return new Response(allowed ? "ok" : "forbidden", { status: allowed ? 200 : 403, headers: cors });
+  }
+  if (!isOriginAllowed(req)) return json({ error: "forbidden_origin" }, 403);
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const authHeader = req.headers.get("Authorization") ?? "";
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return json({ error: "unauthorized" }, 401);
+  if (!supabaseUrl || !anonKey || !serviceKey || !authHeader) return json({ error: "unauthorized" }, 401);
 
   let body: { contentId?: unknown; muxOnly?: unknown };
   try {
-    body = await req.json();
-  } catch (_e) {
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > 4 * 1024) return json({ error: "payload_too_large" }, 413);
+    body = JSON.parse(raw);
+  } catch (_error) {
     return json({ error: "invalid_body" }, 400);
   }
   const contentId = typeof body.contentId === "string" ? body.contentId.trim() : "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(contentId)) {
+    return json({ error: "missing_content_id" }, 400);
+  }
   const muxOnly = body.muxOnly === true;
-  if (!contentId) return json({ error: "missing_content_id" }, 400);
 
-  let query = supabase
+  const caller = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+  const { data: { user } } = await caller.auth.getUser();
+  if (!user) return json({ error: "unauthorized" }, 401);
+  const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const { data: profile } = await service.from("users").select("role,is_guest,deleted_at").eq("id", user.id).maybeSingle();
+  if (!profile || profile.role !== "curator" || profile.is_guest === true || profile.deleted_at) {
+    return json({ error: "curator_required" }, 403);
+  }
+
+  const { data: decision, error: rateError } = await service.rpc("ss_rate_consume", {
+    p_bucket: "delete_clip",
+    p_subject: user.id,
+  });
+  if (rateError || !decision || typeof decision.allowed !== "boolean") return json({ error: "rate_limit_unavailable" }, 503);
+  if (!decision.allowed) {
+    const retryAfter = Math.max(1, Number(decision.retry_after_seconds) || 60);
+    return json({ error: "rate_limited", retry_after: retryAfter }, 429, { "Retry-After": String(retryAfter) });
+  }
+
+  const { data: asset, error: assetError } = await service
+    .from("content_assets")
+    .select("content_id,owner_id,upload_id,mux_asset_id")
+    .eq("content_id", contentId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (assetError) return json({ error: "asset_lookup_failed" }, 503);
+
+  // No server-owned mapping means this is a legacy/unverified row. Never use
+  // its client-writable content.meta or mux fields to issue a destructive Mux call.
+  if (asset) {
+    const assetDeleted = await deleteMuxAsset(asset.mux_asset_id);
+    const uploadCancelled = asset.mux_asset_id ? true : await cancelMuxUpload(asset.upload_id);
+    if (!assetDeleted || !uploadCancelled) return json({ error: "mux_cleanup_failed" }, 502);
+    const mapped = await service.from("content_assets")
+      .update({ lifecycle: "removed", updated_at: new Date().toISOString() })
+      .eq("content_id", contentId)
+      .eq("owner_id", user.id)
+      .select("content_id");
+    if (mapped.error || !mapped.data?.length) return json({ error: "asset_update_failed" }, 500);
+  }
+
+  if (muxOnly) return json({ ok: true, muxOnly: true, assetCleanup: !!asset });
+
+  const { data: updated, error: updateError } = await service
     .from("content")
-    .select("id, mux_asset_id, meta, status")
+    .update({ status: "removed", deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", contentId)
-    .eq("creator_id", user.id);
-
-  if (!muxOnly) {
-    query = query.is("deleted_at", null);
-  }
-
-  const { data: row, error: readErr } = await query.maybeSingle();
-
-  if (readErr) {
-    console.error("delete-clip read failed", readErr.message);
-    return json({ error: "read_failed" }, 500);
-  }
-  if (!row) return json({ error: "not_found" }, 404);
-
-  await cleanupMuxForRow(row);
-
-  if (muxOnly) {
-    return json({ ok: true, muxOnly: true });
-  }
-
-  const now = new Date().toISOString();
-  const { data: updated, error: updErr } = await supabase
-    .from("content")
-    .update({ status: "removed", deleted_at: now })
-    .eq("id", row.id)
     .eq("creator_id", user.id)
     .is("deleted_at", null)
     .select("id");
-
-  if (updErr) {
-    console.error("delete-clip update failed", updErr.message);
-    return json({ error: "delete_failed" }, 500);
-  }
+  if (updateError) return json({ error: "delete_failed" }, 500);
   if (!updated || updated.length === 0) return json({ error: "not_found" }, 404);
-
   return json({ ok: true });
 });

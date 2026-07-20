@@ -21,7 +21,7 @@
 //   the validate-then-call path is testable without a database or network.
 // ═══════════════════════════════════════════════════════════════
 
-import { wellFormed } from "./index.ts";
+import { normalizeRateDecision, wellFormed } from "./index.ts";
 
 // ── Thin model mirroring index.ts's POST branch after JSON.parse ──
 // Returns what the handler would do: either it WOULD call the RPC (ok path)
@@ -137,6 +137,34 @@ Deno.test("wellFormed does NOT mutate the input notice (pure)", () => {
   const snapshot = JSON.stringify(n);
   wellFormed(n);
   assertEq(JSON.stringify(n), snapshot, "notice object is not mutated by validation");
+});
+
+Deno.test("rate decisions clamp Retry-After and fail open on malformed RPC data", () => {
+  assertEq(
+    normalizeRateDecision({ allowed: false, retry_after_seconds: 0 }),
+    { valid: true, allowed: false, retryAfter: 1 },
+    "zero retry is clamped to one second",
+  );
+  assertEq(
+    normalizeRateDecision({ allowed: false, retry_after_seconds: Infinity }),
+    { valid: true, allowed: false, retryAfter: 60 },
+    "non-finite retry gets a safe default",
+  );
+  assertEq(
+    normalizeRateDecision({ allowed: false }),
+    { valid: true, allowed: false, retryAfter: 60 },
+    "missing retry gets a safe default",
+  );
+  assertEq(
+    normalizeRateDecision({ allowed: false, retry_after_seconds: 999999 }),
+    { valid: true, allowed: false, retryAfter: 86400 },
+    "retry is capped to a valid one-day header",
+  );
+  assertEq(
+    normalizeRateDecision({ allowed: "false", retry_after_seconds: 5 }),
+    { valid: false, allowed: true, retryAfter: 0 },
+    "malformed limiter response preserves legal intake availability",
+  );
 });
 
 // ── Test 3: the OPTIONS preflight works ──
